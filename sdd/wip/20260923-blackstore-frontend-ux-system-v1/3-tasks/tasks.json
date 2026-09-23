@@ -1,0 +1,55 @@
+{
+  "feature": "blackstore-frontend-ux-system-v1",
+  "stack_profile": "frontend-web",
+  "project_type": "production",
+  "execution_strategy": "docs_only",
+  "status": "documented",
+  "stats": { "total": 6, "done": 2 },
+  "tasks": [
+    {
+      "id": "BSUX-DOC-01",
+      "title": "Spec funcional + inventario + design system",
+      "status": "done",
+      "layer": 1,
+      "depends_on": [],
+      "acceptance_criteria": ["AC-BSUX-1", "AC-BSUX-2"]
+    },
+    {
+      "id": "BSUX-DOC-02",
+      "title": "Spec técnica + mapping Stitch",
+      "status": "done",
+      "layer": 2,
+      "depends_on": ["BSUX-DOC-01"]
+    },
+    {
+      "id": "BSUX-STITCH-DS",
+      "title": "Design system + DS-00/04/05/06 en Stitch",
+      "status": "in_progress",
+      "layer": 1,
+      "depends_on": []
+    },
+    {
+      "id": "BSUX-STITCH-POS",
+      "title": "POS-01..POS-08 una pieza Stitch por ruta",
+      "status": "in_progress",
+      "layer": 1,
+      "depends_on": ["BSUX-STITCH-DS"]
+    },
+    {
+      "id": "BSUX-ANG",
+      "title": "Volcar Stitch a Angular views",
+      "status": "blocked",
+      "layer": 1,
+      "depends_on": [],
+      "acceptance_criteria": ["Requiere Sol GO. No es este tramo."]
+    },
+    {
+      "id": "BSUX-ADP",
+      "title": "Conector HTTP StoreCore",
+      "status": "blocked",
+      "layer": 1,
+      "depends_on": [],
+      "acceptance_criteria": ["DEFERRED-STORECORE-CONNECTOR-001"]
+    }
+  ]
+}

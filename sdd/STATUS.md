@@ -2,7 +2,7 @@
 
 **Validado:** 2026-09-21  
 **Madurez:** specs piloto. Contrato StoreCore **en WIP, no aprobado**.  
-**Git:** repo local; sin remote, tag ni publicación.
+**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). Rama UX: `feature/blackstore-frontend-ux-system-v1`. Sin tag ni publicación.
 
 ## Precedencia
 
@@ -10,9 +10,10 @@
    `../StoreCore/sdd/wip/20260921-storecore-pos-integration-contract-v1/`  
    Estado: `ready_for_sol_review`, **no approved**. Conector real **bloqueado**.
 2. `sdd/wip/20260921-storecore-connector-adapter/` — plan formal consumidor HTTP; `ready_for_sol_review`, **no approved**, bloqueado por evidencia StoreCore + GO Sol propio.
-3. `sdd/wip/20260921-blackstore-pilot/` — piloto companion (puertos/fixtures hasta GO).
-4. `sdd/wip/20260921-blackstore-pos-core/` — **superseded** (`SUPERSEDED.md`). ISSUE/REVERSAL no ejecutable.
-5. `sdd/PROJECT.md`, `sdd/PATTERNS.md`, `sdd/TRACEABILITY.md`, `sdd/RELEASE.md`
+3. `sdd/wip/20260923-blackstore-frontend-ux-system-v1/` — sistema visual POS (docs + Stitch). Angular volcado bloqueado. Stitch `projects/17616515208002773612`.
+4. `sdd/wip/20260921-blackstore-pilot/` — piloto companion (puertos/fixtures hasta GO).
+5. `sdd/wip/20260921-blackstore-pos-core/` — **superseded** (`SUPERSEDED.md`). ISSUE/REVERSAL no ejecutable.
+6. `sdd/PROJECT.md`, `sdd/PATTERNS.md`, `sdd/TRACEABILITY.md`, `sdd/RELEASE.md`
 
 ## Gate actual
 
