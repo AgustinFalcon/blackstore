@@ -3,7 +3,7 @@
 - **Feature Name:** `blackstore-frontend-ux-system-v1`
 - **Feature ID:** `feat-20260923-blackstore-frontend-ux-system-v1`
 - **Feature UUID:** `b8c4e2d1-6a70-4f19-9c3e-2d5a81f04e77`
-- **Status:** `documented` (specs/plan/inventario; Stitch proyecto creado; **sin Angular nuevo ni conector HTTP**)
+- **Status:** `documented` (specs/inventario/estados/dialogos/copy/a11y/arquitectura; Stitch POS-01/02 + resto en generación; **sin Angular nuevo ni conector HTTP**)
 - **Mode:** standard · **Project type:** production · **Platform:** frontend-web · **Language:** es
 - **spec_language:** es
 - **Related:** `20260921-blackstore-pilot` (consola Angular ya existe; este WIP es el sistema visual canónico)

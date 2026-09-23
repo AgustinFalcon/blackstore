@@ -10,6 +10,7 @@
 | ticket + saga reserve/commit | TASK-004 | AC-4 cuádruple + outbox |
 | Contrato StoreCore v1 | externo `storecore-pos-integration-contract-v1` | OpenAPI canónico `/blackstore-integration/v1`; WIP no approved |
 | Adaptador consumidor StoreCore | `20260921-storecore-connector-adapter` | `ready_for_sol_review`; consume sólo 1.0.0-draft SHA-256 bloqueado después de evidencia TASK-PIC-001..008 + GO Sol propio |
+| POS UX docs/Stitch | `20260923-blackstore-frontend-ux-system-v1` | docs ready_for_sol_review; Angular volcado bloqueado |
 | pos-core ISSUE | `20260921-blackstore-pos-core` | **superseded** — evidencia histórica |
 | caja y arqueo | TASK-007 | AC-5 |
 | tests de contrato e invariantes | TASK-010 | idempotencia, inbox PENDING, reconcile read-only |

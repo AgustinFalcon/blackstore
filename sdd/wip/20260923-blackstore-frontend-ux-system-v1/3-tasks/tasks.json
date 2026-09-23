@@ -8,15 +8,15 @@
   "tasks": [
     {
       "id": "BSUX-DOC-01",
-      "title": "Spec funcional + inventario + design system",
+      "title": "Spec funcional + inventario + DS + estados/dialogos/copy/a11y",
       "status": "done",
       "layer": 1,
       "depends_on": [],
-      "acceptance_criteria": ["AC-BSUX-1", "AC-BSUX-2"]
+      "acceptance_criteria": ["AC-BSUX-1", "AC-BSUX-6", "AC-BSUX-7", "AC-BSUX-8"]
     },
     {
       "id": "BSUX-DOC-02",
-      "title": "Spec técnica + mapping Stitch",
+      "title": "Spec técnica + mapping Stitch + arquitectura frontend",
       "status": "done",
       "layer": 2,
       "depends_on": ["BSUX-DOC-01"]
