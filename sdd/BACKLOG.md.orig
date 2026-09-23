@@ -1,0 +1,11 @@
+# Backlog — BlackStore
+
+## Bloqueantes
+
+- TODO-001 [critical] Sol GO/NO-GO de `blackstore-pilot`.
+- TODO-002 [critical] Sol GO de StoreCore `storecore-pos-integration-contract-v1` (OpenAPI canónico; WIP no approved). Hasta entonces solo puertos/DTOs/fixtures.
+
+## Diferidos
+
+- TODO-010 [medium] Devolución post-factura + NC ARCA presencial (titular/contador; no REVERSAL StoreCore).
+- TODO-011 [low] Catálogo local cacheado desde StoreCore (hoy `variant_id` se carga a mano / lookup mínimo).

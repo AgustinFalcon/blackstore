@@ -1,0 +1,1 @@
+GRANT SELECT ON fiscal_production_authorizations TO blackstore_projection_worker;

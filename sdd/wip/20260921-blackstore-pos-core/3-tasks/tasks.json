@@ -1,0 +1,133 @@
+{
+  "feature": "blackstore-pos-core-v1.0.0",
+  "stack_profile": "fullstack",
+  "project_type": "production",
+  "execution_strategy": "batched",
+  "status": "superseded",
+  "notes": [
+    "Superseded by blackstore-pilot + StoreCore storecore-pos-integration-contract-v1. Do not implement ISSUE/REVERSAL or allow_oversell."
+  ],
+  "stats": {
+    "total": 10,
+    "done": 0,
+    "by_layer": { "1": 8, "2": 1, "3": 1 }
+  },
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Create hexagonal + Angular POS skeleton",
+      "description": "Kotlin domain/application/adapters and Angular POS console. No StoreCore tables. No fixture production mix.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": [],
+      "files": ["backend/", "frontend/"],
+      "acceptance_criteria": [
+        "AC-10: operator identity is BlackStore USER",
+        "GATE: architecture scan passes"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "Flyway BlackStore schema",
+      "description": "Migrate data-model.md. Zero store_id. Zero StoreCore inventory tables.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": ["TASK-001"],
+      "files": ["backend/src/main/resources/db/migration/"],
+      "acceptance_criteria": [
+        "GATE: Flyway/Testcontainers passes"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "Operators, roles and session auth",
+      "description": "OPERATOR/MANAGER/OWNER. Not StoreCore CUSTOMER.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "Medium",
+      "depends_on": ["TASK-002"],
+      "files": ["backend/src/main/kotlin/**/identity/"],
+      "acceptance_criteria": ["AC-10"]
+    },
+    {
+      "id": "TASK-004",
+      "title": "Ticket state machine PENDING_STOCK/CLOSED/CANCELLED",
+      "description": "Persist intention before any StoreCore call. CLOSED immutable. Lines require variant_id, qty, local price.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": ["TASK-003"],
+      "files": ["backend/src/main/kotlin/**/ticket/"],
+      "acceptance_criteria": ["AC-01", "AC-04"]
+    },
+    {
+      "id": "TASK-005",
+      "title": "StoreCore inventory port (canonical contract v1; no real client)",
+      "description": "Port/DTO/fixture only until Sol GO of storecore-pos-integration-contract-v1. Map quadruple headers, reserve/commit/release/get/reconcile. Do not implement ISSUE/REVERSAL HTTP client.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": ["TASK-004"],
+      "files": ["backend/src/main/kotlin/**/inventory/"],
+      "acceptance_criteria": ["AC-01", "AC-02", "AC-05", "GATE: no real HTTP client until StoreCore Sol GO"],
+      "references": ["2-technical/storecore-contract.md", "ADR-001"]
+    },
+    {
+      "id": "TASK-006",
+      "title": "POS UI ticket + stock-blocked popup + GET variant stock",
+      "description": "UI may show insufficient stock from canonical GET /stock/variants/{id}. No allow_oversell against StoreCore. Real HTTP blocked until Sol GO.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": ["TASK-005"],
+      "files": ["frontend/", "backend/src/main/kotlin/**/alerts/"],
+      "acceptance_criteria": ["AC-03", "AC-07"]
+    },
+    {
+      "id": "TASK-007",
+      "title": "Cash sessions and diffs",
+      "description": "Reconcile CLOSED ticket payments vs counted cash. Record diffs, never delete tickets.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "Medium",
+      "depends_on": ["TASK-004"],
+      "files": ["backend/src/main/kotlin/**/cash/"],
+      "acceptance_criteria": ["AC-08"]
+    },
+    {
+      "id": "TASK-008",
+      "title": "Invoice ticket/day/batch/manual",
+      "description": "issued_total must equal expected_total of CLOSED tickets in period. Sets invoiced_at. Blocks REVERSAL.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": ["TASK-004", "TASK-007"],
+      "files": ["backend/src/main/kotlin/**/invoice/"],
+      "acceptance_criteria": ["AC-05", "AC-08"]
+    },
+    {
+      "id": "TASK-009",
+      "title": "Oversell alert job and escalation",
+      "description": "OPEN → ESCALATED_MANAGER → ESCALATED_OWNER. Never patch StoreCore WEB orders.",
+      "status": "pending",
+      "layer": 2,
+      "complexity": "Medium",
+      "depends_on": ["TASK-006"],
+      "files": ["backend/src/main/kotlin/**/alerts/"],
+      "acceptance_criteria": ["AC-06", "AC-07"]
+    },
+    {
+      "id": "TASK-010",
+      "title": "Contract and invariant tests",
+      "description": "Idempotency, NO_STOCK atomicity, oversell new key, invoiced reversal veto, cash diff, batch sum.",
+      "status": "pending",
+      "layer": 3,
+      "complexity": "High",
+      "depends_on": ["TASK-005", "TASK-007", "TASK-008", "TASK-009"],
+      "files": ["backend/src/test/"],
+      "acceptance_criteria": ["AC-01", "AC-02", "AC-03", "AC-05", "AC-08"]
+    }
+  ]
+}

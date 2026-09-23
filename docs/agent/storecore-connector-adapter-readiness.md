@@ -1,0 +1,47 @@
+# StoreCore connector adapter — implementation readiness handoff
+
+**Status:** `ready_for_sol_review`; this handoff is not itself a GO. The immutable scoped decision record is `docs/agent/20260921-sol-go.md`.
+
+## Purpose
+
+This handoff coordinates the BlackStore consumer WIP `20260921-storecore-connector-adapter` with StoreCore's canonical contract WIP. The only contract file is StoreCore's `1.0.0-draft` YAML.
+
+
+## Required before any implementation
+
+- StoreCore `TASK-PIC-001` through `TASK-PIC-008` are completed with published, accepted evidence for their stated gates.
+- Sol records explicit GO for StoreCore contract readiness and a separate explicit GO for this BlackStore WIP; StoreCore's documented GO alone leaves BlackStore blocked.
+- BlackStore pins canonical path `/blackstore-integration/v1`, version `1.0.0-draft`, and YAML SHA-256 digest.
+
+## Allowed only after both gates
+
+- Luna may execute only pending `TASK-ADP-001` through `TASK-ADP-010` in dependency order, then the three Layer 3 reviews, after the published/accepted PIC-001..008 evidence and BlackStore-specific Sol GO.
+- Luna may use BlackStore-owned ports, adapters, own database records, fixtures, and documented StoreCore contract environment only after both gates.
+
+## Blocked until and unless both gates exist
+
+- Any StoreCore HTTP connector call, credential resolution, Flyway execution, deployment, or production integration code.
+- StoreCore database access, copied YAML, ticket copy, fiscal/PAN/PII payloads, and contract changes by BlackStore.
+- New operation posts after a tombstone 410 or reconcile unknown alone.
+
+## Execution order
+
+1. Sol verifies producer evidence and declares/records gate decision.
+2. Terra locks path/version/digest and maintains specs, traceability, and this handoff.
+3. Luna runs `TASK-ADP-001` then `TASK-ADP-002` before any transport selection.
+4. Luna completes ports/DTO/envelope/transport/outbox-inbox/configuration tasks in declared dependency order.
+5. Luna executes integration and end-to-end recovery/rollout tasks only after Layer 1 evidence.
+6. Sol reviews the three quality tasks and records GO/NO-GO; no inferred approval exists.
+
+## Required evidence
+
+- StoreCore task acceptance, capability/identity/rotation/TLS/scope evidence, and canonical YAML path/version/SHA-256.
+- Compatibility fixture results; complete BaseResponse, error matrix, PENDING/GET, tombstone, reconcile, and redaction evidence.
+- BlackStore own-DB migration/rollback, kill-switch/canary, audit/metric, and no-cross-DB evidence without secrets.
+- No PAN, fiscal data, credentials, tokens, DSNs, or unnecessary PII in evidence.
+
+## Roles
+
+- Sol: reviews gates, compatibility, quality evidence, and declares GO/NO-GO.
+- Terra: owns specs, task ordering, traceability, and readiness documentation.
+- Luna: writes code only after recorded GO and only for pending, unblocked tasks.

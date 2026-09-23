@@ -1,0 +1,6 @@
+blackstore:
+  persistence:
+    enabled: true
+    url: jdbc:postgresql://localhost:5433/blackstore
+    username: blackstore
+    password: blackstore

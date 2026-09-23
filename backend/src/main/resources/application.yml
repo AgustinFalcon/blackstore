@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: blackstore
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+blackstore:
+  companion:
+    expected-installation-ref: 11111111-1111-1111-1111-111111111111
+    expected-service-client-ref: blackstore-service-local
+    stored:
+      installation-ref: 11111111-1111-1111-1111-111111111111
+      service-client-ref: blackstore-service-local
+      entitlement-state: ENABLED
+      environment: TEST
+  storecore:
+    integration:
+      enabled: false
+      mode: fixture
+    contract:
+      canonical-path: /blackstore-integration/v1
+      version: 1.0.0-draft

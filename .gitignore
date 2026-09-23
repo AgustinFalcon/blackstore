@@ -1,0 +1,18 @@
+# Deny-by-default. Allow SDD and root docs until code is audited in.
+*
+!/.gitignore
+!/AGENTS.md
+!/README.md
+!sdd/
+!sdd/**
+!docs/
+!docs/**
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+backend/build/
+backend/.gradle/
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/

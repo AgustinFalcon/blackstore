@@ -1,0 +1,493 @@
+{
+  "feature": "blackstore-pilot",
+  "stack_profile": "fullstack",
+  "project_type": "production",
+  "status": "ready_for_sol_review",
+  "execution_strategy": "batched",
+  "stats": {
+    "total": 14,
+    "done": 0,
+    "by_layer": {
+      "1": 11,
+      "2": 0,
+      "3": 3
+    }
+  },
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Create BlackStore bounded-context skeleton",
+      "description": "Create isolated BlackStore architecture boundaries without StoreCore source or database dependency.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": [],
+      "files": [
+        "backend/",
+        "frontend/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: no StoreCore DB driver, credential or migration exists",
+        "AC-2: domain ports isolate StoreCore API client",
+        "GATE: architecture boundary scan passes"
+      ],
+      "references": [
+        "AC-6"
+      ],
+      "design_decisions": [
+        "ADR-001"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "Implement companion entitlement and identity boundary",
+      "description": "Implement startup entitlement and BlackStore service identity binding to one StoreCore installation reference.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-001"
+      ],
+      "files": [
+        "backend/src/main/kotlin/**/companion/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: disabled/mismatched entitlement fails closed",
+        "AC-2: service identity is distinct from StoreCore credentials",
+        "GATE: entitlement boundary tests pass"
+      ],
+      "references": [
+        "AC-1"
+      ],
+      "design_decisions": [
+        "ADR-007",
+        "ADR-001"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "Create separate BlackStore schema",
+      "description": "Create BlackStore-only PostgreSQL schema for terminal, sales, cash, audit, inbox/outbox and reconciliation.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-001"
+      ],
+      "files": [
+        "backend/src/main/resources/db/migration/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: every FK remains within BlackStore database",
+        "AC-2: sales/cash/inbox/outbox/audit are append-only",
+        "GATE: Flyway/Testcontainers migration passes"
+      ],
+      "references": [
+        "AC-5",
+        "AC-6"
+      ],
+      "design_decisions": [
+        "ADR-001",
+        "ADR-004"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "Implement roles terminals and cash sessions",
+      "description": "Implement CASHIER, SUPERVISOR, OWNER and AUDITOR access with terminals and multiple cash sessions.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-003"
+      ],
+      "files": [
+        "backend/src/main/kotlin/**/cash/",
+        "frontend/src/app/**/cash/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: role authorization follows allowed session actions",
+        "AC-2: only one open session exists per terminal and closure is audited",
+        "GATE: RBAC and cash-session tests pass"
+      ],
+      "references": [
+        "AC-2"
+      ],
+      "design_decisions": [
+        "ADR-004"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Implement catalog port fixtures and stale policy",
+      "description": "Implement versioned catalog port, DTOs and fixture simulator with read-only stale policy. Do not create a real StoreCore client/adapter; it is blocked by DEFERRED-STORECORE-CONNECTOR-001.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "Medium",
+      "depends_on": [
+        "TASK-002",
+        "TASK-003"
+      ],
+      "files": [
+        "backend/src/main/kotlin/**/catalog/",
+        "frontend/src/app/**/catalog/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: fixture projection records version/imported/valid-until and snapshots",
+        "AC-2: unavailable simulated StoreCore blocks sale transition while catalog remains read-only",
+        "GATE: stale/offline fixture tests pass"
+      ],
+      "references": [
+        "AC-3"
+      ],
+      "design_decisions": [
+        "ADR-003"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "Implement local saga port and fixtures",
+      "description": "Implement aggregate-operation-key sale intent, durable command outbox, saga state machine and fixture simulator only. Real StoreCore client/adapter is structurally blocked by DEFERRED-STORECORE-CONNECTOR-001; this task authorizes fixtures only.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-002",
+        "TASK-003",
+        "TASK-005"
+      ],
+      "files": [
+        "backend/src/main/kotlin/**/storecore/",
+        "backend/src/main/kotlin/**/sales/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: intent/provisional sale/audit/outbox persist before simulated reserve under one aggregate operation key",
+        "AC-2: fixture crash/retry transitions preserve receipt/version/expiry and compensate release deterministically; unwrap and validate the full BaseResponse envelope (all six fields, status==code, explicit success nulls, error data=null), never parsing message",
+        "GATE: local saga replay fixture tests pass"
+      ],
+      "references": [
+        "AC-4",
+        "AC-6"
+      ],
+      "design_decisions": [
+        "ADR-002"
+      ]
+    },
+    {
+      "id": "TASK-007",
+      "title": "Implement sale tickets and split payments",
+      "description": "Implement provisional ticket snapshots and split payments against fixture saga state; external sale completion remains blocked by DEFERRED-STORECORE-CONNECTOR-001.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-004",
+        "TASK-006"
+      ],
+      "files": [
+        "backend/src/main/kotlin/**/sales/",
+        "frontend/src/app/**/sales/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: ticket snapshots SKU/product/original/effective price and discount",
+        "AC-2: split captured payments, fee amounts and reversals reconcile without mutating originals",
+        "GATE: payment invariant fixture tests pass"
+      ],
+      "references": [
+        "AC-5"
+      ],
+      "design_decisions": [
+        "ADR-004"
+      ]
+    },
+    {
+      "id": "TASK-008",
+      "title": "Implement cash expenses audit inbox and outbox",
+      "description": "Implement append-only cash ledger, controlled expenses, audit and idempotent integration inbox/outbox.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-004",
+        "TASK-006",
+        "TASK-007"
+      ],
+      "files": [
+        "backend/src/main/kotlin/**/ledger/",
+        "backend/src/main/kotlin/**/audit/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: expense/cash changes record actor, reason and immutable event",
+        "AC-2: inbox/outbox duplicate processing is a no-op",
+        "GATE: audit replay tests pass"
+      ],
+      "references": [
+        "AC-5",
+        "AC-6"
+      ],
+      "design_decisions": [
+        "ADR-004"
+      ]
+    },
+    {
+      "id": "TASK-009",
+      "title": "Implement shift daily reports and definitions",
+      "description": "Implement shift/daily report views from immutable records using the approved vocabulary and source labels.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "Medium",
+      "depends_on": [
+        "TASK-007",
+        "TASK-008"
+      ],
+      "files": [
+        "backend/src/main/kotlin/**/reports/",
+        "frontend/src/app/**/reports/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: net sales, fees, expenses and cash flow reconcile with ledgers",
+        "AC-2: margin is UNKNOWN without validated cost; projections are not fiscal/free cash",
+        "GATE: report formula fixtures pass"
+      ],
+      "references": [
+        "AC-7"
+      ],
+      "design_decisions": [
+        "ADR-006"
+      ]
+    },
+    {
+      "id": "TASK-010",
+      "title": "Implement fiscal status boundary records",
+      "description": "Implement commercial sale records and permitted fiscal status without adapter emission or aggregation.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "Medium",
+      "depends_on": [
+        "TASK-007",
+        "TASK-008"
+      ],
+      "files": [
+        "backend/src/main/kotlin/**/compliance/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: every provisional/commercial sale persists regardless of fiscal status; NOT_CONFIGURED is test/development only",
+        "AC-2: production COMMITTED transition requires valid external mechanism or lawful exception approvals; no adapter emission occurs here",
+        "GATE: fiscal-boundary guard tests pass"
+      ],
+      "references": [
+        "AC-8"
+      ],
+      "design_decisions": [
+        "ADR-005"
+      ]
+    },
+    {
+      "id": "TASK-012",
+      "title": "Document deployment operations and contract draft",
+      "description": "Document isolated companion deployment, API contract compatibility and prototype-free operational boundaries.",
+      "status": "pending",
+      "layer": 1,
+      "complexity": "Medium",
+      "depends_on": [
+        "TASK-002",
+        "TASK-003"
+      ],
+      "files": [
+        "sdd/",
+        "docs/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: same-VM deployment shows separate process/DB/credentials/secrets/audit",
+        "AC-2: API draft remains proposed and no StoreCore change is implied",
+        "GATE: deployment and contract review passes"
+      ],
+      "references": [
+        "AC-1",
+        "AC-6"
+      ],
+      "design_decisions": [
+        "ADR-001",
+        "ADR-007"
+      ]
+    },
+    {
+      "id": "TASK-013",
+      "title": "Review architecture and boundary quality",
+      "description": "Review all implementation work for companion isolation, roles and frontend/backend architecture.",
+      "status": "pending",
+      "layer": 3,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-012"
+      ],
+      "files": [
+        "sdd/reviews/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: no cross-DB/direct StoreCore access finding remains",
+        "AC-2: migration/runtime-role smoke proves permitted INSERT succeeds and historical UPDATE/DELETE fails",
+        "GATE: Sol review has no P0"
+      ],
+      "references": [
+        "AC-1",
+        "AC-2",
+        "AC-6"
+      ],
+      "design_decisions": [
+        "ADR-001",
+        "ADR-007"
+      ]
+    },
+    {
+      "id": "TASK-014",
+      "title": "Review saga cash and report integrity",
+      "description": "Review stock saga, idempotency, cash ledger and reporting evidence after relevant work completes.",
+      "status": "pending",
+      "layer": 3,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010"
+      ],
+      "files": [
+        "sdd/reviews/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: saga failure/replay/reconcile scenarios are deterministic; tombstone 410 OPERATION_RETIRED retryable=false and unknown reconcile evidence never re-POST",
+        "AC-2: cash/report/fiscal-boundary invariants are evidenced, including RECONCILIATION_REQUIRED nonblank reason and atomic all-null-or-all-populated remote evidence tuple",
+        "GATE: integrity review passes"
+      ],
+      "references": [
+        "AC-4",
+        "AC-5",
+        "AC-7",
+        "AC-8"
+      ],
+      "design_decisions": [
+        "ADR-002",
+        "ADR-004",
+        "ADR-005",
+        "ADR-006"
+      ]
+    },
+    {
+      "id": "TASK-015",
+      "title": "Review security compliance and release gate",
+      "description": "Review service identity, secrets, fiscal boundaries, data redaction and release evidence.",
+      "status": "pending",
+      "layer": 3,
+      "complexity": "High",
+      "depends_on": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010",
+        "TASK-012",
+        "TASK-013",
+        "TASK-014"
+      ],
+      "files": [
+        "sdd/reviews/"
+      ],
+      "acceptance_criteria": [
+        "AC-1: no direct DB, secret, hidden-sale or unauthorized-scope finding remains",
+        "AC-2: runtime-role smoke evidence and deferred contract approval boundary are recorded",
+        "GATE: Sol GO/NO-GO recorded"
+      ],
+      "references": [
+        "AC-1",
+        "AC-6",
+        "AC-8"
+      ],
+      "design_decisions": [
+        "ADR-001",
+        "ADR-005",
+        "ADR-007"
+      ]
+    }
+  ],
+  "deferred_backlog": [
+    {
+      "id": "DEFERRED-STORECORE-CONNECTOR-001",
+      "title": "Deferred authorization for the real StoreCore HTTP connector",
+      "status": "blocked",
+      "owner_boundary": "Joint StoreCore contract owner and BlackStore integration boundary; no implementation owner is assigned by this item.",
+      "blockers": [
+        "StoreCore contract WIP 20260921-storecore-pos-integration-contract-v1 receives an explicit Sol GO.",
+        "After that GO, a separate formal BlackStore adapter implementation WIP/task is created and approved for execution."
+      ],
+      "acceptance_exit_condition": "Exit only when both blockers are evidenced and the separate formal adapter implementation WIP/task explicitly authorizes work; until then this item authorizes ports, DTOs, fixtures, and documentation only.",
+      "authorization": "No real HTTP connector, credentials, network call, Flyway execution, or production integration code is authorized by this deferred backlog item."
+    }
+  ],
+  "dependency_graph": {
+    "by_layer": {
+      "1": {
+        "level_0": [
+          "TASK-001"
+        ],
+        "level_1": [
+          "TASK-002",
+          "TASK-003"
+        ],
+        "level_2": [
+          "TASK-004",
+          "TASK-005",
+          "TASK-012"
+        ],
+        "level_3": [
+          "TASK-006"
+        ],
+        "level_4": [
+          "TASK-007"
+        ],
+        "level_5": [
+          "TASK-008"
+        ],
+        "level_6": [
+          "TASK-009",
+          "TASK-010"
+        ]
+      },
+      "2": {},
+      "3": {
+        "level_0": [
+          "TASK-013",
+          "TASK-014"
+        ],
+        "level_1": [
+          "TASK-015"
+        ]
+      }
+    }
+  },
+  "notes": [
+    "Documentation-only pilot. No code until Sol GO. Status ready_for_sol_review, never approved.",
+    "Canonical OpenAPI is StoreCore 1.0.0-draft /blackstore-integration/v1. This repo keeps a Markdown pointer, not a second YAML.",
+    "Persist quadruple + contract_version + openapi_digest on sale_intents/outbox/inbox. aggregate_operation_key is derived.",
+    "blackstore-pos-core ISSUE/REVERSAL is superseded. Real HTTP connector blocked until StoreCore Sol GO."
+  ]
+}
