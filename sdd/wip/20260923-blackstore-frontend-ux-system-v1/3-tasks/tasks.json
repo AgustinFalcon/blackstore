@@ -4,7 +4,7 @@
   "project_type": "production",
   "execution_strategy": "docs_only",
   "status": "documented",
-  "stats": { "total": 6, "done": 2 },
+  "stats": { "total": 6, "done": 4 },
   "tasks": [
     {
       "id": "BSUX-DOC-01",
@@ -24,14 +24,14 @@
     {
       "id": "BSUX-STITCH-DS",
       "title": "Design system + DS-00/04/05/06 en Stitch",
-      "status": "in_progress",
+      "status": "done",
       "layer": 1,
       "depends_on": []
     },
     {
       "id": "BSUX-STITCH-POS",
       "title": "POS-01..POS-08 una pieza Stitch por ruta",
-      "status": "in_progress",
+      "status": "done",
       "layer": 1,
       "depends_on": ["BSUX-STITCH-DS"]
     },

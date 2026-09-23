@@ -6,8 +6,8 @@
 |---|---|---|
 | BSUX-DOC-01 | Spec funcional + inventario + DS + estados/dialogos/copy/a11y | Done |
 | BSUX-DOC-02 | Spec técnica + mapping + arquitectura frontend | Done |
-| BSUX-STITCH-DS | DS-00/04/05/06 | In progress |
-| BSUX-STITCH-POS | POS-01…POS-08 una pieza | In progress |
+| BSUX-STITCH-DS | DS-00/04/05/06 | Done |
+| BSUX-STITCH-POS | POS-01…POS-08 una pieza | Done |
 | BSUX-ANG | Volcar a Angular | Blocked: Sol GO |
 | BSUX-ADP | Conector StoreCore | Fuera: DEFERRED-STORECORE-CONNECTOR-001 |
 
