@@ -1,6 +1,7 @@
 package com.blackstore.domain.port.out.storecore
 
 import com.blackstore.domain.model.StoreCoreContractRef
+import java.math.BigDecimal
 import java.time.Instant
 
 /**
@@ -24,4 +25,6 @@ data class CatalogItem(
     val sku: String,
     val name: String,
     val variantId: String,
+    val priceVersion: String? = null,
+    val unitPrice: BigDecimal? = null,
 )
