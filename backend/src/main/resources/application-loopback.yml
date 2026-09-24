@@ -1,0 +1,22 @@
+blackstore:
+  storecore:
+    integration:
+      enabled: true
+      mode: loopback
+    transport:
+      kill-switch: false
+      tls-required: false
+      allow-plain-loopback: true
+      base-url: http://127.0.0.1:8080
+      identity-ref: blackstore-service-local
+      token-ref: local-loopback-token
+      client-instance-id: 11111111-1111-1111-1111-111111111111
+      timeout-ms: 2000
+      max-retries: 2
+    control:
+      capability-active: true
+      kill-switch: false
+      identity-ref: ""
+      token-ref: ""
+      canary-percent: 0
+      rollout-enabled: false
