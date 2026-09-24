@@ -1,8 +1,9 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnInit, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { API_BASE } from '../../core/api';
 import { BaseResponse } from '../../core/models/base-response';
+import { CounterContextService } from '../../core/services/counter-context.service';
 
 @Component({
   selector: 'bs-sale-ticket',
@@ -11,12 +12,60 @@ import { BaseResponse } from '../../core/models/base-response';
   template: `
     <section class="page">
       <h2>Ticket</h2>
-      <p class="lede">La reserva usa el simulador local. No hay llamada HTTP a StoreCore.</p>
+      <p class="lede">La reserva usa el simulador local y el catálogo proyectado. No hay llamada HTTP a StoreCore.</p>
+      @if (blockReason(); as reason) {
+        <p class="banner warn" role="status">{{ reason }}</p>
+      }
+      <div class="card">
+        <h3>Línea</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>Nombre</th>
+              <th>Original</th>
+              <th>Descuento</th>
+              <th>Effective</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="sku">{{ sku }}</td>
+              <td>{{ productName }}</td>
+              <td class="money">{{ originalUnitPrice }}</td>
+              <td class="money">{{ discountAmount }}</td>
+              <td class="money">{{ effectiveUnitPrice() }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>Cobrado <span class="money">{{ amount }}</span> · comisiones <span class="money">{{ fee }}</span></p>
+      </div>
       <div class="card">
         <form (ngSubmit)="reserve()">
-          <label>Sesión <input name="sessionId" type="number" [(ngModel)]="cashSessionId" required /></label>
-          <label>SKU <input name="sku" class="sku" [(ngModel)]="sku" required /></label>
-          <label>Producto <input name="productName" [(ngModel)]="productName" required /></label>
+          <p>
+            Sesión
+            @if (counter.openSession(); as session) {
+              <span class="sku">{{ session.id }}</span>
+            } @else {
+              sin abrir
+            }
+          </p>
+          <label>
+            SKU del catálogo
+            <select name="sku" [(ngModel)]="sku" (ngModelChange)="applySku($event)">
+              @for (item of counter.catalog()?.items ?? []; track item.sku) {
+                <option [value]="item.sku">{{ item.sku }} · {{ item.name }}</option>
+              }
+            </select>
+          </label>
+          <p>
+            Variante <span class="sku">{{ variantId }}</span>
+            · versión de precio <span class="sku">{{ priceVersion }}</span>.
+            @if (priceVersion === 'price-v1') {
+              La proyección fixture no trae effective: el precio lo carga el cajero.
+            }
+          </p>
+          <label>Producto <input name="productName" [ngModel]="productName" readonly /></label>
           <label>Precio <input name="price" type="number" class="money" [(ngModel)]="originalUnitPrice" min="0" required /></label>
           <label>Descuento <input name="discount" type="number" class="money" [(ngModel)]="discountAmount" min="0" required /></label>
           <label>Importe efectivo
@@ -25,7 +74,7 @@ import { BaseResponse } from '../../core/models/base-response';
           <label>Comisión <input name="fee" type="number" class="money" [(ngModel)]="fee" min="0" required /></label>
           <label>Segundo medio <input name="secondMethod" [(ngModel)]="secondMethod" /></label>
           <label>Segundo importe <input name="secondAmount" type="number" class="money" [(ngModel)]="secondAmount" min="0" /></label>
-          <button type="submit">Reservar y cobrar</button>
+          <button type="submit" [disabled]="saleBlocked()">Reservar y cobrar</button>
         </form>
         <div class="keypad" aria-label="Teclado numérico para importe">
           @for (key of keys; track key) {
@@ -67,11 +116,13 @@ import { BaseResponse } from '../../core/models/base-response';
     `,
   ],
 })
-export class SaleTicketComponent {
+export class SaleTicketComponent implements OnInit {
   private readonly http = inject(HttpClient);
-  cashSessionId = 1;
-  sku = 'SKU-1';
-  productName = 'producto';
+  readonly counter = inject(CounterContextService);
+  sku = '';
+  productName = '';
+  variantId = '';
+  priceVersion = 'price-v1';
   originalUnitPrice = 20;
   discountAmount = 2;
   amount = 18;
@@ -80,18 +131,44 @@ export class SaleTicketComponent {
   secondAmount = 0;
   reversalReason = 'devolucion';
   readonly keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
-  private actorId = 1;
   private operationId = '';
   readonly operationRef = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly paymentId = signal<number | null>(null);
+  private readonly syncCatalogLine = effect(() => {
+    const items = this.counter.catalog()?.items ?? [];
+    const current = items.find((item) => item.sku === this.sku) ?? items[0];
+    if (!current) return;
+    this.applySku(current.sku);
+  });
 
-  constructor() {
-    this.http.get<BaseResponse<{ cashierId: number }>>(`${API_BASE}/workspace`).subscribe({
-      next: (response) => {
-        if (response.data) this.actorId = response.data.cashierId;
-      },
-    });
+  ngOnInit(): void {
+    this.counter.load();
+  }
+
+  blockReason(): string | null {
+    return this.counter.blockReason();
+  }
+
+  saleBlocked(): boolean {
+    return this.blockReason() !== null;
+  }
+
+  applySku(sku: string): void {
+    const item = this.counter.catalog()?.items.find((row) => row.sku === sku);
+    if (!item) return;
+    this.sku = item.sku;
+    this.productName = item.name;
+    this.variantId = item.variantId;
+    this.priceVersion = item.priceVersion?.trim() || 'price-v1';
+    if (item.unitPrice != null) {
+      this.originalUnitPrice = Number(item.unitPrice);
+      this.amount = Math.max(0, this.originalUnitPrice - Number(this.discountAmount));
+    }
+  }
+
+  effectiveUnitPrice(): number {
+    return Math.max(0, Number(this.originalUnitPrice) - Number(this.discountAmount));
   }
 
   appendAmount(key: string): void {
@@ -104,6 +181,7 @@ export class SaleTicketComponent {
   }
 
   reserve(): void {
+    if (this.saleBlocked()) return;
     const operationId = crypto.randomUUID();
     this.operationId = operationId;
     this.operationRef.set(operationId);
@@ -114,10 +192,10 @@ export class SaleTicketComponent {
         deviceId: 'terminal-1',
         saleId: crypto.randomUUID(),
         operationId,
-        cashSessionId: Number(this.cashSessionId),
-        variantId: 'variant-1',
+        cashSessionId: Number(this.counter.openSession()?.id),
+        variantId: this.variantId,
         quantity: 1,
-        expectedPriceVersion: 'price-v1',
+        expectedPriceVersion: this.priceVersion,
         sku: this.sku,
         productName: this.productName,
         originalUnitPrice: Number(this.originalUnitPrice),
@@ -195,7 +273,7 @@ export class SaleTicketComponent {
         evidenceRef: `rev-${paymentId}`,
       }, {
         headers: {
-          'X-Actor-Id': String(this.actorId),
+          'X-Actor-Id': String(this.counter.cashierId()),
           'X-Role': 'CASHIER',
           'X-Trace-Id': crypto.randomUUID(),
         },

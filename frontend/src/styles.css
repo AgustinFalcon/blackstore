@@ -85,13 +85,19 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.page form p {
+  flex: 1 0 100%;
+  margin: 0;
+}
+
 .page label {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
 }
 
-.page input {
+.page input,
+.page select {
   min-height: 44px;
   border: 1px solid #d4d4d8;
   border-radius: 8px;
@@ -151,6 +157,14 @@ button:disabled {
 .badge.warn {
   background: #fef3c7;
   color: var(--bs-warning);
+}
+
+.banner.warn {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #fef3c7;
+  border: 1px solid var(--bs-warning);
 }
 
 .badge.danger {
