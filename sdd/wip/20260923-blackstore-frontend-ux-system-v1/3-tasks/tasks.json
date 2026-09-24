@@ -1,0 +1,56 @@
+{
+  "feature": "blackstore-frontend-ux-system-v1",
+  "stack_profile": "frontend-web",
+  "project_type": "production",
+  "execution_strategy": "gated_visual_dump",
+  "status": "ux_ang_applied",
+  "stats": { "total": 6, "done": 5 },
+  "tasks": [
+    {
+      "id": "BSUX-DOC-01",
+      "title": "Spec funcional + inventario + DS + estados/dialogos/copy/a11y",
+      "status": "done",
+      "layer": 1,
+      "depends_on": [],
+      "acceptance_criteria": ["AC-BSUX-1", "AC-BSUX-6", "AC-BSUX-7", "AC-BSUX-8"]
+    },
+    {
+      "id": "BSUX-DOC-02",
+      "title": "Spec técnica + mapping Stitch + arquitectura frontend",
+      "status": "done",
+      "layer": 2,
+      "depends_on": ["BSUX-DOC-01"]
+    },
+    {
+      "id": "BSUX-STITCH-DS",
+      "title": "Design system + DS-00/04/05/06 en Stitch",
+      "status": "done",
+      "layer": 1,
+      "depends_on": []
+    },
+    {
+      "id": "BSUX-STITCH-POS",
+      "title": "POS-01..POS-08 una pieza Stitch por ruta",
+      "status": "done",
+      "layer": 1,
+      "depends_on": ["BSUX-STITCH-DS"]
+    },
+    {
+      "id": "BSUX-ANG",
+      "title": "Volcar Stitch a Angular views",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "layer": 1,
+      "depends_on": [],
+      "acceptance_criteria": ["CONDITIONAL_GO 5 rutas existentes. Sin /sesion /caja/cierre /ticket/:saleId. No pixel-complete."]
+    },
+    {
+      "id": "BSUX-ADP",
+      "title": "Conector HTTP StoreCore",
+      "status": "blocked",
+      "layer": 1,
+      "depends_on": [],
+      "acceptance_criteria": ["DEFERRED-STORECORE-CONNECTOR-001"]
+    }
+  ]
+}

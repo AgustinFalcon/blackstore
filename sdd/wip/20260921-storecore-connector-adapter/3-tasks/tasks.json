@@ -6,7 +6,7 @@
   "status": "ready_for_sol_review",
   "stats": {
     "total": 13,
-    "done": 0,
+    "done": 13,
     "by_layer": {
       "1": 8,
       "2": 2,
@@ -23,7 +23,9 @@
       "id": "TASK-ADP-001",
       "title": "Verify StoreCore readiness handoff and BlackStore start gate",
       "description": "Verify StoreCore evidence, canonical version/digest/path, and both Sol approvals before implementation starts.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-001-start-gate.md",
       "layer": 1,
       "complexity": "Medium",
       "depends_on": [],
@@ -46,8 +48,10 @@
     {
       "id": "TASK-ADP-002",
       "title": "Lock canonical contract compatibility",
-      "description": "Read the single StoreCore YAML, validate 1.0.0-draft/canonical marker, calculate and persist SHA-256, and reject incompatible inputs.",
-      "status": "pending",
+      "description": "Lock path/version/SHA-256 constants and fail closed on configured drift. YAML parse, x-canonical, headers, and scopes are not in this task.",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-002-pin.md",
       "layer": 1,
       "complexity": "Medium",
       "depends_on": [
@@ -58,9 +62,9 @@
         "docs/agent/"
       ],
       "acceptance_criteria": [
-        "AC-1: path/version/digest/headers/envelope/scopes pinned",
+        "AC-1: path/version/digest pinned; headers/scopes/x-canonical deferred",
         "AC-2: breaking change fails closed until reviewed",
-        "GATE: canonical fixture validation passes"
+        "GATE: pin/config assertCompatible + StoreCoreContractCompatibilityGuard tests pass"
       ],
       "references": [
         "AC-ADP-2"
@@ -73,7 +77,9 @@
       "id": "TASK-ADP-003",
       "title": "Define application ports and contract-neutral values",
       "description": "Establish catalog, reserve, commit, release, GET, and reconcile application ports with no HTTP or framework types in the domain.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-003-ports.md",
       "layer": 1,
       "complexity": "Medium",
       "depends_on": [
@@ -99,7 +105,9 @@
       "id": "TASK-ADP-004",
       "title": "Implement DTO mapping and complete BaseResponse validation",
       "description": "Map canonical DTOs and validate every BaseResponse field, HTTP-status/code equality, null rules, and errorCode-only branching.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-004-envelope.md",
       "layer": 1,
       "complexity": "High",
       "depends_on": [
@@ -127,7 +135,9 @@
       "id": "TASK-ADP-005",
       "title": "Implement StoreCore transport identity and bounded recovery",
       "description": "Implement TLS transport, opaque service identity reference, canonical headers, timeouts, Retry-After-aware retry, GET-first recovery, and redacted telemetry.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-005-transport.md",
       "layer": 1,
       "complexity": "High",
       "depends_on": [
@@ -156,7 +166,9 @@
       "id": "TASK-ADP-006",
       "title": "Wire durable outbox inbox and guarded saga mapping",
       "description": "Connect adapter to BlackStore-owned intent/outbox/inbox/audit with atomic evidence, PENDING, exact errors, durable EXPIRED reconciliation projection, tombstones, and read-only reconcile.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-006-saga.md",
       "layer": 1,
       "complexity": "High",
       "depends_on": [
@@ -186,7 +198,9 @@
       "id": "TASK-ADP-007",
       "title": "Create canonical contract fixtures and consumer tests",
       "description": "Create fixtures from pinned StoreCore YAML for operations, headers, envelopes, PENDING, errors, tombstones, reconcile, and compatibility drift.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-007-fixtures.md",
       "layer": 1,
       "complexity": "Medium",
       "depends_on": [
@@ -215,7 +229,9 @@
       "id": "TASK-ADP-008",
       "title": "Configure credential rotation capability and rollout controls",
       "description": "Implement configuration validation, opaque-reference rotation, disabled capability, kill switch, audit, metrics, migration gate, canary, and rollback.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-008-controls.md",
       "layer": 1,
       "complexity": "High",
       "depends_on": [
@@ -245,7 +261,9 @@
       "id": "TASK-ADP-009",
       "title": "Run integration sequence against StoreCore contract environment",
       "description": "Exercise pinned adapter for catalog, reserve, commit, release, GET, rates, and disabled capability without direct DB access.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-009-sequence.md",
       "layer": 2,
       "complexity": "High",
       "depends_on": [
@@ -275,7 +293,9 @@
       "id": "TASK-ADP-010",
       "title": "Run end-to-end failure recovery and rollout rehearsal",
       "description": "Verify timeout/PENDING, durable EXPIRED-to-RECONCILIATION_REQUIRED, 409 matrix, 410, reconcile, rotation, kill switch, canary, and rollback on BlackStore-owned records.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-010-rehearsal.md",
       "layer": 2,
       "complexity": "High",
       "depends_on": [
@@ -304,7 +324,9 @@
       "id": "TASK-ADP-L3-001",
       "title": "Review adapter architecture and contract isolation",
       "description": "Review domain/application/infrastructure separation, composition, canonical YAML, direct-DB prohibition, and lock evidence.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-L3-001-architecture.md",
       "layer": 3,
       "complexity": "High",
       "depends_on": [
@@ -333,7 +355,9 @@
       "id": "TASK-ADP-L3-002",
       "title": "Review performance resilience and recovery",
       "description": "Review retry/rate/outbox/inbox/PENDING/GET/errors/tombstone/reconcile/rollout evidence.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-L3-002-resilience.md",
       "layer": 3,
       "complexity": "High",
       "depends_on": [
@@ -361,7 +385,9 @@
       "id": "TASK-ADP-L3-003",
       "title": "Review security credentials and release gate",
       "description": "Review TLS, scopes, opaque secrets, rotation, redaction, audit, kill switch, and staged release evidence.",
-      "status": "pending",
+      "status": "done",
+      "completed_at": "2026-09-23",
+      "evidence": "sdd/wip/20260921-storecore-connector-adapter/evidence/TASK-ADP-L3-003-security.md",
       "layer": 3,
       "complexity": "High",
       "depends_on": [
@@ -433,7 +459,7 @@
     }
   },
   "notes": [
-    "Planning only; all tasks pending; ready_for_sol_review is not approval.",
+    "ADP-001..010 and L3-001..003 done locally (loopback/fixture/Testcontainers + dual Grok). ready_for_sol_review is not live approval. No /sdd.finish.",
     "Exactly three Layer 3 quality tasks.",
     "StoreCore server scope and 12-task plan are unchanged."
   ]

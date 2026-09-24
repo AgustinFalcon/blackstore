@@ -204,6 +204,7 @@ class JdbcBlackStoreWriter {
         contractVersion: String,
         openapiDigest: String,
         expiresAt: Instant,
+        acceptedPriceVersions: String = """["price-v1"]""",
     ) {
         connection.prepareStatement(
             """
@@ -223,11 +224,47 @@ class JdbcBlackStoreWriter {
             statement.setString(2, receipt)
             statement.setString(3, contractVersion)
             statement.setString(4, openapiDigest)
-            statement.setString(5, """["price-v1"]""")
+            statement.setString(5, acceptedPriceVersions)
             statement.setTimestamp(6, Timestamp.from(expiresAt))
             statement.setLong(7, projectionId)
             val updated = statement.executeUpdate()
             check(updated == 1) { "pending sale $projectionId was not updated" }
+        }
+    }
+
+    fun markReconciliationRequired(
+        connection: Connection,
+        projectionId: Long,
+        reason: String,
+        reservationRef: String,
+        receipt: String,
+        contractVersion: String,
+        openapiDigest: String,
+        acceptedPriceVersions: String,
+    ) {
+        connection.prepareStatement(
+            """
+            UPDATE sale_state_projection
+            SET status = 'RECONCILIATION_REQUIRED',
+                reconciliation_reason = ?,
+                storecore_reservation_ref = ?,
+                reservation_receipt = ?,
+                contract_version = ?,
+                openapi_digest = ?,
+                accepted_price_versions = ?::jsonb,
+                updated_at = now()
+            WHERE id = ? AND status IN ('PENDING_RESERVATION', 'RESERVED', 'PAYMENT_CAPTURED', 'COMMIT_PENDING', 'RELEASE_PENDING')
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, reason)
+            statement.setString(2, reservationRef)
+            statement.setString(3, receipt)
+            statement.setString(4, contractVersion)
+            statement.setString(5, openapiDigest)
+            statement.setString(6, acceptedPriceVersions)
+            statement.setLong(7, projectionId)
+            val updated = statement.executeUpdate()
+            check(updated == 1) { "sale $projectionId was not reconciled" }
         }
     }
 
@@ -269,13 +306,17 @@ class JdbcBlackStoreWriter {
         responseHash: String,
         contractVersion: String,
         openapiDigest: String,
+        kind: String = "RESERVE",
+        state: String = "PENDING",
+        receipt: String? = null,
+        reservationRef: UUID? = null,
     ): Int =
         connection.prepareStatement(
             """
             INSERT INTO storecore_inbox_events (
                 client_instance_id, device_id, sale_id, operation_id, operation_kind, state,
-                response_hash, contract_version, openapi_digest, payload_redacted
-            ) VALUES (?, ?, ?, ?, 'RESERVE', 'PENDING', ?, ?, ?, '{"state":"PENDING"}'::jsonb)
+                receipt, reservation_ref, response_hash, contract_version, openapi_digest, payload_redacted
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
             ON CONFLICT (client_instance_id, device_id, sale_id, operation_id, operation_kind, response_hash)
             DO NOTHING
             """.trimIndent(),
@@ -284,9 +325,14 @@ class JdbcBlackStoreWriter {
             statement.setString(2, deviceId)
             statement.setString(3, saleId)
             statement.setObject(4, operationId)
-            statement.setString(5, responseHash)
-            statement.setString(6, contractVersion)
-            statement.setString(7, openapiDigest)
+            statement.setString(5, kind)
+            statement.setString(6, state)
+            statement.setString(7, receipt)
+            statement.setObject(8, reservationRef)
+            statement.setString(9, responseHash)
+            statement.setString(10, contractVersion)
+            statement.setString(11, openapiDigest)
+            statement.setString(12, """{"state":${json(state)},"kind":${json(kind)}}""")
             statement.executeUpdate()
         }
 

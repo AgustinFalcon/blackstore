@@ -17,4 +17,11 @@ data class CatalogSnapshot(
     val validUntil: Instant?,
     val contract: StoreCoreContractRef,
     val stale: Boolean,
+    val items: List<CatalogItem> = emptyList(),
+)
+
+data class CatalogItem(
+    val sku: String,
+    val name: String,
+    val variantId: String,
 )

@@ -3,6 +3,7 @@ package com.blackstore.domain.sales
 import com.blackstore.domain.exception.ForbiddenOperationException
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.model.StoreCoreOperationKind
+import com.blackstore.domain.model.StoreCoreOperationState
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -60,6 +61,9 @@ data class SaleSaga(
     val discounts: BigDecimal = BigDecimal.ZERO,
     val refunds: BigDecimal = BigDecimal.ZERO,
     val retired: Boolean = false,
+    val recoverWithGet: Boolean = false,
+    val blockSameOperationRepost: Boolean = false,
+    val sameBodyRetries: Int = 0,
     val lines: List<TicketLine> = emptyList(),
 ) {
     val netSales: BigDecimal get() = grossSales.subtract(discounts)
@@ -90,8 +94,23 @@ data class SaleSaga(
         require(outbox.any { it.kind == StoreCoreOperationKind.RESERVE }) {
             "reserve outbox command must exist before the reservation result"
         }
-        return copy(status = SaleStatus.RESERVED, evidence = evidence)
+        return copy(status = SaleStatus.RESERVED, evidence = evidence, recoverWithGet = false)
     }
+
+    fun applyRemoteDurable(state: StoreCoreOperationState, evidence: RemoteEvidence): SaleSaga =
+        when (state) {
+            StoreCoreOperationState.RESERVED ->
+                if (status == SaleStatus.PENDING_RESERVATION) {
+                    markReserved(evidence)
+                } else {
+                    copy(evidence = evidence, recoverWithGet = false)
+                }
+            StoreCoreOperationState.COMMITTED ->
+                copy(status = SaleStatus.COMMITTED, evidence = evidence, recoverWithGet = false)
+            StoreCoreOperationState.RELEASED ->
+                copy(status = SaleStatus.RELEASED, evidence = evidence, recoverWithGet = false)
+            else -> this
+        }
 
     fun withCommand(command: OutboxCommand): SaleSaga {
         require(command.kind == StoreCoreOperationKind.COMMIT || command.kind == StoreCoreOperationKind.RELEASE)
@@ -129,6 +148,34 @@ data class SaleSaga(
         require(status == SaleStatus.RELEASE_PENDING && evidence != null)
         return copy(status = SaleStatus.RELEASED)
     }
+
+    fun markReconciliationRequired(reason: String, evidence: RemoteEvidence): SaleSaga {
+        require(
+            status in
+                setOf(
+                    SaleStatus.PENDING_RESERVATION,
+                    SaleStatus.RESERVED,
+                    SaleStatus.PAYMENT_CAPTURED,
+                    SaleStatus.COMMIT_PENDING,
+                    SaleStatus.RELEASE_PENDING,
+                ),
+        )
+        require(outbox.any { it.kind == StoreCoreOperationKind.RESERVE }) {
+            "reserve outbox command must exist before reconciliation"
+        }
+        require(reason.trim().length >= 3)
+        return copy(
+            status = SaleStatus.RECONCILIATION_REQUIRED,
+            evidence = evidence,
+            reconciliationReason = reason.trim(),
+            recoverWithGet = false,
+            blockSameOperationRepost = true,
+        )
+    }
+
+    fun markGetOnly(): SaleSaga = copy(recoverWithGet = true)
+
+    fun markSameOperationBlocked(): SaleSaga = copy(blockSameOperationRepost = true)
 
     fun markRetired(): SaleSaga {
         if (retired) return this

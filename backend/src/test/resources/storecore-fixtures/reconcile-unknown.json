@@ -1,0 +1,11 @@
+{
+  "code": 200,
+  "data": {
+    "present": [],
+    "unknownReceipts": ["unknown-rcpt"]
+  },
+  "errorCode": null,
+  "retryable": null,
+  "message": null,
+  "traceId": "88888888-8888-8888-8888-888888888888"
+}

@@ -53,6 +53,8 @@ class CashAndSaleControllerTest {
             status { isOk() }
             jsonPath("$.data.stale") { value(false) }
             jsonPath("$.data.version") { value("fixture-v1") }
+            jsonPath("$.data.items[0].sku") { value("SKU-1") }
+            jsonPath("$.data.items[0].name") { value("Cafe") }
         }
         mockMvc.get("/api/v1/reports/shift").andExpect {
             status { isOk() }
@@ -96,6 +98,18 @@ class CashAndSaleControllerTest {
                 jsonPath("$.data.receipt") { value("rcpt-op-http") }
                 jsonPath("$.errorCode") { value(nullValue()) }
             }
+        mockMvc.get("/api/v1/sales/op-http").andExpect {
+            status { isOk() }
+            jsonPath("$.data.status") { value("RESERVED") }
+            jsonPath("$.data.operationId") { value("op-http") }
+            jsonPath("$.errorCode") { value(nullValue()) }
+        }
+        mockMvc.get("/api/v1/sales/missing-op").andExpect {
+            status { isNotFound() }
+            jsonPath("$.errorCode") { value("NOT_FOUND") }
+            jsonPath("$.data") { value(null) }
+            jsonPath("$.retryable") { value(false) }
+        }
     }
 
     @Test

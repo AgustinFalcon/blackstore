@@ -1,0 +1,8 @@
+{
+  "code": 429,
+  "data": null,
+  "errorCode": "RATE_LIMITED",
+  "retryable": true,
+  "message": "bounded retry after Retry-After",
+  "traceId": "99999999-9999-9999-9999-999999999999"
+}

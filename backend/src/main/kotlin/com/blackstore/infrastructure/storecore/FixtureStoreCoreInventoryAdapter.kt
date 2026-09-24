@@ -10,9 +10,12 @@ import com.blackstore.domain.model.StoreCoreOperationReceipt
 import com.blackstore.domain.model.StoreCoreOperationState
 import com.blackstore.domain.port.out.storecore.CommitInventoryCommand
 import com.blackstore.domain.port.out.storecore.OperationRetirementPort
+import com.blackstore.domain.port.out.storecore.ReconcileProjection
+import com.blackstore.domain.port.out.storecore.ReconcileQuery
 import com.blackstore.domain.port.out.storecore.ReleaseInventoryCommand
 import com.blackstore.domain.port.out.storecore.ReserveInventoryCommand
 import com.blackstore.domain.port.out.storecore.StoreCoreInventoryPort
+import com.blackstore.domain.port.out.storecore.StoreCoreReconcilePort
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -28,7 +31,7 @@ class FixtureStoreCoreInventoryAdapter(
     private val envelopeValidator: StoreCoreEnvelopeValidator,
     @Value("\${blackstore.storecore.contract.canonical-path}") private val canonicalPath: String,
     @Value("\${blackstore.storecore.contract.version}") private val contractVersion: String,
-) : StoreCoreInventoryPort, OperationRetirementPort {
+) : StoreCoreInventoryPort, StoreCoreReconcilePort, OperationRetirementPort {
 
     val reserveAttempts: MutableList<String> = mutableListOf()
     var crashBeforeReceipt: Boolean = false
@@ -78,6 +81,12 @@ class FixtureStoreCoreInventoryAdapter(
     }
 
     override fun getOperation(quadruple: OperationQuadruple): StoreCoreOperationReceipt? = receipts[quadruple.operationId]
+
+    override fun reconcile(query: ReconcileQuery): ReconcileProjection {
+        val held = receipts.values.filter { it.receipt != null && it.receipt in query.knownReceipts }
+        val unknown = query.knownReceipts.filter { receipt -> held.none { it.receipt == receipt } }
+        return ReconcileProjection(present = held, unknownReceipts = unknown)
+    }
 
     override fun isRetired(operationId: String): Boolean = operationId in retired
 

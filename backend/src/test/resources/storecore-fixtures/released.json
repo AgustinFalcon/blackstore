@@ -1,0 +1,15 @@
+{
+  "code": 200,
+  "data": {
+    "state": "RELEASED",
+    "contractVersion": "1.0.0-draft",
+    "receipt": "rcpt-fixture-1",
+    "reservationRef": "res-fixture-1",
+    "acceptedPriceVersions": ["price-v1"],
+    "expiresAt": "2026-09-23T00:15:00Z"
+  },
+  "errorCode": null,
+  "retryable": null,
+  "message": null,
+  "traceId": "cccccccc-cccc-cccc-cccc-cccccccccccc"
+}
