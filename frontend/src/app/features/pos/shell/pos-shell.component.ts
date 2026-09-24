@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { CounterContextService } from '../../../core/services/counter-context.service';
 
 @Component({
   selector: 'bs-pos-shell',
@@ -8,16 +9,38 @@ import { RouterLink } from '@angular/router';
   template: `
     <section class="page">
       <h2>Inicio</h2>
-      <p class="lede">Consola de mostrador. El conector HTTP a StoreCore sigue bloqueado; caja y ticket usan el simulador.</p>
-      <div class="card">
-        <p>Sin sesión de caja abierta usá el atajo de caja. El ticket queda disponible; la reserva sigue en el simulador local.</p>
-        <p class="actions">
-          <a routerLink="/caja" class="primary">Abrir caja</a>
-          <a routerLink="/ticket" class="ghost">Nuevo ticket</a>
-          <a routerLink="/catalogo" class="ghost">Ver catálogo</a>
-          <a routerLink="/reportes" class="ghost">Reportes</a>
-        </p>
-      </div>
+      <p class="lede">Consola de mostrador. El catálogo es la proyección local. StoreCore no se llama desde el browser.</p>
+      @if (counter.loading()) {
+        <p class="skeleton" aria-hidden="true"></p>
+        <p>Cargando puesto…</p>
+      } @else {
+        <div class="card">
+          <p>
+            Catálogo
+            @if (counter.catalog(); as snapshot) {
+              <span class="sku">{{ snapshot.version }}</span>
+              <span class="badge" [class.ok]="!snapshot.stale" [class.warn]="snapshot.stale">{{ snapshot.stale ? 'vencido' : 'vigente' }}</span>
+            } @else {
+              <span class="badge warn">no disponible</span>
+            }
+          </p>
+          @if (counter.openSession(); as session) {
+            <p>Caja abierta · sesión <span class="sku">{{ session.id }}</span> · terminal {{ session.terminalId }}</p>
+          } @else {
+            <p class="empty">No hay sesión de caja abierta.</p>
+          }
+          <p>Persistencia <span class="sku">{{ counter.persistence() }}</span></p>
+          @if (counter.blockReason(); as reason) {
+            <p class="banner warn" role="status">{{ reason }}</p>
+          }
+          <p class="actions">
+            <a routerLink="/caja" class="primary">Caja</a>
+            <a routerLink="/ticket" class="ghost">Ticket</a>
+            <a routerLink="/catalogo" class="ghost">Catálogo</a>
+            <a routerLink="/reportes" class="ghost">Reportes</a>
+          </p>
+        </div>
+      }
     </section>
   `,
   styles: [
@@ -36,4 +59,10 @@ import { RouterLink } from '@angular/router';
     `,
   ],
 })
-export class PosShellComponent {}
+export class PosShellComponent implements OnInit {
+  readonly counter = inject(CounterContextService);
+
+  ngOnInit(): void {
+    this.counter.load();
+  }
+}

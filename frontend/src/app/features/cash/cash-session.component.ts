@@ -3,6 +3,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { API_BASE } from '../../core/api';
 import { BaseResponse } from '../../core/models/base-response';
+import { CounterContextService } from '../../core/services/counter-context.service';
 
 interface CashSessionData {
   id: number;
@@ -70,6 +71,7 @@ interface CashSessionData {
 })
 export class CashSessionComponent {
   private readonly http = inject(HttpClient);
+  private readonly counter = inject(CounterContextService);
 
   terminalId = 10;
   cashierId = 7;
@@ -92,6 +94,7 @@ export class CashSessionComponent {
   reload(): void {
     this.error.set(null);
     this.loading.set(true);
+    this.counter.load();
     this.http.get<BaseResponse<{ terminalId: number; cashierId: number; persistence: string }>>(`${API_BASE}/workspace`).subscribe({
       next: (response) => {
         if (!response.data) return;
@@ -130,8 +133,10 @@ export class CashSessionComponent {
       })
       .subscribe({
         next: (response) => {
-          if (response.data) this.session.set(response.data);
-          else this.error.set(response.errorCode ?? 'Sin datos');
+          if (response.data) {
+            this.session.set(response.data);
+            this.counter.load();
+          } else this.error.set(response.errorCode ?? 'Sin datos');
         },
         error: (err: HttpErrorResponse) => {
           const body = err.error as BaseResponse<unknown> | undefined;
@@ -160,6 +165,7 @@ export class CashSessionComponent {
           if (response.data) {
             this.session.set(response.data);
             this.notice.set(`Sesión ${response.data.id} cerrada`);
+            this.counter.load();
           }
         },
         error: (err: HttpErrorResponse) => {

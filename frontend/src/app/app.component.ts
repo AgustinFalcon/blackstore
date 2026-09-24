@@ -78,6 +78,7 @@ import { isSuccessResponse } from './core/models/base-response';
         justify-content: space-between;
         align-items: baseline;
         gap: 1rem;
+        flex-wrap: wrap;
       }
       h1 {
         margin: 0;
@@ -87,6 +88,7 @@ import { isSuccessResponse } from './core/models/base-response';
       .role {
         margin: 0;
         color: #52525b;
+        white-space: normal;
       }
       .banner {
         margin: 1rem 0;
