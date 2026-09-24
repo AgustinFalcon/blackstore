@@ -4,7 +4,7 @@
 
 ## Stack
 
-Angular 22 consola existente (`frontend/`). Este WIP no cambia containers/stores. Stitch primero.
+Angular 22 consola existente (`frontend/`). BSUX-ANG aplicó tokens/estados en las 5 rutas existentes; no es pixel-complete. Containers/stores del piloto no se reescriben en este PR.
 
 ## Contratos de UI
 

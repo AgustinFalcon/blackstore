@@ -3,7 +3,7 @@
 - **Feature Name:** `blackstore-frontend-ux-system-v1`
 - **Feature ID:** `feat-20260923-blackstore-frontend-ux-system-v1`
 - **Feature UUID:** `b8c4e2d1-6a70-4f19-9c3e-2d5a81f04e77`
-- **Status:** `documented` (specs/inventario/estados/dialogos/copy/a11y/arquitectura; Stitch POS-01/02 + resto en generación; **sin Angular nuevo ni conector HTTP**)
+- **Status:** `ux_ang_applied` (BSUX-ANG en `/ /caja /catalogo /ticket /reportes`; no pixel-complete; BSUX-ADP blocked; sin rutas nuevas; no `/sdd.finish`)
 - **Mode:** standard · **Project type:** production · **Platform:** frontend-web · **Language:** es
 - **spec_language:** es
 - **Related:** `20260921-blackstore-pilot` (consola Angular ya existe; este WIP es el sistema visual canónico)
@@ -20,4 +20,4 @@ Documentar y diseñar (Stitch) la consola POS: tokens, primitivas, dialogos, est
 
 ## Gate
 
-Spec/plan listos para Sol. Volcar Stitch a Angular: otro GO. Conector HTTP: `DEFERRED-STORECORE-CONNECTOR-001`.
+BSUX-ANG aplicado en las 5 rutas existentes. POS-06/07/08 sin ruta nueva. Conector HTTP en el browser: `BSUX-ADP` blocked. Adapter local es el WIP de conector. No `/sdd.finish`.

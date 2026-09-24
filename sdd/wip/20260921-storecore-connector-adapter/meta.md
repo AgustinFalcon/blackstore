@@ -4,7 +4,7 @@
 **Feature UUID:** `ba317f70-8c3c-4ba4-bb8a-dadf4d8237f8`  
 **Mode:** standard · **Project type:** production · **Language:** es
 
-Formalizes the BlackStore StoreCore HTTP adapter. It consumes only StoreCore's canonical `1.0.0-draft` YAML and remains blocked until StoreCore readiness evidence and an explicit Sol GO for this WIP.
+Formalizes the BlackStore StoreCore HTTP adapter. It consumes only StoreCore's canonical `1.0.0-draft` YAML. Local loopback/fixture is implemented; live companion remains blocked.
 
 **Status:** `ready_for_sol_review` (**not approved**)
 

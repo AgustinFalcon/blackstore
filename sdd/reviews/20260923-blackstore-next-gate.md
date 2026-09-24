@@ -22,4 +22,4 @@ ADP-001..010 + L3-001..003 done en fixture/localhost (pin `7b907a2e…de30`, tra
 | POS-06/07/08 rutas nuevas | NO-GO |
 | Fiscal, live companion, MP-LIVE-05, `/sdd.finish` | NO-GO |
 
-Grok BSUX/ADP-001..004 r3: ambas APPROVED. Grok ADP-005..010 r4: ambas APPROVED. L3-001/002 y L3-003: APPROVED local only. Sol post-L3: CONDITIONAL_GO commit/PR + GO karma-jasmine; merge NO-GO hasta dual Grok del PR. Release disabled. No `/sdd.finish`.
+PR #1: Grok scope APPROVED; Grok SDD CHANGES_REQUIRED (meta/backlog/spec alineados). Dual r2 del PR en curso. Merge NO-GO. Release disabled. No `/sdd.finish`.

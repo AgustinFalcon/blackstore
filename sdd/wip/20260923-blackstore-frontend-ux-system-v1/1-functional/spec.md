@@ -8,7 +8,7 @@ El piloto ya tiene consola Angular (`/`, `/caja`, `/catalogo`, `/ticket`, `/repo
 
 ## Objetivo
 
-Documentar y diseñar (Stitch) todas las superficies POS del piloto. BSUX-ANG volcó tokens/estados a `/`, `/caja`, `/catalogo`, `/ticket` y `/reportes`. Sin `/sesion`, `/caja/cierre` ni `/ticket/:saleId`. Conector HTTP live: NO-GO. ADP-005..010 son loopback/fixture; no desbloquean companion ni host real.
+Documentar y diseñar (Stitch) todas las superficies POS del piloto. BSUX-ANG volcó tokens/estados a `/`, `/caja`, `/catalogo`, `/ticket` y `/reportes`. Sin `/sesion`, `/caja/cierre` ni `/ticket/:saleId`. Conector HTTP live: NO-GO. ADP-001..010 + L3 son loopback/fixture; no desbloquean companion ni host real.
 
 ## Inventario
 

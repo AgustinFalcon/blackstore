@@ -17,4 +17,4 @@
 
 ## Gate actual
 
-Sol `20260923-sol-next-dev-go.md`: ADP-001..010 y L3 locales done bajo CONDITIONAL_GO fixture/localhost. Dual Grok r4 + L3 APPROVED. Release sigue disabled. Fiscal, companion live, MP-LIVE-05, merge y `/sdd.finish` NO-GO.
+Sol `20260923-sol-post-l3-go.md`: CONDITIONAL_GO para commit/PR. PR #1 abierto. Merge NO-GO hasta dual Grok del PR. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO.
