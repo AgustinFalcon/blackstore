@@ -11,14 +11,14 @@ Formalizes the BlackStore StoreCore HTTP adapter. It consumes only StoreCore's c
 - functional: `ready_for_sol_review`
 - technical: `ready_for_sol_review`
 - tasks: `ready_for_sol_review`
-- implementation: `blocked_by_sol_gate_and_storecore_readiness`
+- implementation: `local_loopback_adapter` (ADP-001..010 + L3 fixture/localhost; **not approved** live)
 
 ## Related
 
-- BlackStore `20260921-blackstore-pilot`: this WIP resolves its documentation dependency `DEFERRED-STORECORE-CONNECTOR-001`; it does not authorize code yet.
+- BlackStore `20260921-blackstore-pilot`: this WIP resolves `DEFERRED-STORECORE-CONNECTOR-001` for local loopback/fixture (ADP-001..010). Live companion remains unauthorized.
 - StoreCore `20260921-storecore-pos-integration-contract-v1`: producer of the contract/evidence; its 12-task plan is unchanged.
 - Canonical YAML baseline `1.0.0-draft`: `C:/Users/agustin/Desktop/StoreCore/sdd/wip/20260921-storecore-pos-integration-contract-v1/2-technical/api/blackstore-integration.openapi.yaml`.
-- Canonical SHA-256 baseline: `aba6974723b47d2f5e28a170d3f6e41ecb3387c04e10debcdea097b2bff99bda`.
+- Canonical SHA-256 baseline: `7b907a2e11c52a66b7253407fb3f9450cae7b792beccf34c1636be9d3945de30`.
 - Any version or digest change requires Sol re-review before any code may run.
 
 ## Relationship check

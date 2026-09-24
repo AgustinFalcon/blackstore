@@ -15,6 +15,13 @@ data class StoreCoreEnvelope<T>(
 @Component
 class StoreCoreEnvelopeValidator {
 
+    fun <T> requireStatusMatchesCode(httpStatus: Int, envelope: StoreCoreEnvelope<T>) {
+        requireComplete(envelope)
+        if (httpStatus != envelope.code) {
+            throw ForbiddenOperationException("HTTP status must equal envelope code")
+        }
+    }
+
     fun <T> requireSuccess(envelope: StoreCoreEnvelope<T>): T {
         requireComplete(envelope)
         if (envelope.code != 200 || envelope.data == null || envelope.errorCode != null || envelope.retryable != null || envelope.message != null) {

@@ -1,6 +1,7 @@
 package com.blackstore.presentation.controller
 
 import com.blackstore.application.dto.response.BaseResponse
+import com.blackstore.application.dto.response.HttpCode
 import com.blackstore.application.sales.LocalSaleSagaService
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.port.out.storecore.ReserveLineCommand
@@ -12,6 +13,8 @@ import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import org.springframework.http.ResponseEntity
+import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -57,6 +60,29 @@ class SaleController(
                 traceId,
             ),
         )
+    }
+
+    @GetMapping("/{operationId}")
+    fun get(
+        request: HttpServletRequest,
+        @PathVariable operationId: String,
+    ): ResponseEntity<BaseResponse<ReserveSaleResponse>> {
+        val saga = localSaleSagaService.stored(operationId)
+        val traceId =
+            request.getHeader(GlobalExceptionHandler.TRACE_HEADER)?.takeIf { it.isNotBlank() }
+                ?: java.util.UUID.randomUUID().toString()
+        if (saga == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                BaseResponse.error(
+                    httpCode = HttpCode.NOT_FOUND,
+                    traceId = traceId,
+                    errorCode = "NOT_FOUND",
+                    message = "sale is not in this process",
+                    retryable = false,
+                ),
+            )
+        }
+        return sagaResponse(request, saga)
     }
 
     @PostMapping("/{operationId}/commit")

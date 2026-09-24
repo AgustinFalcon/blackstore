@@ -1,0 +1,8 @@
+{
+  "code": 409,
+  "data": null,
+  "errorCode": "IDEMPOTENCY_PAYLOAD_MISMATCH",
+  "retryable": false,
+  "message": "same quadruple with a different body",
+  "traceId": "66666666-6666-6666-6666-666666666666"
+}

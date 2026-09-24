@@ -16,59 +16,109 @@ class JdbcSaleRecordStore(
 ) : SaleRecordStore {
     private val writer = JdbcBlackStoreWriter()
 
-    override fun recordReserved(saga: SaleSaga) {
+    override fun recordIntentAndOutbox(saga: SaleSaga) {
         val clientId = UUID.fromString(saga.quadruple.clientInstanceId)
         val operationId = UUID.fromString(saga.quadruple.operationId)
+        val command = saga.outbox.first { it.kind == StoreCoreOperationKind.RESERVE }
+        val digest = command.openapiDigest.padEnd(64, '0').take(64)
+        asRole("blackstore_app") { connection ->
+            val id =
+                writer.insertPendingSale(
+                    connection = connection,
+                    clientInstanceId = clientId,
+                    deviceId = saga.quadruple.deviceId,
+                    saleId = saga.quadruple.saleId,
+                    operationId = operationId,
+                    cashSessionId = saga.cashSessionId,
+                    createdBy = seed.cashierId,
+                    contractVersion = command.contractVersion,
+                    openapiDigest = digest,
+                )
+            writer.insertReserveOutbox(
+                connection,
+                clientId,
+                saga.quadruple.deviceId,
+                saga.quadruple.saleId,
+                operationId,
+                command.contractVersion,
+                digest,
+                command.requestHash.padEnd(64, '0').take(64),
+            )
+            writer.insertAudit(connection, seed.cashierId, "INTENT_CREATED", "sale", id)
+            saga.lines.forEach { line ->
+                writer.insertSaleLine(
+                    connection,
+                    id,
+                    line.sku,
+                    line.productName,
+                    line.quantity,
+                    line.originalUnitPrice,
+                    line.discountAmount,
+                )
+            }
+        }
+    }
+
+    override fun recordInbox(
+        saga: SaleSaga,
+        responseHash: String,
+        kind: String,
+        remoteState: String,
+        receipt: String?,
+        reservationRef: String?,
+    ) {
+        val reservationUuid =
+            reservationRef?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: reservationRef?.let { UUID.nameUUIDFromBytes(it.toByteArray()) }
+        asRole("blackstore_app") { connection ->
+            writer.insertInbox(
+                connection,
+                UUID.fromString(saga.quadruple.clientInstanceId),
+                saga.quadruple.deviceId,
+                saga.quadruple.saleId,
+                UUID.fromString(saga.quadruple.operationId),
+                responseHash.padEnd(64, '0').take(64),
+                saga.outbox.first().contractVersion,
+                saga.outbox.first().openapiDigest.padEnd(64, '0').take(64),
+                kind,
+                remoteState,
+                receipt = if (remoteState == "PENDING") null else receipt,
+                reservationRef = if (remoteState == "PENDING") null else reservationUuid,
+            )
+        }
+    }
+
+    override fun recordReconciliationRequired(saga: SaleSaga) {
+        val evidence = saga.evidence ?: return
+        val reason = saga.reconciliationReason ?: return
+        val versions = evidence.acceptedPriceVersions.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
+        asRole("blackstore_projection_worker") { connection ->
+            writer.markReconciliationRequired(
+                connection,
+                findProjection(connection, saga),
+                reason,
+                evidence.reservationRef,
+                evidence.receipt,
+                evidence.contractVersion,
+                evidence.openapiDigest.padEnd(64, '0').take(64),
+                versions,
+            )
+        }
+    }
+
+    override fun recordReserved(saga: SaleSaga) {
         val evidence = saga.evidence ?: return
         val digest = evidence.openapiDigest.padEnd(64, '0').take(64)
-        val projectionId =
-            asRole("blackstore_app") { connection ->
-                val id =
-                    writer.insertPendingSale(
-                        connection = connection,
-                        clientInstanceId = clientId,
-                        deviceId = saga.quadruple.deviceId,
-                        saleId = saga.quadruple.saleId,
-                        operationId = operationId,
-                        cashSessionId = saga.cashSessionId,
-                        createdBy = seed.cashierId,
-                        contractVersion = evidence.contractVersion,
-                        openapiDigest = digest,
-                    )
-                val command = saga.outbox.first()
-                writer.insertReserveOutbox(
-                    connection,
-                    clientId,
-                    saga.quadruple.deviceId,
-                    saga.quadruple.saleId,
-                    operationId,
-                    command.contractVersion,
-                    command.openapiDigest,
-                    command.requestHash,
-                )
-                writer.insertAudit(connection, seed.cashierId, "INTENT_CREATED", "sale", id)
-                saga.lines.forEach { line ->
-                    writer.insertSaleLine(
-                        connection,
-                        id,
-                        line.sku,
-                        line.productName,
-                        line.quantity,
-                        line.originalUnitPrice,
-                        line.discountAmount,
-                    )
-                }
-                id
-            }
         asRole("blackstore_projection_worker") { connection ->
             writer.markReserved(
                 connection,
-                projectionId,
+                findProjection(connection, saga),
                 evidence.reservationRef,
                 evidence.receipt,
                 evidence.contractVersion,
                 digest,
                 evidence.expiresAt ?: java.time.Instant.now().plusSeconds(900),
+                evidence.acceptedPriceVersions.joinToString(prefix = "[", postfix = "]") { "\"$it\"" },
             )
         }
     }

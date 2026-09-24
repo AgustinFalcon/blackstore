@@ -1,0 +1,15 @@
+{
+  "code": 200,
+  "data": {
+    "state": "EXPIRED",
+    "contractVersion": "1.0.0-draft",
+    "receipt": "rcpt-expired-1",
+    "reservationRef": "res-expired-1",
+    "acceptedPriceVersions": ["price-v1"],
+    "expiresAt": "2026-09-23T00:00:00Z"
+  },
+  "errorCode": null,
+  "retryable": null,
+  "message": null,
+  "traceId": "33333333-3333-3333-3333-333333333333"
+}

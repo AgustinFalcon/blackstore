@@ -43,6 +43,29 @@ class ArchitectureBoundaryTest {
     }
 
     @Test
+    fun storeCoreContractBoundaryHasNoHttpOrFrameworkTypes() {
+        noClasses()
+            .that()
+            .resideInAnyPackage(
+                "..domain.port.out.storecore..",
+                "..application.port.out.storecore..",
+                "..application.storecore..",
+                "..application.dto.storecore..",
+                "..domain.model..",
+            )
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
+                "org.springframework.http..",
+                "org.springframework.web..",
+                "java.net.http..",
+                "okhttp3..",
+                "org.springframework.jdbc..",
+            )
+            .check(imported)
+    }
+
+    @Test
     fun storeCorePortsLiveInDomainOnly() {
         val portClasses =
             imported

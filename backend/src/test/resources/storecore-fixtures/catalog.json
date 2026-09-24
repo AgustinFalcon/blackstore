@@ -1,0 +1,11 @@
+{
+  "code": 200,
+  "data": {
+    "version": "fixture-v1",
+    "items": [{ "sku": "SKU-1", "name": "Cafe", "variantId": "variant-1" }]
+  },
+  "errorCode": null,
+  "retryable": null,
+  "message": null,
+  "traceId": "dddddddd-dddd-dddd-dddd-dddddddddddd"
+}

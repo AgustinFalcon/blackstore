@@ -1,0 +1,13 @@
+{
+  "canonicalPath": "/blackstore-integration/v1",
+  "version": "1.0.0-draft",
+  "sha256": "7b907a2e11c52a66b7253407fb3f9450cae7b792beccf34c1636be9d3945de30",
+  "supersededSha256": "aba6974723b47d2f5e28a170d3f6e41ecb3387c04e10debcdea097b2bff99bda",
+  "source": "StoreCore canonical 1.0.0-draft; fixtures only, not a copy of the OpenAPI document",
+  "rates": {
+    "reserveRps": 30,
+    "reserveBurst": 10,
+    "catalogRps": 60,
+    "reconcileRps": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "code": 403,
+  "data": null,
+  "errorCode": "CAPABILITY_DISABLED",
+  "retryable": false,
+  "message": "capability is disabled",
+  "traceId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+}

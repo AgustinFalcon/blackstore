@@ -1,0 +1,8 @@
+{
+  "code": 404,
+  "data": null,
+  "errorCode": "NOT_FOUND",
+  "retryable": false,
+  "message": "operation was not found after a claim-deleting error",
+  "traceId": "44444444-4444-4444-4444-444444444444"
+}

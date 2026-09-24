@@ -1,7 +1,8 @@
 package com.blackstore.domain.model
 
 /**
- * Pinned StoreCore contract metadata. Digest is populated at runtime from the canonical YAML (adapter WIP).
+ * Contract identity carried on receipts. Digest is the pinned SHA-256 string, not a YAML parse.
+ * Durable receipts require a non-blank digest; PENDING may omit it.
  */
 data class StoreCoreContractRef(
     val canonicalPath: String,

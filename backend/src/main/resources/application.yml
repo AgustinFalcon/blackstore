@@ -24,6 +24,23 @@ blackstore:
     integration:
       enabled: false
       mode: fixture
+    transport:
+      kill-switch: true
+      tls-required: true
+      allow-plain-loopback: false
+      base-url: ""
+      identity-ref: ""
+      token-ref: ""
+      timeout-ms: 2000
+      max-retries: 2
+    control:
+      capability-active: false
+      kill-switch: true
+      identity-ref: ""
+      token-ref: ""
+      canary-percent: 0
+      rollout-enabled: false
     contract:
       canonical-path: /blackstore-integration/v1
       version: 1.0.0-draft
+      sha256: 7b907a2e11c52a66b7253407fb3f9450cae7b792beccf34c1636be9d3945de30
