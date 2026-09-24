@@ -1,6 +1,6 @@
 # Functional Spec — `blackstore-frontend-ux-system-v1`
 
-**Status:** `ready_for_sol_review` · **Fecha:** 2026-09-23 · **Sin código Angular nuevo**
+**Status:** `ready_for_sol_review` · **Fecha:** 2026-09-23 · **BSUX-ANG aplicado en 5 rutas existentes; no pixel-complete**
 
 ## Problema
 
@@ -8,7 +8,7 @@ El piloto ya tiene consola Angular (`/`, `/caja`, `/catalogo`, `/ticket`, `/repo
 
 ## Objetivo
 
-Documentar y diseñar (Stitch) todas las superficies POS del piloto: sesión, caja, catálogo fixture, ticket/split, reportes, y los dialogos fail-closed (entitlement, StoreCore bloqueado, stock, fiscal test-only). Implementación Angular: otro GO. Conector HTTP real: bloqueado.
+Documentar y diseñar (Stitch) todas las superficies POS del piloto. BSUX-ANG volcó tokens/estados a `/`, `/caja`, `/catalogo`, `/ticket` y `/reportes`. Sin `/sesion`, `/caja/cierre` ni `/ticket/:saleId`. Conector HTTP live: NO-GO. ADP-005..010 son loopback/fixture; no desbloquean companion ni host real.
 
 ## Inventario
 

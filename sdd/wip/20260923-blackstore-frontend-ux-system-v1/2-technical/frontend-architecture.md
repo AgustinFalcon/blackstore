@@ -12,11 +12,11 @@ container (ruta) → view (HTML Stitch) → store → use-case → HTTP
 |---|---|---|
 | POS-01 `/` | `PosShellComponent` | Health only |
 | POS-02 `/caja` | `CashSessionComponent` | Abrir/cerrar/gasto juntos |
-| POS-03 `/catalogo` | `CatalogPanelComponent` | Version/stale; sin grilla SKU |
+| POS-03 `/catalogo` | `CatalogPanelComponent` | Version/stale + tabla fixture SKU/variant; no pixel-complete |
 | POS-04 `/ticket` | `SaleTicketComponent` | Formulario único reserva+split |
 | POS-05 `/reportes` | `ShiftReportComponent` | Turno + día |
 | POS-06 `/sesion` | **no existe** | Documentada; no implementar sin GO |
-| POS-07 `/caja/cierre` | embebido en POS-02 | Extraer en el volcado |
+| POS-07 `/caja/cierre` | embebido en POS-02 | Se queda en `/caja` hasta un gate de rutas aparte. No extraer. |
 | POS-08 `/ticket/:saleId` | **no existe** | Documentada; no implementar sin GO |
 
 ## Prohibido en el volcado

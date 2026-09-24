@@ -17,47 +17,56 @@ interface CashSessionData {
   standalone: true,
   imports: [FormsModule],
   template: `
-    <section>
+    <section class="page">
       <h2>Caja</h2>
-      <p>Una sesión abierta por terminal. El cierre queda auditado y no edita la apertura.</p>
-      <p>Persistencia: {{ persistence() }}</p>
-      <form (ngSubmit)="open()">
-        <label>Terminal <input name="terminalId" type="number" [(ngModel)]="terminalId" required /></label>
-        <label>Cajero <input name="cashierId" type="number" [(ngModel)]="cashierId" required /></label>
-        <label>Apertura <input name="openingCash" type="number" [(ngModel)]="openingCash" min="0" required /></label>
-        <button type="submit">Abrir sesión</button>
-      </form>
-      @if (session(); as opened) {
-        <p>Sesión {{ opened.id }} en terminal {{ opened.terminalId }}: {{ opened.status }}</p>
-        @if (opened.status === 'OPEN') {
-          <form (ngSubmit)="close()">
-            <label>Declarado <input name="declared" type="number" [(ngModel)]="declared" min="0" required /></label>
-            <label>Motivo de cierre <input name="closeReason" [(ngModel)]="closeReason" required /></label>
-            <button type="submit">Cerrar sesión</button>
-          </form>
-          <form (ngSubmit)="addExpense()">
-            <label>Categoría <input name="category" [(ngModel)]="expenseCategory" required /></label>
-            <label>Gasto <input name="expenseAmount" type="number" [(ngModel)]="expenseAmount" min="0.01" required /></label>
-            <label>Motivo <input name="reason" [(ngModel)]="expenseReason" required /></label>
-            <button type="submit">Registrar gasto</button>
-          </form>
+      <p class="lede">Una sesión abierta por terminal. El cierre queda auditado y no edita la apertura.</p>
+      <div class="card">
+        <p>Persistencia: <span class="sku">{{ persistence() }}</span></p>
+        @if (loading()) {
+          <p class="skeleton" aria-hidden="true"></p>
+          <p>Cargando puesto de trabajo…</p>
         }
+        <form (ngSubmit)="open()">
+          <label>Terminal <input name="terminalId" type="number" [(ngModel)]="terminalId" required /></label>
+          <label>Cajero <input name="cashierId" type="number" [(ngModel)]="cashierId" required /></label>
+          <label>Apertura <input name="openingCash" type="number" [(ngModel)]="openingCash" min="0" required /></label>
+          <button type="submit" [disabled]="session()?.status === 'OPEN'">Abrir sesión</button>
+        </form>
+      </div>
+      @if (session(); as opened) {
+        <div class="card">
+          <p>
+            Sesión {{ opened.id }} en terminal {{ opened.terminalId }}
+            <span class="badge" [class.ok]="opened.status === 'OPEN'" [class.info]="opened.status === 'CLOSED'">{{ opened.status }}</span>
+          </p>
+          @if (opened.status === 'OPEN') {
+            <form (ngSubmit)="close()">
+              <label>Declarado <input name="declared" type="number" [(ngModel)]="declared" min="0" required /></label>
+              <label>Motivo de cierre <input name="closeReason" [(ngModel)]="closeReason" required /></label>
+              <button type="submit">Cerrar sesión</button>
+            </form>
+            <form (ngSubmit)="addExpense()">
+              <label>Categoría <input name="category" [(ngModel)]="expenseCategory" required /></label>
+              <label>Gasto <input name="expenseAmount" type="number" [(ngModel)]="expenseAmount" min="0.01" required /></label>
+              <label>Motivo <input name="reason" [(ngModel)]="expenseReason" required /></label>
+              <button type="submit">Registrar gasto</button>
+            </form>
+          }
+        </div>
+      } @else if (!loading() && !error()) {
+        <p class="empty">No hay sesión abierta en este terminal.</p>
       }
       @if (notice()) {
-        <p>{{ notice() }}</p>
+        <p class="badge ok" role="status">{{ notice() }}</p>
       }
       @if (error()) {
-        <p class="error">{{ error() }}</p>
+        <div class="retry-row">
+          <p class="error">{{ error() }}</p>
+          <button type="button" class="ghost" (click)="reload()">Reintentar</button>
+        </div>
       }
     </section>
   `,
-  styles: [
-    `
-      form { display: flex; gap: 1rem; align-items: end; flex-wrap: wrap; }
-      label { display: flex; flex-direction: column; gap: 0.25rem; }
-      .error { color: #f87171; }
-    `,
-  ],
 })
 export class CashSessionComponent {
   private readonly http = inject(HttpClient);
@@ -66,6 +75,7 @@ export class CashSessionComponent {
   cashierId = 7;
   openingCash = 0;
   readonly persistence = signal('memory');
+  readonly loading = signal(true);
   expenseCategory = 'insumos';
   expenseAmount = 2;
   expenseReason = 'bolsas';
@@ -76,6 +86,12 @@ export class CashSessionComponent {
   readonly notice = signal<string | null>(null);
 
   constructor() {
+    this.reload();
+  }
+
+  reload(): void {
+    this.error.set(null);
+    this.loading.set(true);
     this.http.get<BaseResponse<{ terminalId: number; cashierId: number; persistence: string }>>(`${API_BASE}/workspace`).subscribe({
       next: (response) => {
         if (!response.data) return;
@@ -83,13 +99,18 @@ export class CashSessionComponent {
         this.cashierId = response.data.cashierId;
         this.persistence.set(response.data.persistence);
       },
-      error: () => this.error.set('No se pudo leer el puesto de trabajo'),
+      error: () => {
+        this.loading.set(false);
+        this.error.set('No se pudo leer el puesto de trabajo');
+      },
     });
     this.http.get<BaseResponse<CashSessionData[]>>(`${API_BASE}/cash-sessions`).subscribe({
       next: (response) => {
         const open = response.data?.find((item) => item.status === 'OPEN');
         if (open) this.session.set(open);
+        this.loading.set(false);
       },
+      error: () => this.loading.set(false),
     });
   }
 
@@ -110,11 +131,11 @@ export class CashSessionComponent {
       .subscribe({
         next: (response) => {
           if (response.data) this.session.set(response.data);
-          else this.error.set(response.message ?? response.errorCode ?? 'Sin datos');
+          else this.error.set(response.errorCode ?? 'Sin datos');
         },
         error: (err: HttpErrorResponse) => {
           const body = err.error as BaseResponse<unknown> | undefined;
-          this.error.set(body?.message ?? 'No se pudo abrir la sesión');
+          this.error.set(body?.errorCode ?? body?.message ?? 'No se pudo abrir la sesión');
         },
       });
   }
@@ -143,7 +164,7 @@ export class CashSessionComponent {
         },
         error: (err: HttpErrorResponse) => {
           const body = err.error as BaseResponse<unknown> | undefined;
-          this.error.set(body?.message ?? 'No se pudo cerrar la sesión');
+          this.error.set(body?.errorCode ?? body?.message ?? 'No se pudo cerrar la sesión');
         },
       });
   }
@@ -172,7 +193,7 @@ export class CashSessionComponent {
         },
         error: (err: HttpErrorResponse) => {
           const body = err.error as BaseResponse<unknown> | undefined;
-          this.error.set(body?.message ?? 'No se pudo registrar el gasto');
+          this.error.set(body?.errorCode ?? body?.message ?? 'No se pudo registrar el gasto');
         },
       });
   }

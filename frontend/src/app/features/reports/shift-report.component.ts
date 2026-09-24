@@ -22,21 +22,72 @@ interface ShiftReportData {
   selector: 'bs-shift-report',
   standalone: true,
   template: `
-    <section>
+    <section class="page">
       <h2>Reportes</h2>
-      <p>Sin costo validado el margen es desconocido. La proyección no es resultado fiscal ni caja libre.</p>
-      <button type="button" (click)="load()">Actualizar</button>
+      <p class="lede">Sin costo validado el margen es desconocido. La proyección no es resultado fiscal ni caja libre.</p>
+      <p class="retry-row">
+        <button type="button" class="primary" (click)="load()">Actualizar</button>
+      </p>
+      @if (loading() && !report()) {
+        <p class="skeleton" aria-hidden="true"></p>
+      }
       @if (report(); as item) {
-        <p>Turno · bruto {{ item.grossSales }} · descuentos {{ item.discounts }} · neto {{ item.netSales }}</p>
-        <p>Cobrado {{ item.collected }} · reembolsos {{ item.refunds }} · comisiones {{ item.feesPaid }} · gastos {{ item.expensesPaid }}</p>
-        <p>Caja operativa {{ item.operatingCashFlow }} · margen {{ item.margin === null ? 'desconocido' : item.margin }}</p>
+        <div class="metrics">
+          <div class="card metric">
+            <dt>Bruto turno</dt>
+            <dd class="money">{{ item.grossSales }}</dd>
+          </div>
+          <div class="card metric">
+            <dt>Descuentos</dt>
+            <dd class="money">{{ item.discounts }}</dd>
+          </div>
+          <div class="card metric">
+            <dt>Neto</dt>
+            <dd class="money">{{ item.netSales }}</dd>
+          </div>
+          <div class="card metric">
+            <dt>Cobrado</dt>
+            <dd class="money">{{ item.collected }}</dd>
+          </div>
+          <div class="card metric">
+            <dt>Reembolsos</dt>
+            <dd class="money">{{ item.refunds }}</dd>
+          </div>
+          <div class="card metric">
+            <dt>Comisiones</dt>
+            <dd class="money">{{ item.feesPaid }}</dd>
+          </div>
+          <div class="card metric">
+            <dt>Gastos</dt>
+            <dd class="money">{{ item.expensesPaid }}</dd>
+          </div>
+          <div class="card metric">
+            <dt>Caja operativa</dt>
+            <dd class="money">{{ item.operatingCashFlow }}</dd>
+          </div>
+          <div class="card metric">
+            <dt>Margen</dt>
+            <dd>
+              @if (item.margin === null) {
+                <span class="badge warn">desconocido</span>
+              } @else {
+                <span class="money">{{ item.margin }}</span>
+              }
+            </dd>
+          </div>
+        </div>
         <p>{{ item.formulaName }} · {{ item.periodKind }} · fiscal {{ item.fiscalResult }}</p>
       }
       @if (daily(); as item) {
-        <p>Día · {{ item.formulaName }} · {{ item.periodKind }} · neto {{ item.netSales }} · caja operativa {{ item.operatingCashFlow }} · fiscal {{ item.fiscalResult }}</p>
+        <div class="card">
+          <p>Día · {{ item.formulaName }} · {{ item.periodKind }} · neto <span class="money">{{ item.netSales }}</span> · caja operativa <span class="money">{{ item.operatingCashFlow }}</span> · fiscal {{ item.fiscalResult }}</p>
+        </div>
       }
       @if (error() && !report()) {
-        <p>{{ error() }}</p>
+        <div class="retry-row">
+          <p>{{ error() }}</p>
+          <button type="button" class="ghost" (click)="load()">Reintentar</button>
+        </div>
       }
     </section>
   `,
@@ -46,15 +97,24 @@ export class ShiftReportComponent implements OnInit {
   readonly report = signal<ShiftReportData | null>(null);
   readonly daily = signal<ShiftReportData | null>(null);
   readonly error = signal<string | null>(null);
+  readonly loading = signal(false);
 
   ngOnInit(): void {
     this.load();
   }
 
   load(): void {
+    this.loading.set(true);
+    this.error.set(null);
     this.http.get<BaseResponse<ShiftReportData>>(`${API_BASE}/reports/shift`).subscribe({
-      next: (response) => this.report.set(response.data),
-      error: () => this.error.set('Reporte no disponible'),
+      next: (response) => {
+        this.report.set(response.data);
+        this.loading.set(false);
+      },
+      error: () => {
+        this.error.set('Reporte no disponible');
+        this.loading.set(false);
+      },
     });
     this.http.get<BaseResponse<ShiftReportData>>(`${API_BASE}/reports/daily`).subscribe({
       next: (response) => this.daily.set(response.data),

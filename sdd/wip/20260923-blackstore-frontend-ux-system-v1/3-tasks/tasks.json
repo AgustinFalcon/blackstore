@@ -2,9 +2,9 @@
   "feature": "blackstore-frontend-ux-system-v1",
   "stack_profile": "frontend-web",
   "project_type": "production",
-  "execution_strategy": "docs_only",
-  "status": "documented",
-  "stats": { "total": 6, "done": 4 },
+  "execution_strategy": "gated_visual_dump",
+  "status": "ux_ang_applied",
+  "stats": { "total": 6, "done": 5 },
   "tasks": [
     {
       "id": "BSUX-DOC-01",
@@ -38,10 +38,11 @@
     {
       "id": "BSUX-ANG",
       "title": "Volcar Stitch a Angular views",
-      "status": "blocked",
+      "status": "done",
+      "completed_at": "2026-09-23",
       "layer": 1,
       "depends_on": [],
-      "acceptance_criteria": ["Requiere Sol GO. No es este tramo."]
+      "acceptance_criteria": ["CONDITIONAL_GO 5 rutas existentes. Sin /sesion /caja/cierre /ticket/:saleId. No pixel-complete."]
     },
     {
       "id": "BSUX-ADP",
