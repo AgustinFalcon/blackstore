@@ -4,6 +4,7 @@ import com.blackstore.application.storecore.StoreCoreRecoveryPolicy
 import com.blackstore.application.storecore.StoreCoreRequestHash
 import com.blackstore.domain.companion.CompanionEnvironment
 import com.blackstore.domain.compliance.FiscalBoundaryPolicy
+import com.blackstore.domain.catalog.CatalogReserveLinePolicy
 import com.blackstore.domain.catalog.CatalogSalePolicy
 import com.blackstore.domain.exception.StoreCoreRemoteFault
 import com.blackstore.domain.model.OperationQuadruple
@@ -42,6 +43,7 @@ class LocalSaleSagaService(
     @Value("\${blackstore.storecore.contract.sha256}") private val openapiDigest: String = StoreCoreCanonicalContract.SHA256,
 ) {
     private val catalogPolicy = CatalogSalePolicy()
+    private val reserveLinePolicy = CatalogReserveLinePolicy()
     private val retiredPolicy = RetiredOperationPolicy()
     private val fiscalPolicy = FiscalBoundaryPolicy()
     private val sales = linkedMapOf<String, SaleSaga>()
@@ -54,7 +56,10 @@ class LocalSaleSagaService(
         ticketLines: List<TicketLine> = emptyList(),
         now: Instant,
     ): SaleSaga {
-        reserveLinesByOperation[quadruple.operationId] = lines
+        val resolved =
+            reserveLinesByOperation[quadruple.operationId]
+                ?: reserveLinePolicy.resolve(catalogPort.currentSnapshot(), lines, ticketLines)
+        reserveLinesByOperation[quadruple.operationId] = resolved
         sales[quadruple.operationId]?.let { existing ->
             retiredPolicy.assertCanPost(existing.retired || retirementPort.isRetired(quadruple.operationId))
             if (existing.blockSameOperationRepost) return existing
@@ -81,7 +86,7 @@ class LocalSaleSagaService(
         if (already == null) {
             saleRecordStore.recordIntentAndOutbox(pending)
         }
-        return callReserve(pending, lines)
+        return callReserve(pending, resolved)
     }
 
     fun commit(operationId: String, now: Instant = Instant.now()): SaleSaga {
