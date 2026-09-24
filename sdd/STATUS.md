@@ -17,4 +17,4 @@
 
 ## Gate actual
 
-Sol `20260923-sol-post-l3-go.md`: CONDITIONAL_GO para commit/PR. PR #1 abierto. Merge NO-GO hasta dual Grok del PR. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO.
+PR #1 mergeado (`87c95cf`) tras dual Grok r2 APPROVED. GitHub no reportó checks; no es CI verde. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.

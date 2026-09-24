@@ -22,4 +22,4 @@ ADP-001..010 + L3-001..003 done en fixture/localhost (pin `7b907a2e…de30`, tra
 | POS-06/07/08 rutas nuevas | NO-GO |
 | Fiscal, live companion, MP-LIVE-05, `/sdd.finish` | NO-GO |
 
-PR #1: Grok scope APPROVED; Grok SDD CHANGES_REQUIRED (meta/backlog/spec alineados). Dual r2 del PR en curso. Merge NO-GO. Release disabled. No `/sdd.finish`.
+PR #1 mergeado (`87c95cf`). Dual Grok r2: ambas APPROVED. GitHub sin checks. Release disabled. No `/sdd.finish`.
