@@ -38,7 +38,10 @@ class LoopbackCatalogAdapter(
                 )
             } catch (_: BlockedStoreCoreIntegrationException) {
                 return null
-            } catch (_: RuntimeException) {
+            } catch (ex: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return null
+            } catch (_: Exception) {
                 return null
             }
         if (response.status != 200 || response.body.isBlank()) return null
