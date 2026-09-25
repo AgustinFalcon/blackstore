@@ -76,11 +76,11 @@ interface ShiftReportData {
             </dd>
           </div>
         </div>
-        <p>{{ item.formulaName }} · {{ item.periodKind }} · fiscal {{ item.fiscalResult }}</p>
+        <p>{{ item.formulaName }} · {{ item.periodKind }} · {{ fiscalLabel(item.fiscalResult) }}</p>
       }
       @if (daily(); as item) {
         <div class="card">
-          <p>Día · {{ item.formulaName }} · {{ item.periodKind }} · neto <span class="money">{{ item.netSales }}</span> · caja operativa <span class="money">{{ item.operatingCashFlow }}</span> · fiscal {{ item.fiscalResult }}</p>
+          <p>Día · {{ item.formulaName }} · {{ item.periodKind }} · neto <span class="money">{{ item.netSales }}</span> · caja operativa <span class="money">{{ item.operatingCashFlow }}</span> · {{ fiscalLabel(item.fiscalResult) }}</p>
         </div>
       }
       @if (error() && !report()) {
@@ -101,6 +101,10 @@ export class ShiftReportComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+  }
+
+  fiscalLabel(fiscalResult: boolean): string {
+    return fiscalResult ? 'dato marcado, sin emisión' : 'no es resultado fiscal';
   }
 
   load(): void {

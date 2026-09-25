@@ -7,6 +7,8 @@ interface CatalogItem {
   sku: string;
   name: string;
   variantId: string;
+  priceVersion: string | null;
+  unitPrice: number | null;
 }
 
 interface CatalogData {
@@ -49,6 +51,8 @@ interface CatalogData {
                 <th>SKU</th>
                 <th>Nombre</th>
                 <th>Variante</th>
+                <th>Versión de precio</th>
+                <th>Precio unitario</th>
               </tr>
             </thead>
             <tbody>
@@ -57,6 +61,8 @@ interface CatalogData {
                   <td class="sku">{{ row.sku }}</td>
                   <td>{{ row.name }}</td>
                   <td class="sku">{{ row.variantId }}</td>
+                  <td class="sku">{{ row.priceVersion || 'la carga el cajero' }}</td>
+                  <td class="money">{{ row.unitPrice ?? '—' }}</td>
                 </tr>
               }
             </tbody>
