@@ -34,3 +34,7 @@ BlackStore es dueño de ticket, caja, gastos, arqueos y reportes. Nunca copia el
 2. Terra actualiza specs, plan, trazabilidad y docs.
 3. Sol declara GO/NO-GO.
 4. Luna implementa únicamente tareas con GO.
+
+## Estados cerrados
+
+Un estado, rol, medio de pago o paso de un flujo es un tipo cerrado (`enum` o clase sellada). En TypeScript, clase con constructor privado, instancias estáticas y `fromWire` en el borde. La vista no compara strings de estado. Un valor de red desconocido es el caso `Unknown` de ese tipo. Cada paso de un flujo es un objeto. El dominio no importa framework.

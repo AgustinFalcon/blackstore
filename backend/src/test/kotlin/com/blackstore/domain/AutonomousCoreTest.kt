@@ -9,8 +9,6 @@ import com.blackstore.domain.cash.SessionAction
 import com.blackstore.domain.cash.StaffRole
 import com.blackstore.domain.catalog.CatalogSalePolicy
 import com.blackstore.domain.companion.CompanionEnvironment
-import com.blackstore.domain.compliance.FiscalAuthorization
-import com.blackstore.domain.compliance.FiscalAuthorizationKind
 import com.blackstore.domain.compliance.FiscalBoundaryPolicy
 import com.blackstore.domain.exception.ForbiddenOperationException
 import com.blackstore.domain.ledger.AppendOnlyLedger
@@ -148,8 +146,10 @@ class AutonomousCoreTest {
                 environmentName = "PRODUCTION",
             )
         production.beginReserve(quadruple("op-prod"), cashSessionId = 1, lines = listOf(line()), now = now)
-        assertThrows<ForbiddenOperationException> { production.commit("op-prod", now) }
-        assertEquals(1, inventory.commitAttempts.size)
+        val committedProduction = production.commit("op-prod", now)
+        assertEquals(SaleStatus.COMMITTED, committedProduction.status)
+        assertEquals(FiscalStatus.NOT_CONFIGURED, committedProduction.fiscalStatus)
+        assertEquals(2, inventory.commitAttempts.size)
     }
 
     @Test
@@ -253,21 +253,11 @@ class AutonomousCoreTest {
     }
 
     @Test
-    fun productionCommitRequiresFiscalAuthorizationAndDoesNotEmit() {
+    fun productionCommitRecordsAnySaleAndDoesNotEmit() {
         val policy = FiscalBoundaryPolicy()
         policy.assertCanCommit(CompanionEnvironment.TEST, FiscalStatus.NOT_CONFIGURED, authorization = null, now = now)
-        assertThrows<ForbiddenOperationException> {
-            policy.assertCanCommit(CompanionEnvironment.PRODUCTION, FiscalStatus.NOT_CONFIGURED, authorization = null, now = now)
-        }
-        val authorization =
-            FiscalAuthorization(
-                kind = FiscalAuthorizationKind.LAWFUL_EXCEPTION,
-                responsibleApprovalRef = "owner-signed",
-                accountantApprovalRef = "accountant-signed",
-                validFrom = now.minusSeconds(60),
-                validUntil = now.plusSeconds(3600),
-            )
-        policy.assertCanCommit(CompanionEnvironment.PRODUCTION, FiscalStatus.PENDING, authorization, now)
+        policy.assertCanCommit(CompanionEnvironment.PRODUCTION, FiscalStatus.NOT_CONFIGURED, authorization = null, now = now)
+        policy.assertCanCommit(CompanionEnvironment.PRODUCTION, FiscalStatus.PENDING, authorization = null, now = now)
     }
 
     private fun snapshot(stale: Boolean) =

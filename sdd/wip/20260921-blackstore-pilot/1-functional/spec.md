@@ -15,7 +15,7 @@ Roles: CASHIER, SUPERVISOR, OWNER y AUDITOR. Terminales y sesiones de caja múlt
 - AC-5: ticket conserva snapshots; split payments separan collected y fees. Toda reversa/ajuste referencia original, actor, razón y evidencia; no se borra/edita venta/caja.
 - AC-6: StoreCore es autoridad de inventario y BlackStore de venta/caja; comunicación sólo por contrato versionado aprobado, nunca DB directa.
 - AC-7: reportes separan gross sales, discounts, net sales, refunds, collected, fees/gastos y cash flow. Margen requiere costo validado; proyecciones no son fiscal/free cash.
-- AC-8: cada venta comercial persiste. NOT_CONFIGURED sólo test/dev; producción requiere mecanismo fiscal externo válido o excepción legal firmada por responsable+contador antes de venta real. Nunca ocultamiento/doble libro.
+- AC-8: cada venta presencial persiste en test y en producción. El estado fiscal no impide cargarla ni confirmarla. No hay emisión en este piloto. Nunca ocultamiento ni doble libro. La facturación por rango de fechas es una pantalla posterior. Las ventas online siguen en StoreCore.
 
 ## Deferred
 

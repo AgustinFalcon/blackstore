@@ -16,6 +16,13 @@ enum class SaleStatus {
     RELEASE_PENDING,
     RELEASED,
     RECONCILIATION_REQUIRED,
+    ;
+
+    companion object {
+        fun fromPersisted(value: String): SaleStatus =
+            entries.firstOrNull { it.name == value }
+                ?: throw IllegalArgumentException("unknown sale status")
+    }
 }
 
 enum class FiscalStatus {

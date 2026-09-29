@@ -2,6 +2,6 @@
 
 **Completed:** 2026-09-22
 
-`FiscalBoundaryPolicy` allows `NOT_CONFIGURED` in test. Production rejects `NOT_CONFIGURED` and rejects COMMITTED without a valid external mechanism or lawful exception signed by the responsible person and the accountant. No emission adapter is implemented.
+`FiscalBoundaryPolicy` records the sale in test and in production. Fiscal status does not block the commit. No emission adapter is implemented. V4 replaces the database functions that used to reject a production commit.
 
-Gate: `AutonomousCoreTest.productionCommitRequiresFiscalAuthorizationAndDoesNotEmit`.
+Gate: `AutonomousCoreTest.productionCommitRecordsAnySaleAndDoesNotEmit`.

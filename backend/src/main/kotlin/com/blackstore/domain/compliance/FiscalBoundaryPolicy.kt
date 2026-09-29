@@ -1,7 +1,6 @@
 package com.blackstore.domain.compliance
 
 import com.blackstore.domain.companion.CompanionEnvironment
-import com.blackstore.domain.exception.ForbiddenOperationException
 import com.blackstore.domain.sales.FiscalStatus
 import java.time.Instant
 
@@ -33,11 +32,7 @@ class FiscalBoundaryPolicy {
         authorization: FiscalAuthorization?,
         now: Instant,
     ) {
-        if (environment == CompanionEnvironment.PRODUCTION && fiscalStatus == FiscalStatus.NOT_CONFIGURED) {
-            throw ForbiddenOperationException("NOT_CONFIGURED is test and development only")
-        }
-        if (environment == CompanionEnvironment.PRODUCTION && authorization?.isValidAt(now) != true) {
-            throw ForbiddenOperationException("production COMMITTED requires a valid external fiscal mechanism or lawful exception")
-        }
+        // The counter records every sale. Fiscal status, environment, and authorization do not block it.
+        // This method does not emit an invoice.
     }
 }

@@ -2,4 +2,4 @@
 
 **Status:** proposed
 
-Fiscal adapter/emission es repositorio externo. Toda venta comercial se registra; no se permite ocultar, omitir, borrar, doble libro ni alterar monto. `NOT_CONFIGURED` sólo corresponde a test/dev. En producción, una venta real necesita mecanismo fiscal externo válido o excepción legal documentada y vigente, con aprobación/firmas de responsable y contador. Una trigger/guard de producción bloquea COMMITTED sin esa autorización. Agregación mensual es deny-by-default hasta regla legal y contador aprobados.
+Fiscal adapter/emission es una pantalla posterior, fuera de este piloto. BlackStore registra toda venta presencial en test y en producción. El estado fiscal no frena la carga ni la confirmación. No se oculta, omite, borra ni altera el monto. La facturación por rango de fechas queda para esa pantalla. Las ventas online siguen en StoreCore.
