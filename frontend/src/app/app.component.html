@@ -1,0 +1,57 @@
+<div class="frame">
+  <aside class="rail">
+    <p class="brand">BlackStore</p>
+    <nav aria-label="Mostrador">
+      <a routerLink="/sesion" routerLinkActive="active">Sesión</a>
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a>
+      @if (caps().cash) {
+        <a routerLink="/caja" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Caja</a>
+      }
+      <a routerLink="/catalogo" routerLinkActive="active">Catálogo</a>
+      @if (caps().sell) {
+        <a routerLink="/ticket" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Ticket</a>
+      }
+      @if (caps().reports) {
+        <a routerLink="/reportes" routerLinkActive="active">Reportes</a>
+      }
+      @if (caps().close) {
+        <a routerLink="/caja/cierre" routerLinkActive="active">Arqueo</a>
+      }
+    </nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <h1>BlackStore POS</h1>
+      <p class="role">{{ roleLabel() }}</p>
+    </header>
+    <div class="canvas">
+      @if (store.healthLoading()) {
+        <p class="banner info" role="status">Comprobando salud del backend…</p>
+      }
+      @if (store.integrationBlocked()) {
+        <div class="banner" role="status">
+          <p>Integración StoreCore bloqueada — simulador local</p>
+          <button type="button" class="ghost" (click)="showBlocked.set(true)">Detalle</button>
+        </div>
+      }
+      @if (store.backendDown()) {
+        <p class="banner warn" role="alert">Backend no disponible en :8081</p>
+      }
+      @if (store.writesDisabled()) {
+        <p class="banner warn" role="alert">El puesto no está habilitado. No se puede escribir.</p>
+      }
+      <router-outlet />
+    </div>
+  </div>
+</div>
+
+@if (showBlocked()) {
+  <bs-dialog title="StoreCore bloqueado" primaryLabel="Entendido" (confirmed)="showBlocked.set(false)" (dismissed)="showBlocked.set(false)">
+    <p>El conector HTTP no está autorizado. El simulador no es evidencia live.</p>
+  </bs-dialog>
+}
+@if (store.killPrompt()) {
+  <bs-dialog title="Entitlement disabled" primaryLabel="Salir" (confirmed)="store.dismissKill()" (dismissed)="store.dismissKill()">
+    <p>Companion no habilitado. Sin writes.</p>
+  </bs-dialog>
+}

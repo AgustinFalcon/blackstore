@@ -1,0 +1,25 @@
+<div class="overlay" (click)="dismissed.emit()">
+  <div
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-labelledby]="titleId()"
+    tabindex="-1"
+    (click)="$event.stopPropagation()"
+  >
+    <h2 [id]="titleId()">{{ title() }}</h2>
+    <div class="body">
+      <ng-content />
+    </div>
+    <div class="actions">
+      @if (cancelLabel()) {
+        <button type="button" class="ghost" (click)="dismissed.emit()">{{ cancelLabel() }}</button>
+      }
+      @if (primaryLabel()) {
+        <button type="button" [class.danger]="danger()" [class.primary]="!danger()" [disabled]="primaryDisabled()" (click)="confirmed.emit()">
+          {{ primaryLabel() }}
+        </button>
+      }
+    </div>
+  </div>
+</div>

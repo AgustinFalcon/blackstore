@@ -17,7 +17,7 @@ Angular 22 consola existente (`frontend/`). BSUX-ANG aplicó tokens/estados en l
 
 - Entitlement DISABLED/mismatch: writes disabled, banner, sin llamada StoreCore.
 - Catálogo stale / StoreCore unavailable (simulador): bloquea transición de venta nueva.
-- Fiscal NOT_CONFIGURED: sólo test/dev; producción no emite.
+- El estado fiscal no frena la venta. Este piloto no emite factura.
 
 ## Relación StoreCore
 

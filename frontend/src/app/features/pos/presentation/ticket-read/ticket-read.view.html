@@ -1,0 +1,66 @@
+<section class="page">
+  <h2>Ticket leído</h2>
+  <p class="lede">Snapshot de la venta registrada. El estado fiscal no se edita acá.</p>
+  <p class="gap-note">
+    El estado se refresca con el proceso local. Las líneas y la cuádruple salen de esta consola: esa consulta no las devuelve.
+  </p>
+  @if (state().loading) {
+    <p class="skeleton" aria-hidden="true"></p>
+    <p>Consultando venta…</p>
+  }
+  @if (state().missing && !state().loading) {
+    <p class="empty">No hay un ticket con ese identificador en esta consola.</p>
+  }
+  @if (state().error) {
+    <div class="retry-row">
+      <p class="error">{{ state().error }}</p>
+      <button type="button" class="ghost" (click)="retry.emit()">Reintentar</button>
+    </div>
+  }
+  @if (state().sale; as sale) {
+    <div class="card">
+      <p>Estado de la saga local <span class="badge info">{{ sale.status.label }}</span></p>
+      <div class="quadruple">
+        <p>clientInstanceId <span class="sku">{{ sale.clientInstanceId }}</span></p>
+        <p>deviceId <span class="sku">{{ sale.deviceId }}</span></p>
+        <p>saleId <span class="sku">{{ sale.saleId }}</span></p>
+        <p>operationId <span class="sku">{{ sale.operationId }}</span></p>
+      </div>
+      @if (sale.receipt) {
+        <p>Comprobante local <span class="sku">{{ sale.receipt }}</span></p>
+      }
+      <p>Cobrado <span class="money" [attr.aria-label]="'Efectivo ' + format(collected(sale))">{{ format(collected(sale)) }}</span>
+        · comisiones <span class="money" [attr.aria-label]="'Efectivo ' + format(fees(sale))">{{ format(fees(sale)) }}</span></p>
+    </div>
+    <table>
+      <caption>Líneas del ticket</caption>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Nombre</th>
+          <th>Cantidad</th>
+          <th>Original</th>
+          <th>Descuento</th>
+          <th>Effective</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (line of sale.lines; track line.sku) {
+          <tr>
+            <td class="sku">{{ line.sku }}</td>
+            <td>{{ line.productName }}</td>
+            <td>{{ line.quantity }}</td>
+            <td class="money" [attr.aria-label]="'Efectivo ' + format(line.originalUnitPrice)">{{ format(line.originalUnitPrice) }}</td>
+            <td class="money" [attr.aria-label]="'Efectivo ' + format(line.discountAmount)">{{ format(line.discountAmount) }}</td>
+            <td class="money" [attr.aria-label]="'Efectivo ' + format(line.originalUnitPrice - line.discountAmount)">{{ format(line.originalUnitPrice - line.discountAmount) }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    <p class="actions">
+      <button type="button" disabled>Confirmar venta</button>
+      <button type="button" disabled>Liberar reserva</button>
+      <button type="button" disabled>Reversar</button>
+    </p>
+  }
+</section>

@@ -62,9 +62,68 @@ a.ghost {
   padding: 0 1rem;
 }
 
+button.danger {
+  background: var(--bs-danger);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 1rem;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+kbd {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.75rem;
+  border: 1px solid var(--bs-line);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  background: var(--bs-canvas);
+}
+
+.status-grid,
+.quadruple {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+
+.gap-note {
+  margin: 0 0 1rem;
+  color: var(--bs-muted);
+  font-size: 0.875rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.actions a,
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.banner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.banner p {
+  margin: 0;
 }
 
 .page h2 {

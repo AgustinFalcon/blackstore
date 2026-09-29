@@ -1,0 +1,64 @@
+<section class="page">
+  <h2>Consola</h2>
+  <p class="lede">Caja, catálogo y tickets del mostrador. El browser habla solo con BlackStore.</p>
+  <p class="lede">Atajos: <kbd>F2</kbd> abre caja. <kbd>F4</kbd> abre un ticket si hay caja abierta.</p>
+
+  @if (state().denial) {
+    <p class="error" role="alert">{{ state().denial }}</p>
+  }
+  @if (state().loading) {
+    <p class="skeleton" aria-hidden="true"></p>
+    <p>Cargando puesto…</p>
+  } @else if (!state().signedIn) {
+    <p class="empty">No hay sesión de usuario.</p>
+    <a routerLink="/sesion" class="primary">Entrar</a>
+  } @else {
+    @if (state().error) {
+      <div class="retry-row">
+        <p class="error">{{ state().error }}</p>
+        <button type="button" class="ghost" (click)="retry.emit()">Reintentar</button>
+      </div>
+    }
+    <div class="status-grid">
+      <article class="card">
+        <h3>Catálogo</h3>
+        <p>
+          <span class="sku">{{ state().catalogVersion }}</span>
+          <span class="badge" [class.ok]="state().catalogOk" [class.warn]="!state().catalogOk">{{ state().catalogBadge }}</span>
+        </p>
+      </article>
+      <article class="card">
+        <h3>Caja</h3>
+        @if (state().sessionText) {
+          <p>{{ state().sessionText }}</p>
+        } @else {
+          <p class="empty">No hay sesión de caja abierta.</p>
+        }
+      </article>
+      <article class="card">
+        <h3>Persistencia</h3>
+        <p class="sku">{{ state().persistence }}</p>
+      </article>
+    </div>
+    @if (state().blockReason) {
+      <p class="banner warn" role="status">{{ state().blockReason }}</p>
+    }
+    <p class="actions">
+      @if (state().canCash) {
+        <a routerLink="/caja" class="primary">Caja</a>
+      }
+      @if (state().ticketDisabled) {
+        <button type="button" class="ghost" disabled>Ticket</button>
+      } @else {
+        <a routerLink="/ticket" class="ghost">Ticket</a>
+      }
+      <a routerLink="/catalogo" class="ghost">Catálogo</a>
+      @if (state().canReports) {
+        <a routerLink="/reportes" class="ghost">Reportes</a>
+      }
+      @if (state().canClose) {
+        <a routerLink="/caja/cierre" class="ghost">Arqueo</a>
+      }
+    </p>
+  }
+</section>
