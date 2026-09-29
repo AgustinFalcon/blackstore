@@ -1,6 +1,6 @@
 # Functional Spec — `blackstore-frontend-ux-system-v1`
 
-**Status:** `ready_for_sol_review` · **Fecha:** 2026-09-23 · **BSUX-ANG aplicado en 5 rutas existentes; no pixel-complete**
+**Status:** `ready_for_build` · **Fecha:** 2026-09-29 · **El dueño autoriza las 8 rutas del inventario, incluido `/sesion`, `/caja/cierre` y `/ticket/:saleId`.**
 
 ## Problema
 
@@ -8,7 +8,7 @@ El piloto ya tiene consola Angular (`/`, `/caja`, `/catalogo`, `/ticket`, `/repo
 
 ## Objetivo
 
-Documentar y diseñar (Stitch) todas las superficies POS del piloto. BSUX-ANG volcó tokens/estados a `/`, `/caja`, `/catalogo`, `/ticket` y `/reportes`. Sin `/sesion`, `/caja/cierre` ni `/ticket/:saleId`. Conector HTTP live: NO-GO. ADP-001..010 + L3 son loopback/fixture; no desbloquean companion ni host real.
+Documentar, diseñar (Stitch) e implementar las superficies POS del piloto. Las cinco rutas existentes se alinean al diseño. `/sesion`, `/caja/cierre` y `/ticket/:saleId` entran en esta tanda. El browser no llama a StoreCore.
 
 ## Inventario
 
@@ -27,4 +27,4 @@ StoreCore storefront P/C/U, conector HTTP real, emisión fiscal, favoritos, loya
 - AC-BSUX-5: ticket muestra snapshot SKU/nombre/original/effective/descuento; split collected vs fees.
 - AC-BSUX-6: cada pantalla documenta default / loading / vacío / error+Reintentar / disabled / éxito (`screen-states.md`).
 - AC-BSUX-7: dialogos canónicos en `dialogs.md`; envelope y `errorCode` en `copy-and-errors.md`.
-- AC-BSUX-8: teclado/a11y en `accessibility.md`. POS-06 y POS-08 son huecos de código; no se inventan rutas Angular hasta GO.
+- AC-BSUX-8: teclado/a11y en `accessibility.md`. `/sesion`, `/caja/cierre` y `/ticket/:saleId` se implementan en esta tanda. El browser llama solo a BlackStore en `:8081`.

@@ -1,0 +1,97 @@
+.frame {
+  display: grid;
+  grid-template-columns: 13rem 1fr;
+  min-height: 100vh;
+}
+
+.rail {
+  background: var(--bs-theme);
+  color: var(--bs-theme-ink);
+  padding: 1.25rem 1rem;
+}
+
+.brand {
+  margin: 0 0 1.5rem;
+  font-weight: 650;
+}
+
+nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+nav a {
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+nav a.active,
+nav a:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.main {
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: var(--bs-theme);
+  color: var(--bs-theme-ink);
+  padding: 1rem 1.5rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 650;
+}
+
+.role {
+  margin: 0;
+  color: #cbd5e1;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.canvas {
+  padding: 1.25rem 1.5rem 2rem;
+}
+
+.canvas > .banner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #e0e7ff;
+  border: 1px solid var(--bs-accent);
+}
+
+.canvas > .banner.warn {
+  background: #fef3c7;
+  border-color: var(--bs-warning);
+}
+
+.canvas > .banner.info {
+  background: #dbeafe;
+  border-color: var(--bs-info);
+}
+
+@media (max-width: 767px) {
+  .frame {
+    grid-template-columns: 1fr;
+  }
+
+  nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

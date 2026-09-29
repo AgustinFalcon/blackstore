@@ -1,10 +1,14 @@
 package com.blackstore.infrastructure.persistence
 
+import com.blackstore.domain.port.out.sales.RecordedSale
 import com.blackstore.domain.port.out.sales.SaleRecordStore
 import com.blackstore.domain.model.StoreCoreOperationKind
 import com.blackstore.domain.sales.SaleSaga
+import com.blackstore.domain.sales.SaleStatus
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.sql.ResultSet
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -15,6 +19,45 @@ class JdbcSaleRecordStore(
     private val seed: LocalDatabaseSeed,
 ) : SaleRecordStore {
     private val writer = JdbcBlackStoreWriter()
+    private val priceReader = ObjectMapper()
+
+    override fun findRecorded(operationId: String): RecordedSale? {
+        val operationUuid = runCatching { UUID.fromString(operationId) }.getOrNull() ?: return null
+        return asRole("blackstore_app") { connection ->
+            connection.prepareStatement(
+                """
+                SELECT
+                    p.client_instance_id,
+                    p.device_id,
+                    p.sale_id,
+                    p.operation_id,
+                    i.cash_session_id,
+                    p.status,
+                    p.reservation_receipt,
+                    p.storecore_reservation_ref,
+                    p.contract_version,
+                    p.openapi_digest,
+                    p.accepted_price_versions::text AS accepted_price_versions,
+                    p.reconciliation_reason,
+                    p.reservation_expires_at
+                FROM sale_state_projection p
+                JOIN sale_intents i ON i.id = p.sale_intent_id AND i.operation_id = p.operation_id
+                WHERE p.operation_id = ?
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setObject(1, operationUuid)
+                statement.executeQuery().use { rows ->
+                    if (!rows.next()) {
+                        null
+                    } else {
+                        val recorded = mapRecorded(rows)
+                        check(!rows.next()) { "sale operation is not unique" }
+                        recorded
+                    }
+                }
+            }
+        }
+    }
 
     override fun recordIntentAndOutbox(saga: SaleSaga) {
         val clientId = UUID.fromString(saga.quadruple.clientInstanceId)
@@ -171,6 +214,33 @@ class JdbcSaleRecordStore(
                 command.openapiDigest.padEnd(64, '0').take(64),
                 command.requestHash.padEnd(64, '0').take(64),
             )
+        }
+    }
+
+    private fun mapRecorded(rows: ResultSet): RecordedSale =
+        RecordedSale(
+            clientInstanceId = rows.getObject("client_instance_id", UUID::class.java).toString(),
+            deviceId = rows.getString("device_id"),
+            saleId = rows.getString("sale_id"),
+            operationId = rows.getObject("operation_id", UUID::class.java).toString(),
+            cashSessionId = rows.getLong("cash_session_id"),
+            status = SaleStatus.fromPersisted(rows.getString("status")),
+            receipt = rows.getString("reservation_receipt"),
+            reservationRef = rows.getString("storecore_reservation_ref"),
+            contractVersion = rows.getString("contract_version"),
+            openapiDigest = rows.getString("openapi_digest")?.trim(),
+            acceptedPriceVersions = priceVersions(rows.getString("accepted_price_versions")),
+            reconciliationReason = rows.getString("reconciliation_reason"),
+            reservationExpiresAt = rows.getTimestamp("reservation_expires_at")?.toInstant(),
+        )
+
+    private fun priceVersions(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        val node = priceReader.readTree(raw)
+        require(node.isArray) { "unknown sale price versions" }
+        return node.map { item ->
+            require(item.isTextual) { "unknown sale price versions" }
+            item.asText()
         }
     }
 

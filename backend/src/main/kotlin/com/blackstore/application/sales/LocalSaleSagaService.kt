@@ -20,6 +20,7 @@ import com.blackstore.domain.port.out.storecore.ReserveInventoryCommand
 import com.blackstore.domain.port.out.storecore.ReserveLineCommand
 import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import com.blackstore.domain.port.out.storecore.StoreCoreInventoryPort
+import com.blackstore.domain.port.out.sales.RecordedSale
 import com.blackstore.domain.port.out.sales.SaleRecordStore
 import com.blackstore.domain.sales.OutboxCommand
 import com.blackstore.domain.sales.RemoteEvidence
@@ -404,5 +405,49 @@ class LocalSaleSagaService(
         sales[operationId]?.let { sales[operationId] = it.markRetired() }
     }
 
-    fun stored(operationId: String): SaleSaga? = sales[operationId]
+    fun stored(operationId: String): SaleSaga? =
+        sales[operationId] ?: saleRecordStore.findRecorded(operationId)?.let(::sagaFromRecord)
+
+    private fun sagaFromRecord(recorded: RecordedSale): SaleSaga =
+        SaleSaga(
+            quadruple =
+                OperationQuadruple(
+                    clientInstanceId = recorded.clientInstanceId,
+                    deviceId = recorded.deviceId,
+                    saleId = recorded.saleId,
+                    operationId = recorded.operationId,
+                ),
+            cashSessionId = recorded.cashSessionId,
+            status = recorded.status,
+            evidence = evidenceFrom(recorded),
+            reconciliationReason = recorded.reconciliationReason,
+        )
+
+    private fun evidenceFrom(recorded: RecordedSale): RemoteEvidence? {
+        if (recorded.status == SaleStatus.PENDING_RESERVATION) return null
+        val receipt = recorded.receipt
+        val reservationRef = recorded.reservationRef
+        val contractVersion = recorded.contractVersion
+        val openapiDigest = recorded.openapiDigest
+        if (
+            receipt.isNullOrBlank() ||
+            reservationRef.isNullOrBlank() ||
+            contractVersion.isNullOrBlank() ||
+            openapiDigest.isNullOrBlank() ||
+            recorded.acceptedPriceVersions.isEmpty()
+        ) {
+            require(recorded.status == SaleStatus.RECONCILIATION_REQUIRED) {
+                "recorded sale is missing receipt evidence"
+            }
+            return null
+        }
+        return RemoteEvidence(
+            reservationRef = reservationRef,
+            receipt = receipt,
+            contractVersion = contractVersion,
+            openapiDigest = openapiDigest,
+            acceptedPriceVersions = recorded.acceptedPriceVersions,
+            expiresAt = recorded.reservationExpiresAt,
+        )
+    }
 }

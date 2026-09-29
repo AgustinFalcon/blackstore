@@ -289,8 +289,8 @@
         "backend/src/main/kotlin/**/compliance/"
       ],
       "acceptance_criteria": [
-        "AC-1: every provisional/commercial sale persists regardless of fiscal status; NOT_CONFIGURED is test/development only",
-        "AC-2: production COMMITTED transition requires valid external mechanism or lawful exception approvals; no adapter emission occurs here",
+        "AC-1: every counter sale persists in test and in production; fiscal status does not block it",
+        "AC-2: confirming a sale does not require a fiscal authorization; no adapter emission occurs here",
         "GATE: fiscal-boundary guard tests pass"
       ],
       "references": [

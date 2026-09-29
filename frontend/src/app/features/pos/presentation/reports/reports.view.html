@@ -1,0 +1,64 @@
+<section class="page">
+  <h2>Reportes</h2>
+  <p class="lede">Esta proyección no es resultado fiscal ni caja libre. Sin costo validado el margen queda desconocido.</p>
+  <p class="actions">
+    <button type="button" class="primary" (click)="retry.emit()">Actualizar</button>
+  </p>
+  @if (state().loading && !state().shift) {
+    <p class="skeleton" aria-hidden="true"></p>
+    <p>Cargando turno…</p>
+  }
+  @if (state().error && !state().shift) {
+    <div class="retry-row">
+      <p class="error">{{ state().error }}</p>
+      <button type="button" class="ghost" (click)="retry.emit()">Reintentar</button>
+    </div>
+  }
+  @if (state().shift; as item) {
+    @if (state().shiftEmpty) {
+      <p class="empty">Sin movimientos del período.</p>
+    }
+    <div class="metrics">
+      <dl class="card metric"><dt>Bruto turno</dt><dd class="money" [attr.aria-label]="'Efectivo ' + format(item.grossSales)">{{ format(item.grossSales) }}</dd></dl>
+      <dl class="card metric"><dt>Descuentos</dt><dd class="money" [attr.aria-label]="'Efectivo ' + format(item.discounts)">{{ format(item.discounts) }}</dd></dl>
+      <dl class="card metric"><dt>Neto</dt><dd class="money" [attr.aria-label]="'Efectivo ' + format(item.netSales)">{{ format(item.netSales) }}</dd></dl>
+      <dl class="card metric"><dt>Cobrado</dt><dd class="money" [attr.aria-label]="'Efectivo ' + format(item.collected)">{{ format(item.collected) }}</dd></dl>
+      <dl class="card metric"><dt>Reembolsos</dt><dd class="money" [attr.aria-label]="'Efectivo ' + format(item.refunds)">{{ format(item.refunds) }}</dd></dl>
+      <dl class="card metric"><dt>Comisiones</dt><dd class="money" [attr.aria-label]="'Efectivo ' + format(item.feesPaid)">{{ format(item.feesPaid) }}</dd></dl>
+      <dl class="card metric"><dt>Gastos</dt><dd class="money" [attr.aria-label]="'Efectivo ' + format(item.expensesPaid)">{{ format(item.expensesPaid) }}</dd></dl>
+      <dl class="card metric"><dt>Caja operativa</dt><dd class="money" [attr.aria-label]="'Efectivo ' + format(item.operatingCashFlow)">{{ format(item.operatingCashFlow) }}</dd></dl>
+      <dl class="card metric">
+        <dt>Margen</dt>
+        <dd>
+          @if (item.margin === null) {
+            <span class="badge warn">Margen desconocido (sin costo validado)</span>
+          } @else {
+            <span class="money" [attr.aria-label]="'Efectivo ' + format(item.margin)">{{ format(item.margin) }}</span>
+          }
+        </dd>
+      </dl>
+    </div>
+    <p>{{ item.formulaName.label }} · {{ item.periodKind.label }} · {{ fiscalLabel(item.fiscalResult) }}</p>
+  }
+  @if (state().dailyError) {
+    <div class="retry-row">
+      <p class="error">{{ state().dailyError }}</p>
+      <button type="button" class="ghost" (click)="retry.emit()">Reintentar</button>
+    </div>
+  }
+  @if (state().daily; as item) {
+    <div class="card">
+      <h3>Día</h3>
+      @if (state().dailyEmpty) {
+        <p class="empty">Sin movimientos del período.</p>
+      }
+      <p>
+        {{ item.formulaName.label }} · {{ item.periodKind.label }} · neto
+        <span class="money" [attr.aria-label]="'Efectivo ' + format(item.netSales)">{{ format(item.netSales) }}</span>
+        · caja operativa
+        <span class="money" [attr.aria-label]="'Efectivo ' + format(item.operatingCashFlow)">{{ format(item.operatingCashFlow) }}</span>
+        · {{ fiscalLabel(item.fiscalResult) }}
+      </p>
+    </div>
+  }
+</section>

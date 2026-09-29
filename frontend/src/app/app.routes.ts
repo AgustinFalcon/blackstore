@@ -1,15 +1,22 @@
 import { Routes } from '@angular/router';
-import { PosShellComponent } from './features/pos/shell/pos-shell.component';
-import { CashSessionComponent } from './features/cash/cash-session.component';
-import { CatalogPanelComponent } from './features/catalog/catalog-panel.component';
-import { SaleTicketComponent } from './features/sales/sale-ticket.component';
-import { ShiftReportComponent } from './features/reports/shift-report.component';
+import { cashGuard, closeGuard, reportsGuard, sellGuard, sessionGuard } from './core/session/pos.guards';
+import { CashCloseContainerComponent } from './features/pos/presentation/cash-close/cash-close.container';
+import { CashContainerComponent } from './features/pos/presentation/cash/cash.container';
+import { CatalogContainerComponent } from './features/pos/presentation/catalog/catalog.container';
+import { HomeContainerComponent } from './features/pos/presentation/home/home.container';
+import { ReportsContainerComponent } from './features/pos/presentation/reports/reports.container';
+import { SessionContainerComponent } from './features/pos/presentation/session/session.container';
+import { TicketReadContainerComponent } from './features/pos/presentation/ticket-read/ticket-read.container';
+import { TicketContainerComponent } from './features/pos/presentation/ticket/ticket.container';
 
 export const routes: Routes = [
-  { path: '', component: PosShellComponent },
-  { path: 'caja', component: CashSessionComponent },
-  { path: 'catalogo', component: CatalogPanelComponent },
-  { path: 'ticket', component: SaleTicketComponent },
-  { path: 'reportes', component: ShiftReportComponent },
+  { path: 'sesion', component: SessionContainerComponent },
+  { path: '', canActivate: [sessionGuard], component: HomeContainerComponent },
+  { path: 'caja/cierre', canActivate: [closeGuard], component: CashCloseContainerComponent },
+  { path: 'caja', canActivate: [cashGuard], component: CashContainerComponent },
+  { path: 'catalogo', canActivate: [sessionGuard], component: CatalogContainerComponent },
+  { path: 'ticket/:saleId', canActivate: [sessionGuard], component: TicketReadContainerComponent },
+  { path: 'ticket', canActivate: [sellGuard], component: TicketContainerComponent },
+  { path: 'reportes', canActivate: [reportsGuard], component: ReportsContainerComponent },
   { path: '**', redirectTo: '' },
 ];

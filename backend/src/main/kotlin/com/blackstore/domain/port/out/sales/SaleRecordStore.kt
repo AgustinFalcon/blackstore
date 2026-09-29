@@ -1,8 +1,12 @@
 package com.blackstore.domain.port.out.sales
 
 import com.blackstore.domain.sales.SaleSaga
+import com.blackstore.domain.sales.SaleStatus
+import java.time.Instant
 
 interface SaleRecordStore {
+    fun findRecorded(operationId: String): RecordedSale? = null
+
     fun recordIntentAndOutbox(saga: SaleSaga) {}
 
     fun recordInbox(
@@ -26,3 +30,19 @@ interface SaleRecordStore {
 
     fun recordReleased(saga: SaleSaga)
 }
+
+data class RecordedSale(
+    val clientInstanceId: String,
+    val deviceId: String,
+    val saleId: String,
+    val operationId: String,
+    val cashSessionId: Long,
+    val status: SaleStatus,
+    val receipt: String?,
+    val reservationRef: String?,
+    val contractVersion: String?,
+    val openapiDigest: String?,
+    val acceptedPriceVersions: List<String> = emptyList(),
+    val reconciliationReason: String? = null,
+    val reservationExpiresAt: Instant? = null,
+)

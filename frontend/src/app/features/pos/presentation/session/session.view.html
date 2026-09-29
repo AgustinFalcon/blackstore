@@ -1,0 +1,27 @@
+<section class="page">
+  <h2>Sesión</h2>
+  <p class="lede">USER de BlackStore. No es el cliente de la tienda online.</p>
+  <div class="card">
+    <p class="gap-note">
+      No hay login HTTP en este proceso. Esta pantalla elige el usuario y el rol de la consola y manda
+      <span class="sku">X-Actor-Id</span> y <span class="sku">X-Role</span>. No da de alta usuarios.
+    </p>
+    <form (ngSubmit)="submit()">
+      <label for="actor-id">Usuario
+        <input id="actor-id" name="actorId" type="number" min="1" required [(ngModel)]="actorId" />
+      </label>
+      <label for="actor-role">Rol
+        <select id="actor-role" name="role" [(ngModel)]="roleCode">
+          @for (item of roles; track item.code) {
+            <option [value]="item.code">{{ item.label }}</option>
+          }
+        </select>
+      </label>
+      <button type="submit" class="primary" [disabled]="!canSubmit()">Entrar al mostrador</button>
+    </form>
+  </div>
+  @if (actor(); as current) {
+    <p class="badge info" role="status">Sesión actual {{ current.role.label }} · {{ current.actorId }}</p>
+    <button type="button" class="ghost" (click)="leave.emit()">Salir</button>
+  }
+</section>

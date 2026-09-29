@@ -1,0 +1,84 @@
+<section class="page">
+  <h2>Arqueo</h2>
+  <p class="lede">La apertura no se edita. El cierre queda append-only.</p>
+  <p class="gap-note">Los movimientos son los de esta consola. No hay un listado HTTP de la caja.</p>
+  <p class="actions"><a routerLink="/caja" class="ghost">Volver a caja</a></p>
+  @if (state().loading) {
+    <p class="skeleton" aria-hidden="true"></p>
+    <p>Cargando sesión…</p>
+  } @else if (!state().session) {
+    <p class="empty">No hay sesión abierta para arquear.</p>
+  } @else {
+    @if (state().session; as session) {
+      <div class="card">
+        <p>Sesión <span class="sku">{{ session.id }}</span> · terminal {{ session.terminalId }}</p>
+        <p>Apertura <span class="money" [attr.aria-label]="'Efectivo ' + format(session.openingCash)">{{ format(session.openingCash) }}</span></p>
+        <p>Cobrado en efectivo <span class="money" [attr.aria-label]="'Efectivo ' + format(state().cashIn)">{{ format(state().cashIn) }}</span></p>
+        <p>Gastos <span class="money" [attr.aria-label]="'Efectivo ' + format(state().expenseTotal)">{{ format(state().expenseTotal) }}</span></p>
+        <p>Esperado en esta consola <span class="money" [attr.aria-label]="'Efectivo ' + format(state().expected)">{{ format(state().expected) }}</span></p>
+      </div>
+      @if (state().movements.length === 0) {
+        <p class="empty">Sin movimientos en esta consola.</p>
+      } @else {
+        <table>
+          <caption>Movimientos de esta consola</caption>
+          <thead>
+            <tr><th>Detalle</th><th>Efectivo</th></tr>
+          </thead>
+          <tbody>
+            @for (line of state().movements; track $index) {
+              <tr>
+                <td>{{ line.label }}</td>
+                <td class="money" [attr.aria-label]="'Efectivo ' + format(line.amount)">{{ format(line.amount) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+      @if (state().closed) {
+        <p class="badge ok" role="status">Cierre append-only registrado.</p>
+        <p>Declarado <span class="money" [attr.aria-label]="'Efectivo ' + format(session.closingCashDeclared)">{{ format(session.closingCashDeclared) }}</span></p>
+        <p>Diferencia <span class="money" [attr.aria-label]="'Efectivo ' + format(difference())">{{ format(difference()) }}</span></p>
+      } @else {
+        <form class="card" (ngSubmit)="submit()">
+          <label>Declarado
+            <input name="declared" type="number" min="0" class="money" [(ngModel)]="declared" [disabled]="state().writesDisabled" [attr.aria-label]="'Efectivo ' + format(declared)" />
+          </label>
+          <label>Motivo
+            <input name="reason" [(ngModel)]="reason" [disabled]="state().writesDisabled" required />
+          </label>
+          <p>Diferencia <span class="money" [attr.aria-label]="'Efectivo ' + format(difference())">{{ format(difference()) }}</span></p>
+          @if (difference() !== 0 && reason.trim().length === 0) {
+            <p class="error">La diferencia necesita un motivo.</p>
+          }
+          @if (state().error) {
+            <p class="error">{{ state().error }}</p>
+          }
+          <button type="submit" class="primary" [disabled]="!canClose() || state().busy || state().writesDisabled">Cerrar sesión</button>
+        </form>
+        @if (dialog() === 'close') {
+          <bs-dialog
+            title="Cerrar sesión de caja"
+            primaryLabel="Cerrar sesión"
+            cancelLabel="Seguir en caja"
+            [danger]="true"
+            [primaryDisabled]="!canClose() || state().busy || state().writesDisabled"
+            (confirmed)="confirmClose()"
+            (dismissed)="dialog.set(null)"
+          >
+            <p>Declara el efectivo. La apertura no se edita. Motivo obligatorio.</p>
+          </bs-dialog>
+        }
+      }
+    }
+  }
+  @if (state().notice) {
+    <p class="badge ok" role="status">{{ state().notice }}</p>
+  }
+  @if (state().error && !state().session) {
+    <div class="retry-row">
+      <p class="error">{{ state().error }}</p>
+      <button type="button" class="ghost" (click)="retry.emit()">Reintentar</button>
+    </div>
+  }
+</section>

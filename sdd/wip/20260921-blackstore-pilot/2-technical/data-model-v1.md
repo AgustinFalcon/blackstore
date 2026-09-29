@@ -2,6 +2,8 @@
 
 PostgreSQL 16 propio. StoreCore references son opacas/API, nunca cross-DB FKs. Historical event tables are immutable; projections/work queues have narrowly scoped mutable roles. IDs identity, timestamps TIMESTAMPTZ, money NUMERIC(14,2).
 
+V4 (`V4__record_sales_without_fiscal_block.sql`) reemplaza las funciones de V1 que rechazaban un COMMITTED o un alta de producción sin autorización fiscal. La venta presencial se registra igual. El volcado de abajo conserva el esquema original de V1.
+
 ```sql
 CREATE ROLE blackstore_migration_owner NOINHERIT;
 CREATE ROLE blackstore_app NOINHERIT;

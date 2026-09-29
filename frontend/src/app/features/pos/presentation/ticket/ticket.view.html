@@ -1,0 +1,154 @@
+<section class="page">
+  <h2>Ticket</h2>
+  <p class="lede">La reserva y la confirmación corren en el simulador local. Esta pantalla no emite factura.</p>
+  @if (state().blockReason) {
+    <p class="banner warn" [attr.role]="state().writesDisabled ? 'alert' : 'status'">{{ state().blockReason }}</p>
+  }
+  @if (state().loading) {
+    <p class="skeleton" aria-hidden="true"></p>
+    <p>Cargando puesto…</p>
+  }
+  <div class="card">
+    <h3>Línea</h3>
+    <table>
+      <caption>Snapshot de la línea</caption>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Nombre</th>
+          <th>Cantidad</th>
+          <th>Original</th>
+          <th>Descuento</th>
+          <th>Effective</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="sku">{{ sku || '—' }}</td>
+          <td>{{ productName || '—' }}</td>
+          <td>{{ quantity }}</td>
+          <td class="money" [attr.aria-label]="'Efectivo ' + format(originalUnitPrice)">{{ format(originalUnitPrice) }}</td>
+          <td class="money" [attr.aria-label]="'Efectivo ' + format(discountAmount)">{{ format(discountAmount) }}</td>
+          <td class="money" [attr.aria-label]="'Efectivo ' + format(effective())">{{ format(effective()) }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Cobrado <span class="money" [attr.aria-label]="'Efectivo ' + format(collected())">{{ format(collected()) }}</span>
+      · comisiones <span class="money" [attr.aria-label]="'Efectivo ' + format(fee)">{{ format(fee) }}</span>
+    </p>
+  </div>
+  <form class="card" (ngSubmit)="reserve.emit(request())">
+    <p>
+      Sesión
+      @if (state().sessionId) {
+        <span class="sku">{{ state().sessionId }}</span>
+      } @else {
+        sin abrir
+      }
+    </p>
+    <label>SKU del catálogo
+      <select name="sku" [ngModel]="sku" (ngModelChange)="applySku($event)">
+        @for (item of state().items; track item.sku) {
+          <option [value]="item.sku">{{ item.sku }} · {{ item.name }}</option>
+        }
+      </select>
+    </label>
+    <p>Variante <span class="sku">{{ variantId || '—' }}</span> · versión de precio <span class="sku">{{ priceVersion }}</span></p>
+    <label>Producto <input name="productName" [ngModel]="productName" readonly /></label>
+    <label>Cantidad <input name="quantity" type="number" min="1" [(ngModel)]="quantity" /></label>
+    <label>Precio original <input name="price" type="number" min="0" class="money" [(ngModel)]="originalUnitPrice" [attr.aria-label]="'Efectivo ' + format(originalUnitPrice)" /></label>
+    <label>Descuento <input name="discount" type="number" min="0" class="money" [(ngModel)]="discountAmount" [attr.aria-label]="'Efectivo ' + format(discountAmount)" /></label>
+    <label>Importe efectivo <input name="amount" type="number" min="0.01" class="money" [(ngModel)]="amount" [attr.aria-label]="'Efectivo ' + format(amount)" /></label>
+    <label>Comisión <input name="fee" type="number" min="0" class="money" [(ngModel)]="fee" [attr.aria-label]="'Efectivo ' + format(fee)" /></label>
+    <label>Segundo medio
+      <select name="secondMethod" [(ngModel)]="secondMethodCode">
+        @for (method of methods; track method.code) {
+          <option [value]="method.code">{{ method.label }}</option>
+        }
+      </select>
+    </label>
+    <label>Segundo importe <input name="secondAmount" type="number" min="0" class="money" [(ngModel)]="secondAmount" [attr.aria-label]="'Efectivo ' + format(secondAmount)" /></label>
+    <p class="actions">
+      <button type="submit" class="primary" [disabled]="state().reserveDisabled || state().busy || !lineReady()">{{ state().reserveLabel }}</button>
+      <button type="button" class="ghost" (click)="dialog.set('fiscal')">Estado fiscal</button>
+    </p>
+    <div class="keypad" aria-label="Teclado numérico">
+      <button type="button" (click)="keypadTarget.set('quantity')">Cantidad</button>
+      <button type="button" (click)="keypadTarget.set('amount')">Importe</button>
+      <button type="button" (click)="clearKeypad()">C</button>
+      @for (key of keys; track key) {
+        <button type="button" (click)="appendKey(key)">{{ key }}</button>
+      }
+    </div>
+  </form>
+  @if (state().sale; as sale) {
+    <div class="card">
+      <p>Estado <span class="badge info">{{ sale.status.label }}</span></p>
+      <p>Cuádruple</p>
+      <div class="quadruple">
+        <p>client <span class="sku">{{ sale.clientInstanceId }}</span></p>
+        <p>device <span class="sku">{{ sale.deviceId }}</span></p>
+        <p>sale <span class="sku">{{ sale.saleId }}</span></p>
+        <p>operation <span class="sku">{{ sale.operationId }}</span></p>
+      </div>
+      @if (state().message) {
+        <p role="status">{{ state().message }}</p>
+      }
+      <p class="actions">
+        <button type="button" class="ghost" [disabled]="state().busy" (click)="refresh.emit()">Consultar estado</button>
+        <button type="button" class="primary" [disabled]="!state().canCommit || state().busy" (click)="dialog.set('commit')">Confirmar venta</button>
+        <button type="button" class="ghost" [disabled]="!state().canRelease || state().busy" (click)="dialog.set('release')">Liberar reserva</button>
+        @if (state().canRetryPay) {
+          <button type="button" class="ghost" [disabled]="state().busy" (click)="retryPay.emit(request())">Reintentar cobro</button>
+        }
+        <a class="ghost" [routerLink]="['/ticket', sale.saleId]">Ver ticket</a>
+      </p>
+      @for (payment of sale.payments; track payment.id) {
+        <p>
+          Pago {{ payment.id }} {{ payment.method.label }} {{ payment.status.label }}
+          · cobrado <span class="money" [attr.aria-label]="'Efectivo ' + format(payment.amount)">{{ format(payment.amount) }}</span>
+          · comisión <span class="money" [attr.aria-label]="'Efectivo ' + format(payment.feeAmount)">{{ format(payment.feeAmount) }}</span>
+          @if (payment.status.collected) {
+            <button type="button" class="ghost" (click)="openReverse(payment.id)">Reversar</button>
+          }
+        </p>
+      }
+    </div>
+  }
+  @if (state().error) {
+    <p class="error" role="alert">{{ state().error }}</p>
+  }
+</section>
+
+@if (dialog() === 'commit') {
+  <bs-dialog title="Confirmar venta" primaryLabel="Confirmar" cancelLabel="Cancelar" [primaryDisabled]="state().busy" (confirmed)="commit.emit(); dialog.set(null)" (dismissed)="dialog.set(null)">
+    <p>Registra la venta local. El ticket del mostrador ya se facturó. Esta pantalla no emite.</p>
+  </bs-dialog>
+}
+@if (dialog() === 'release') {
+  <bs-dialog title="Liberar reserva" primaryLabel="Liberar" cancelLabel="Cancelar" [primaryDisabled]="state().busy" (confirmed)="release.emit(); dialog.set(null)" (dismissed)="dialog.set(null)">
+    <p>Devuelve stock del simulador. Misma cuádruple.</p>
+  </bs-dialog>
+}
+@if (dialog() === 'reverse') {
+  <bs-dialog title="Reversar cobro" primaryLabel="Reversar" cancelLabel="Cancelar" [danger]="true" [primaryDisabled]="reversalReason.trim().length === 0 || state().busy" (confirmed)="confirmReverse()" (dismissed)="dialog.set(null)">
+    <p>Referencia el pago original. Motivo obligatorio. No borra el ticket.</p>
+    <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" required /></label>
+  </bs-dialog>
+}
+@if (dialog() === 'stock') {
+  <bs-dialog title="Sin stock vendible" primaryLabel="Entendido" (confirmed)="closePrompt()" (dismissed)="closePrompt()">
+    <p>INSUFFICIENT_STOCK. Cantidad disponible: {{ state().prompt?.availableQuantity ?? 'no informada' }}. Nuevo X-Operation-Id, mismo X-Sale-Id.</p>
+  </bs-dialog>
+}
+@if (dialog() === 'stale') {
+  <bs-dialog title="Catálogo vencido" primaryLabel="Volver al catálogo" (confirmed)="closePrompt(); goCatalog.emit()" (dismissed)="closePrompt()">
+    <p>validUntil pasado o fixture unavailable.</p>
+  </bs-dialog>
+}
+@if (dialog() === 'fiscal') {
+  <bs-dialog title="Ticket ya emitido" primaryLabel="Entendido" (confirmed)="dialog.set(null)" (dismissed)="dialog.set(null)">
+    <p>El mostrador ya facturó al emitir el ticket. BlackStore registra la venta y no la frena.</p>
+  </bs-dialog>
+}

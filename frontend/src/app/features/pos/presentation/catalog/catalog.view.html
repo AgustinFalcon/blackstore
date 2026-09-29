@@ -1,0 +1,62 @@
+<section class="page">
+  <h2>Catálogo</h2>
+  <p class="lede">Catálogo de solo lectura. Si está vencido o cerrado, la venta nueva queda deshabilitada.</p>
+  @if (state().loading) {
+    <div class="card">
+      <p class="skeleton" aria-hidden="true"></p>
+      <p>Cargando catálogo…</p>
+    </div>
+  } @else if (state().error) {
+    <div class="retry-row">
+      <p class="error">{{ state().error }}</p>
+      <button type="button" class="ghost" (click)="retry.emit()">Reintentar</button>
+    </div>
+  } @else if (state().catalog; as item) {
+    <div class="card">
+      <p>
+        Versión <span class="sku">{{ item.version ?? 'sin versión' }}</span>
+        <span class="badge" [class.ok]="!item.stale && item.items.length > 0" [class.warn]="item.stale || item.items.length === 0">
+          {{ item.stale || item.items.length === 0 ? 'vencido' : 'vigente' }}
+        </span>
+      </p>
+      <p>Importado {{ item.importedAt ?? '—' }} · vigente hasta {{ item.validUntil ?? '—' }}</p>
+      @if (item.stale || item.items.length === 0) {
+        <p class="banner warn" role="status">Catálogo vencido. No inicies una venta nueva.</p>
+      }
+    </div>
+    @if (item.items.length) {
+      <table>
+        <caption>Catálogo de solo lectura</caption>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Nombre</th>
+            <th>Variante</th>
+            <th>Versión de precio</th>
+            <th>Precio unitario</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of item.items; track row.sku) {
+            <tr>
+              <td class="sku">{{ row.sku }}</td>
+              <td>{{ row.name }}</td>
+              <td class="sku">{{ row.variantId }}</td>
+              <td class="sku">{{ row.priceVersion || 'la carga el cajero' }}</td>
+              <td class="money" [attr.aria-label]="'Efectivo ' + format(row.unitPrice)">{{ format(row.unitPrice) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <p class="empty">No hay SKUs en la proyección.</p>
+    }
+    <p class="actions">
+      @if (state().saleDisabled) {
+        <button type="button" disabled>Venta nueva</button>
+      } @else {
+        <a routerLink="/ticket" class="primary">Venta nueva</a>
+      }
+    </p>
+  }
+</section>

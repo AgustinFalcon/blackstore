@@ -1,0 +1,88 @@
+<section class="page">
+  <h2>Caja</h2>
+  <p class="lede">Una sesión abierta por terminal. La apertura no se edita.</p>
+  <p>Persistencia <span class="sku">{{ state().persistence }}</span></p>
+  @if (state().loading) {
+    <p class="skeleton" aria-hidden="true"></p>
+    <p>Cargando puesto de trabajo…</p>
+  }
+  @if (state().error) {
+    <div class="retry-row">
+      <p class="error">{{ state().error }}</p>
+      <button type="button" class="ghost" (click)="retry.emit()">Reintentar</button>
+    </div>
+  }
+  @if (state().notice) {
+    <p class="badge ok" role="status">{{ state().notice }}</p>
+  }
+  @if (!state().loading && !state().session) {
+    <p class="empty">No hay sesión abierta en este terminal.</p>
+    <form class="card" (ngSubmit)="submitOpen()">
+      <label>Terminal
+        <input name="terminalId" type="number" min="1" required [ngModel]="terminalId || state().terminalId" (ngModelChange)="terminalId = $event" />
+      </label>
+      <label>Cajero
+        <input name="cashierId" type="number" min="1" required [ngModel]="state().lockCashier ? state().cashierId : (cashierId || state().cashierId)" (ngModelChange)="cashierId = $event" [readonly]="state().lockCashier" />
+      </label>
+      <label>Apertura
+        <input name="openingCash" type="number" min="0" class="money" required [(ngModel)]="openingCash" [attr.aria-label]="'Efectivo ' + format(openingCash)" />
+      </label>
+      <button type="submit" class="primary" [disabled]="state().busy || state().writesDisabled">Abrir sesión</button>
+    </form>
+  }
+  @if (state().session; as opened) {
+    <div class="card">
+      <p>
+        Sesión <span class="sku">{{ opened.id }}</span> · terminal {{ opened.terminalId }} · cajero {{ opened.cashierId }}
+        <span class="badge" [class.ok]="opened.status.open" [class.info]="opened.status.closed">{{ opened.status.label }}</span>
+      </p>
+      <p>Apertura <span class="money" [attr.aria-label]="'Efectivo ' + format(opened.openingCash)">{{ format(opened.openingCash) }}</span></p>
+      @if (opened.status.open) {
+        <p class="actions">
+          <button type="button" class="primary" [disabled]="state().writesDisabled" (click)="dialog.set('expense')">Registrar gasto</button>
+          <button type="button" [disabled]="state().writesDisabled" (click)="dialog.set('close')">Cerrar sesión</button>
+          @if (state().canArqueo) {
+            <a routerLink="/caja/cierre" class="ghost">Arqueo</a>
+          }
+        </p>
+      }
+    </div>
+  }
+</section>
+
+@if (dialog() === 'close' && state().session) {
+  <bs-dialog
+    title="Cerrar sesión de caja"
+    primaryLabel="Cerrar sesión"
+    cancelLabel="Seguir en caja"
+    [danger]="true"
+    [primaryDisabled]="!closeReady() || state().busy"
+    (confirmed)="submitClose()"
+    (dismissed)="dialog.set(null)"
+  >
+    <p>Declara el efectivo. La apertura no se edita. Motivo obligatorio.</p>
+    <label>Declarado
+      <input name="declared" type="number" min="0" class="money" [(ngModel)]="declared" [attr.aria-label]="'Efectivo ' + format(declared)" />
+    </label>
+    <label>Motivo de cierre
+      <input name="closeReason" [(ngModel)]="closeReason" required />
+    </label>
+  </bs-dialog>
+}
+@if (dialog() === 'expense' && state().session) {
+  <bs-dialog
+    title="Registrar gasto"
+    primaryLabel="Registrar"
+    cancelLabel="Cancelar"
+    [primaryDisabled]="!expenseReady() || state().busy"
+    (confirmed)="submitExpense()"
+    (dismissed)="dialog.set(null)"
+  >
+    <p>Categoría, importe Efectivo, razón. Append-only.</p>
+    <label>Categoría <input name="category" [(ngModel)]="expenseCategory" required /></label>
+    <label>Importe
+      <input name="expenseAmount" type="number" min="0.01" class="money" [(ngModel)]="expenseAmount" [attr.aria-label]="'Efectivo ' + format(expenseAmount)" />
+    </label>
+    <label>Razón <input name="expenseReason" [(ngModel)]="expenseReason" required /></label>
+  </bs-dialog>
+}
