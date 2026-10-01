@@ -16,5 +16,6 @@
 | tests de contrato e invariantes | TASK-010 | idempotencia, inbox PENDING, reconcile read-only |
 | loopback HTTP en coroutines | issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10) | `delay` + `Dispatchers.IO`, no `Thread.sleep` |
 | `DispatcherProvider` inyectado | issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12) | IO por constructor/Spring; no dominio ni `@Scheduled` |
+| Reusar provider en HTTP nuevo | issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16) | futuro; no código ahora; live/fiscal/ML NO-GO |
 
 ## Adapter dependency map

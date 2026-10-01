@@ -22,7 +22,7 @@ No ocultar ventas, no doble libro, no bypass fiscal.
 
 ## Backend threads
 
-Spring already owns the servlet request thread, `@Transactional` JDBC, and `@Scheduled`. Inject `DispatcherProvider` only at the blocking HTTP infrastructure edge (`StoreCoreHttpTransport`). Domain, ticket saga, and workers do not hop threads. Tests swap `TestDispatcherProvider`. There is no Android `Main` and no Mercado Libre outbox dispatcher.
+Spring already owns the servlet request thread, `@Transactional` JDBC, and `@Scheduled`. Inject `DispatcherProvider` only at the blocking HTTP infrastructure edge (`StoreCoreHttpTransport`, issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12)). Domain, ticket saga, and workers do not hop threads. Tests swap `TestDispatcherProvider`. A new blocking HTTP client later reuses the same bean (issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16)). There is no Android `Main` and no Mercado Libre outbox dispatcher.
 
 ## Real StoreCore adapter (post-GO only)
 
