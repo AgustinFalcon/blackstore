@@ -2,7 +2,7 @@
 
 **Validado:** 2026-09-30  
 **Madurez:** evidencia local en `master`. Companion live no aprobado.  
-**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `885da7d` (PR #8). Sin tag ni publicación.
+**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `d0b9b29` (PR #13, issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12)). Sin tag ni publicación.
 
 ## Precedencia
 
@@ -17,4 +17,4 @@
 
 ## Gate actual
 
-PR #1–#8 mergeados tras dual Grok `APPROVED`. El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`delay`), no `Thread.sleep`. Issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12): el hilo IO llega por `DispatcherProvider` (como GoodLife Android); no se inyecta en dominio ni en workers `@Scheduled`. No es un dispatcher remoto de Mercado Libre. Un arranque normal de StoreCore sigue con el módulo `DISABLED`. GitHub no reportó checks; no es CI verde. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.
+En `origin/master`, PRs #1–#8, #11 y #13 mergearon con dual Grok `APPROVED`. PR #9 mergeó a `integration/blackstore` (`531731f`) y no está en este `master`; no hay par Grok para #9. #10 y #12 son issues (cerrados por PR #11 y #13). El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`delay`), no `Thread.sleep`. Issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12): el hilo IO llega por `DispatcherProvider` (como GoodLife Android); no se inyecta en dominio ni en workers `@Scheduled`. No es un dispatcher remoto de Mercado Libre. Un arranque normal de StoreCore sigue con el módulo `DISABLED`. GitHub no reportó checks; no es CI verde. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.
