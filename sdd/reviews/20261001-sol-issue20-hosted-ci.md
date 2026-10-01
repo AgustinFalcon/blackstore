@@ -14,6 +14,8 @@ The workflow runs real backend tests and frontend tests/build on pull requests a
 
 1. `backend/gradlew` is tracked without the executable bit. The job now invokes it through `bash` so Ubuntu can execute the wrapper without changing repository file modes.
 2. The deny-by-default root `.gitignore` originally excluded `.github/workflows/verify.yml`. A narrow allowlist now exposes only that workflow path.
+3. Every third-party action is pinned to the full commit SHA of a maintained official release; the release remains visible in an inline comment for updates and auditability.
+4. Both checkout steps set `persist-credentials: false`, so Gradle, npm lifecycle scripts and tests do not retain the repository token in Git configuration.
 
 ## Local evidence
 
