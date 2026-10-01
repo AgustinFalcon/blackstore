@@ -6,43 +6,43 @@ import {
 } from '../domain/pos-types';
 
 export interface CashSessionWire {
-  id: number;
-  terminalId: number;
-  cashierId: number;
-  status: unknown;
-  openingCash: number;
+  readonly id: number;
+  readonly terminalId: number;
+  readonly cashierId: number;
+  readonly status: unknown;
+  readonly openingCash: number;
 }
 
 export interface CashSessionData extends Omit<CashSessionWire, 'status'> {
-  status: CashSessionStatus;
+  readonly status: CashSessionStatus;
 }
 
 export interface WorkspaceWire {
-  terminalId: number;
-  cashierId: number;
-  persistence: unknown;
+  readonly terminalId: number;
+  readonly cashierId: number;
+  readonly persistence: unknown;
 }
 
 export interface WorkspaceData extends Omit<WorkspaceWire, 'persistence'> {
-  persistence: PersistenceMode;
+  readonly persistence: PersistenceMode;
 }
 
 export interface ShiftReportWire {
-  grossSales: number;
-  discounts: number;
-  netSales: number;
-  refunds: number;
-  collected: number;
-  feesPaid: number;
-  expensesPaid: number;
-  operatingCashFlow: number;
-  margin: number | null;
-  formulaName: unknown;
-  fiscalResult: boolean;
-  periodKind: unknown;
+  readonly grossSales: number;
+  readonly discounts: number;
+  readonly netSales: number;
+  readonly refunds: number;
+  readonly collected: number;
+  readonly feesPaid: number;
+  readonly expensesPaid: number;
+  readonly operatingCashFlow: number;
+  readonly margin: number | null;
+  readonly formulaName: unknown;
+  readonly fiscalResult: boolean;
+  readonly periodKind: unknown;
 }
 
 export interface ShiftReportData extends Omit<ShiftReportWire, 'formulaName' | 'periodKind'> {
-  formulaName: ReportFormula;
-  periodKind: ReportPeriod;
+  readonly formulaName: ReportFormula;
+  readonly periodKind: ReportPeriod;
 }
