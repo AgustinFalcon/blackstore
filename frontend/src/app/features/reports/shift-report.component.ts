@@ -1,22 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { API_BASE } from '../../core/api';
+import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
-
-interface ShiftReportData {
-  grossSales: number;
-  discounts: number;
-  netSales: number;
-  refunds: number;
-  collected: number;
-  feesPaid: number;
-  expensesPaid: number;
-  operatingCashFlow: number;
-  margin: number | null;
-  formulaName: string;
-  fiscalResult: boolean;
-  periodKind: string;
-}
+import { ShiftReportData, ShiftReportWire } from '../../core/models/pos-models';
 
 @Component({
   selector: 'bs-shift-report',
@@ -76,11 +63,11 @@ interface ShiftReportData {
             </dd>
           </div>
         </div>
-        <p>{{ item.formulaName }} · {{ item.periodKind }} · {{ fiscalLabel(item.fiscalResult) }}</p>
+        <p>{{ item.formulaName.label }} · {{ item.periodKind.label }} · {{ fiscalLabel(item.fiscalResult) }}</p>
       }
       @if (daily(); as item) {
         <div class="card">
-          <p>Día · {{ item.formulaName }} · {{ item.periodKind }} · neto <span class="money">{{ item.netSales }}</span> · caja operativa <span class="money">{{ item.operatingCashFlow }}</span> · {{ fiscalLabel(item.fiscalResult) }}</p>
+          <p>Día · {{ item.formulaName.label }} · {{ item.periodKind.label }} · neto <span class="money">{{ item.netSales }}</span> · caja operativa <span class="money">{{ item.operatingCashFlow }}</span> · {{ fiscalLabel(item.fiscalResult) }}</p>
         </div>
       }
       @if (error() && !report()) {
@@ -110,9 +97,9 @@ export class ShiftReportComponent implements OnInit {
   load(): void {
     this.loading.set(true);
     this.error.set(null);
-    this.http.get<BaseResponse<ShiftReportData>>(`${API_BASE}/reports/shift`).subscribe({
+    this.http.get<BaseResponse<ShiftReportWire>>(`${API_BASE}/reports/shift`).subscribe({
       next: (response) => {
-        this.report.set(response.data);
+        this.report.set(response.data ? PosWireMapper.report(response.data) : null);
         this.loading.set(false);
       },
       error: () => {
@@ -120,8 +107,8 @@ export class ShiftReportComponent implements OnInit {
         this.loading.set(false);
       },
     });
-    this.http.get<BaseResponse<ShiftReportData>>(`${API_BASE}/reports/daily`).subscribe({
-      next: (response) => this.daily.set(response.data),
+    this.http.get<BaseResponse<ShiftReportWire>>(`${API_BASE}/reports/daily`).subscribe({
+      next: (response) => this.daily.set(response.data ? PosWireMapper.report(response.data) : null),
     });
   }
 }

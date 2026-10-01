@@ -29,7 +29,7 @@ import { CounterContextService } from '../../../core/services/counter-context.se
           } @else {
             <p class="empty">No hay sesión de caja abierta.</p>
           }
-          <p>Persistencia <span class="sku">{{ counter.persistence() }}</span></p>
+          <p>Persistencia <span class="sku">{{ counter.persistence().label }}</span></p>
           @if (counter.blockReason(); as reason) {
             <p class="banner warn" role="status">{{ reason }}</p>
           }

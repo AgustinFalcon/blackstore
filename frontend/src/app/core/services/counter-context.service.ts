@@ -1,7 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { API_BASE } from '../api';
+import { PersistenceMode } from '../domain/pos-types';
+import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../models/base-response';
+import { CashSessionData, CashSessionWire, WorkspaceWire } from '../models/pos-models';
 
 export interface CatalogItem {
   sku: string;
@@ -19,14 +22,6 @@ export interface CatalogSnapshot {
   items: CatalogItem[];
 }
 
-export interface OpenCashSession {
-  id: number;
-  terminalId: number;
-  cashierId: number;
-  status: string;
-  openingCash: number;
-}
-
 @Injectable({ providedIn: 'root' })
 export class CounterContextService {
   private readonly http = inject(HttpClient);
@@ -34,9 +29,9 @@ export class CounterContextService {
   readonly loading = signal(true);
   readonly catalog = signal<CatalogSnapshot | null>(null);
   readonly catalogError = signal<string | null>(null);
-  readonly openSession = signal<OpenCashSession | null>(null);
+  readonly openSession = signal<CashSessionData | null>(null);
   readonly cashierId = signal(1);
-  readonly persistence = signal('memory');
+  readonly persistence = signal(PersistenceMode.Unknown);
 
   readonly blockReason = computed(() => {
     if (this.loading()) return 'Comprobando caja y catálogo…';
@@ -58,20 +53,21 @@ export class CounterContextService {
       if (pending === 0) this.loading.set(false);
     };
 
-    this.http.get<BaseResponse<{ terminalId: number; cashierId: number; persistence: string }>>(`${API_BASE}/workspace`).subscribe({
+    this.http.get<BaseResponse<WorkspaceWire>>(`${API_BASE}/workspace`).subscribe({
       next: (response) => {
         if (response.data) {
-          this.cashierId.set(response.data.cashierId);
-          this.persistence.set(response.data.persistence);
+          const workspace = PosWireMapper.workspace(response.data);
+          this.cashierId.set(workspace.cashierId);
+          this.persistence.set(workspace.persistence);
         }
         finish();
       },
       error: () => finish(),
     });
 
-    this.http.get<BaseResponse<OpenCashSession[]>>(`${API_BASE}/cash-sessions`).subscribe({
+    this.http.get<BaseResponse<CashSessionWire[]>>(`${API_BASE}/cash-sessions`).subscribe({
       next: (response) => {
-        this.openSession.set(response.data?.find((item) => item.status === 'OPEN') ?? null);
+        this.openSession.set(PosWireMapper.cashSessions(response.data).find((item) => item.status.isOpen) ?? null);
         finish();
       },
       error: () => {
