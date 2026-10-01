@@ -7,8 +7,10 @@ import com.blackstore.application.storecore.StoreCoreTransportTelemetry
 import com.blackstore.domain.exception.BlockedStoreCoreIntegrationException
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.model.StoreCoreCanonicalContract
+import com.blackstore.infrastructure.concurrency.TestDispatcherProvider
 import com.blackstore.infrastructure.storecore.StoreCoreHttpTransport
 import com.sun.net.httpserver.HttpServer
+import kotlinx.coroutines.CoroutineDispatcher
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.assertThrows
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.CoroutineContext
 
 class StoreCoreHttpTransportTest {
 
@@ -48,7 +51,7 @@ class StoreCoreHttpTransportTest {
             StoreCoreDispatchGuard.assertCanDispatch(settings(capabilityActive = false))
         }
         assertThrows<BlockedStoreCoreIntegrationException> {
-            StoreCoreHttpTransport(settings(identityRef = "", tokenRef = "tok-ref"), { "x" }).get(quadruple)
+            http(settings(identityRef = "", tokenRef = "tok-ref"), { "x" }).get(quadruple)
         }
         assertEquals(0, posts.get() + gets.get())
     }
@@ -79,9 +82,12 @@ class StoreCoreHttpTransportTest {
     fun loopbackGetAttachesBearerAndCanonicalHeaders() {
         startServer()
         val transport =
-            StoreCoreHttpTransport(settings(), { ref ->
-                if (ref == "tok-ref") "synthetic-not-reusable" else null
-            })
+            http(
+                settings(),
+                resolveToken = { ref ->
+                    if (ref == "tok-ref") "synthetic-not-reusable" else null
+                },
+            )
         val response = transport.get(quadruple)
         assertEquals(200, response.status)
         assertEquals("Bearer synthetic-not-reusable", lastHeaders["authorization"])
@@ -94,7 +100,7 @@ class StoreCoreHttpTransportTest {
     @Test
     fun uncertainPostRecoversWithGetAndDoesNotRepost() {
         startServer(dropFirstPost = true)
-        val transport = StoreCoreHttpTransport(settings(timeoutMs = 500), { "synthetic-not-reusable" })
+        val transport = http(settings(timeoutMs = 500))
         val response = transport.post("${StoreCoreCanonicalContract.CANONICAL_PATH}/reservations", "{}", quadruple)
         assertTrue(response.recoveredViaGet)
         assertEquals(1, posts.get())
@@ -105,7 +111,7 @@ class StoreCoreHttpTransportTest {
     @Test
     fun defaultCoroutineWaitHonorsZeroRetryAfter() {
         startServer(rateLimitPosts = 1)
-        val transport = StoreCoreHttpTransport(settings(maxRetries = 2), { "synthetic-not-reusable" })
+        val transport = http(settings(maxRetries = 2))
         val response = transport.post("${StoreCoreCanonicalContract.CANONICAL_PATH}/reservations", "{}", quadruple)
         assertEquals(200, response.status)
         assertEquals(1, response.retryCount)
@@ -113,9 +119,30 @@ class StoreCoreHttpTransportTest {
     }
 
     @Test
+    fun injectedDispatcherReceivesHttpHop() {
+        val hops = AtomicInteger()
+        val recording =
+            object : CoroutineDispatcher() {
+                override fun dispatch(context: CoroutineContext, block: Runnable) {
+                    hops.incrementAndGet()
+                    block.run()
+                }
+            }
+        startServer()
+        val transport = StoreCoreHttpTransport(
+            settings(),
+            { "synthetic-not-reusable" },
+            dispatchers = TestDispatcherProvider(recording),
+        )
+        val response = transport.get(quadruple)
+        assertEquals(200, response.status)
+        assertTrue(hops.get() >= 1)
+    }
+
+    @Test
     fun completedPostRetryAfterKeepsSameQuadruple() {
         startServer(rateLimitPosts = 1)
-        val transport = StoreCoreHttpTransport(settings(maxRetries = 2), { "synthetic-not-reusable" }) { }
+        val transport = http(settings(maxRetries = 2), sleeper = { })
         val response = transport.post("${StoreCoreCanonicalContract.CANONICAL_PATH}/reservations", "{}", quadruple)
         assertEquals(200, response.status)
         assertEquals(1, response.retryCount)
@@ -126,7 +153,7 @@ class StoreCoreHttpTransportTest {
     @Test
     fun getHonorsRetryAfterWithinBound() {
         startServer(rateLimitGets = 1)
-        val transport = StoreCoreHttpTransport(settings(maxRetries = 2), { "synthetic-not-reusable" }) { }
+        val transport = http(settings(maxRetries = 2), sleeper = { })
         val response = transport.get(quadruple)
         assertEquals(200, response.status)
         assertEquals(1, response.retryCount)
@@ -216,4 +243,17 @@ class StoreCoreHttpTransportTest {
         version = StoreCoreCanonicalContract.VERSION,
         digest = StoreCoreCanonicalContract.SHA256,
     )
+
+    private fun http(
+        settings: StoreCoreTransportSettings,
+        resolveToken: (String) -> String? = { "synthetic-not-reusable" },
+        sleeper: ((Long) -> Unit)? = null,
+    ): StoreCoreHttpTransport {
+        val dispatchers = TestDispatcherProvider()
+        return if (sleeper == null) {
+            StoreCoreHttpTransport(settings, resolveToken, dispatchers = dispatchers)
+        } else {
+            StoreCoreHttpTransport(settings, resolveToken, dispatchers = dispatchers, sleeper = sleeper)
+        }
+    }
 }

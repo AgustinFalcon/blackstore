@@ -14,5 +14,7 @@
 | pos-core ISSUE | `20260921-blackstore-pos-core` | **superseded** — evidencia histórica |
 | caja y arqueo | TASK-007 | AC-5 |
 | tests de contrato e invariantes | TASK-010 | idempotencia, inbox PENDING, reconcile read-only |
+| loopback HTTP en coroutines | issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10) | `delay` + `Dispatchers.IO`, no `Thread.sleep` |
+| `DispatcherProvider` inyectado | issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12) | IO por constructor/Spring; no dominio ni `@Scheduled` |
 
 ## Adapter dependency map

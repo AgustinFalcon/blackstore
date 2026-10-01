@@ -7,6 +7,8 @@ import com.blackstore.domain.model.StoreCoreCanonicalContract
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import com.blackstore.domain.port.out.storecore.StoreCoreInventoryPort
+import com.blackstore.infrastructure.concurrency.DispatcherProvider
+import com.blackstore.infrastructure.concurrency.ServerDispatcherProvider
 import com.blackstore.infrastructure.storecore.FixtureCatalogAdapter
 import com.blackstore.infrastructure.storecore.LoopbackCatalogAdapter
 import com.blackstore.infrastructure.storecore.TransportStoreCoreInventoryAdapter
@@ -96,9 +98,17 @@ class DefaultStoreCoreBeansTest {
     @Autowired
     private lateinit var catalog: StoreCoreCatalogPort
 
+    @Autowired
+    private lateinit var dispatchers: DispatcherProvider
+
     @Test
     fun defaultCatalogStaysOnTheFixture() {
         assertInstanceOf(FixtureCatalogAdapter::class.java, catalog)
+    }
+
+    @Test
+    fun dispatcherProviderIsServerIo() {
+        assertInstanceOf(ServerDispatcherProvider::class.java, dispatchers)
     }
 }
 
@@ -111,9 +121,13 @@ class LoopbackStoreCoreBeansTest {
     @Autowired
     private lateinit var inventory: StoreCoreInventoryPort
 
+    @Autowired
+    private lateinit var dispatchers: DispatcherProvider
+
     @Test
     fun loopbackProfileUsesHttpPorts() {
         assertInstanceOf(LoopbackCatalogAdapter::class.java, catalog)
         assertInstanceOf(TransportStoreCoreInventoryAdapter::class.java, inventory)
+        assertInstanceOf(ServerDispatcherProvider::class.java, dispatchers)
     }
 }
