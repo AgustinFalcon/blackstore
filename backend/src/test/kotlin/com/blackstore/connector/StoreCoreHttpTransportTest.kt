@@ -103,6 +103,16 @@ class StoreCoreHttpTransportTest {
     }
 
     @Test
+    fun defaultCoroutineWaitHonorsZeroRetryAfter() {
+        startServer(rateLimitPosts = 1)
+        val transport = StoreCoreHttpTransport(settings(maxRetries = 2), { "synthetic-not-reusable" })
+        val response = transport.post("${StoreCoreCanonicalContract.CANONICAL_PATH}/reservations", "{}", quadruple)
+        assertEquals(200, response.status)
+        assertEquals(1, response.retryCount)
+        assertEquals(2, posts.get())
+    }
+
+    @Test
     fun completedPostRetryAfterKeepsSameQuadruple() {
         startServer(rateLimitPosts = 1)
         val transport = StoreCoreHttpTransport(settings(maxRetries = 2), { "synthetic-not-reusable" }) { }

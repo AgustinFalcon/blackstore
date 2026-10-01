@@ -1,8 +1,8 @@
 # Estado canónico del SDD — BlackStore
 
-**Validado:** 2026-09-24  
+**Validado:** 2026-09-30  
 **Madurez:** evidencia local en `master`. Companion live no aprobado.  
-**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). PR #5 mergeado (`c5f6239`). Sin tag ni publicación.
+**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `885da7d` (PR #8). Sin tag ni publicación.
 
 ## Precedencia
 
@@ -17,4 +17,4 @@
 
 ## Gate actual
 
-PR #1 (`87c95cf`), PR #2 (`395ca30`), PR #3 (`e10b525`) y PR #5 (`c5f6239`) mergeados tras dual Grok `APPROVED`. El perfil `loopback` es opt-in. Un stub HTTP local puede alimentar el reserve; un arranque normal de StoreCore sigue con el módulo `DISABLED`, así que los dos procesos no quedan conectados. GitHub no reportó checks; no es CI verde. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.
+PR #1–#8 mergeados tras dual Grok `APPROVED`. El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`Dispatchers.IO` + `delay`), no `Thread.sleep`. No es un dispatcher remoto de Mercado Libre. Un arranque normal de StoreCore sigue con el módulo `DISABLED`. GitHub no reportó checks; no es CI verde. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.

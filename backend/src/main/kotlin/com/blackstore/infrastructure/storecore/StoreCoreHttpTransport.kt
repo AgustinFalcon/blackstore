@@ -6,6 +6,10 @@ import com.blackstore.application.storecore.StoreCoreTransportSettings
 import com.blackstore.application.storecore.StoreCoreTransportTelemetry
 import com.blackstore.domain.exception.BlockedStoreCoreIntegrationException
 import com.blackstore.domain.model.OperationQuadruple
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import java.net.URI
 import java.net.http.HttpClient
@@ -23,12 +27,16 @@ data class StoreCoreTransportResponse(
 /**
  * Local/Testcontainers HTTP only. Capability stays fail-closed unless tests construct this.
  * Token values are resolved at call time and never logged.
+ *
+ * Retry waits and blocking HTTP run on [Dispatchers.IO] via coroutines (issue #10).
+ * This is not a Mercado Libre outbox dispatcher and does not open a live companion.
  */
 class StoreCoreHttpTransport(
     private val settings: StoreCoreTransportSettings,
     private val resolveToken: (String) -> String?,
     private val client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(settings.timeoutMs.toLong())).build(),
-    private val sleeper: (Long) -> Unit = { ms -> if (ms > 0) Thread.sleep(ms) },
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val sleeper: (Long) -> Unit = { ms -> if (ms > 0) runBlocking(io) { delay(ms) } },
 ) {
     private val log = LoggerFactory.getLogger(StoreCoreHttpTransport::class.java)
 
@@ -55,7 +63,7 @@ class StoreCoreHttpTransport(
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .header("Content-Type", "application/json")
                 .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        val response = send(request)
         log.info(StoreCoreTransportTelemetry.line("RECONCILE", settings.digest, "HTTP_${response.statusCode()}", 0, clientInstanceId, settings.identityRef))
         return StoreCoreTransportResponse(response.statusCode(), response.body(), false, 0)
     }
@@ -83,7 +91,7 @@ class StoreCoreHttpTransport(
         var attempt = 0
         while (true) {
             val request = request(method, path, body, quadruple, token)
-            val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+            val response = send(request)
             val retryAfter = response.headers().firstValue("Retry-After").orElse(null)
             val retryable = response.statusCode() == 429
             if (retryable && method == "GET" && StoreCoreRetryPolicy.shouldRetryGet(attempt, settings.maxRetries, true)) {
@@ -100,6 +108,9 @@ class StoreCoreHttpTransport(
             return StoreCoreTransportResponse(response.statusCode(), response.body(), recoveredViaGet, attempt)
         }
     }
+
+    private fun send(request: HttpRequest): HttpResponse<String> =
+        runBlocking(io) { client.send(request, HttpResponse.BodyHandlers.ofString()) }
 
     private fun request(
         method: String,
