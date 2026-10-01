@@ -6,6 +6,7 @@ import com.blackstore.application.storecore.StoreCoreIntegrationProperties
 import com.blackstore.application.storecore.StoreCoreTransportSettings
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.port.out.storecore.OperationRetirementPort
+import com.blackstore.infrastructure.concurrency.DispatcherProvider
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -23,14 +24,21 @@ class StoreCoreLoopbackConfiguration {
         properties.toSettings().also(StoreCoreDispatchGuard::assertCanDispatch)
 
     @Bean
-    fun storeCoreHttpTransport(settings: StoreCoreTransportSettings): StoreCoreHttpTransport =
-        StoreCoreHttpTransport(settings, resolveToken = { ref ->
-            if (ref == StoreCoreIntegrationProperties.LOCAL_LOOPBACK_TOKEN_REF) {
-                StoreCoreIntegrationProperties.LOCAL_LOOPBACK_TOKEN
-            } else {
-                null
-            }
-        })
+    fun storeCoreHttpTransport(
+        settings: StoreCoreTransportSettings,
+        dispatchers: DispatcherProvider,
+    ): StoreCoreHttpTransport =
+        StoreCoreHttpTransport(
+            settings,
+            resolveToken = { ref ->
+                if (ref == StoreCoreIntegrationProperties.LOCAL_LOOPBACK_TOKEN_REF) {
+                    StoreCoreIntegrationProperties.LOCAL_LOOPBACK_TOKEN
+                } else {
+                    null
+                }
+            },
+            dispatchers = dispatchers,
+        )
 
     @Bean
     fun loopbackInventoryPort(

@@ -6,8 +6,8 @@ import com.blackstore.application.storecore.StoreCoreTransportSettings
 import com.blackstore.application.storecore.StoreCoreTransportTelemetry
 import com.blackstore.domain.exception.BlockedStoreCoreIntegrationException
 import com.blackstore.domain.model.OperationQuadruple
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
+import com.blackstore.infrastructure.concurrency.DispatcherProvider
+import com.blackstore.infrastructure.concurrency.ServerDispatcherProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -28,15 +28,15 @@ data class StoreCoreTransportResponse(
  * Local/Testcontainers HTTP only. Capability stays fail-closed unless tests construct this.
  * Token values are resolved at call time and never logged.
  *
- * Retry waits and blocking HTTP run on [Dispatchers.IO] via coroutines (issue #10).
+ * Retry waits and blocking HTTP run on the injected [DispatcherProvider.io] (issues #10/#12).
  * This is not a Mercado Libre outbox dispatcher and does not open a live companion.
  */
 class StoreCoreHttpTransport(
     private val settings: StoreCoreTransportSettings,
     private val resolveToken: (String) -> String?,
     private val client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(settings.timeoutMs.toLong())).build(),
-    private val io: CoroutineDispatcher = Dispatchers.IO,
-    private val sleeper: (Long) -> Unit = { ms -> if (ms > 0) runBlocking(io) { delay(ms) } },
+    private val dispatchers: DispatcherProvider = ServerDispatcherProvider(),
+    private val sleeper: (Long) -> Unit = { ms -> if (ms > 0) runBlocking(dispatchers.io) { delay(ms) } },
 ) {
     private val log = LoggerFactory.getLogger(StoreCoreHttpTransport::class.java)
 
@@ -110,7 +110,7 @@ class StoreCoreHttpTransport(
     }
 
     private fun send(request: HttpRequest): HttpResponse<String> =
-        runBlocking(io) { client.send(request, HttpResponse.BodyHandlers.ofString()) }
+        runBlocking(dispatchers.io) { client.send(request, HttpResponse.BodyHandlers.ofString()) }
 
     private fun request(
         method: String,

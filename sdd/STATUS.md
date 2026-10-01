@@ -17,4 +17,4 @@
 
 ## Gate actual
 
-PR #1–#8 mergeados tras dual Grok `APPROVED`. El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`Dispatchers.IO` + `delay`), no `Thread.sleep`. No es un dispatcher remoto de Mercado Libre. Un arranque normal de StoreCore sigue con el módulo `DISABLED`. GitHub no reportó checks; no es CI verde. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.
+PR #1–#8 mergeados tras dual Grok `APPROVED`. El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`delay`), no `Thread.sleep`. Issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12): el hilo IO llega por `DispatcherProvider` (como GoodLife Android); no se inyecta en dominio ni en workers `@Scheduled`. No es un dispatcher remoto de Mercado Libre. Un arranque normal de StoreCore sigue con el módulo `DISABLED`. GitHub no reportó checks; no es CI verde. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.
