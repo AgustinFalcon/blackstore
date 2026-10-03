@@ -3,6 +3,9 @@
 !/.gitignore
 !/AGENTS.md
 !/README.md
+!/.github/
+!/.github/workflows/
+!/.github/workflows/verify.yml
 !sdd/
 !sdd/**
 !docs/
