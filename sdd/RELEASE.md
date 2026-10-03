@@ -14,4 +14,4 @@
 - [ ] Sol aprueba specs, modelo y tasks.
 - [ ] StoreCore `storecore-pos-integration-contract-v1` con Sol GO (hoy **WIP no approved**).
 - [ ] Secretos por referencia. No credenciales en el repo.
-- [ ] Remote GitHub creado por el titular; este repo aún no tiene `origin`.
+- [x] Remote GitHub creado por el titular: `https://github.com/AgustinFalcon/blackstore` (privado).

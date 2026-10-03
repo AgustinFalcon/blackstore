@@ -1,8 +1,8 @@
 # Estado canónico del SDD — BlackStore
 
-**Validado:** 2026-09-30  
-**Madurez:** evidencia local en `master`. Companion live no aprobado.  
-**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `d0b9b29` (PR #13, issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12)). Sin tag ni publicación.
+**Validado:** 2026-10-02
+**Madurez:** evidencia local en `master`. Companion live no aprobado.
+**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `8fedbeb` (PR #17, issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16)); PR #15 es el stamp intermedio `929d5e0`. Sin tag ni publicación.
 
 ## Precedencia
 
@@ -17,4 +17,6 @@
 
 ## Gate actual
 
-En `origin/master`, PRs #1–#8, #11 y #13 mergearon con dual Grok `APPROVED`. PR #9 mergeó a `integration/blackstore` (`531731f`) y no está en este `master`; no hay par Grok para #9. #10 y #12 son issues (cerrados por PR #11 y #13). El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`delay`), no `Thread.sleep`. Issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12): el hilo IO llega por `DispatcherProvider` (como GoodLife Android); no se inyecta en dominio ni en workers `@Scheduled`. Issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16): reutilizar el mismo provider si aparece otro HTTP bloqueante; sin código ahora. No es un dispatcher remoto de Mercado Libre. Un arranque normal de StoreCore sigue con el módulo `DISABLED`. GitHub no reportó checks; no es CI verde. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.
+En `origin/master`, PRs #1–#8, #11, #13, #15 y #17 mergearon con sus pares Grok `APPROVED`. PR #9 mergeó a `integration/blackstore` (`531731f`) y no está en este `master`; no hay par Grok para #9. #10, #12 y #16 son issues. El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`delay`), no `Thread.sleep`. Issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12): el hilo IO llega por `DispatcherProvider` (como GoodLife Android); no se inyecta en dominio ni en workers `@Scheduled`. Issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16): reutilizar el mismo provider si aparece otro HTTP bloqueante; sin código ahora. No es un dispatcher remoto de Mercado Libre.
+
+PR #19 combina el corte issue #18 de vocabularios wire cerrados para las cinco rutas existentes y el workflow Verify de issue #20. La evidencia local registra build/TypeScript verdes; el runner Angular local no alcanzó assertions y el backend local terminó por un fallo del archivo binario de resultados de Gradle, no por una aserción. Hosted backend/frontend, dual Grok del HEAD final y merge siguen pendientes hasta quedar registrados. No hay cambio de contrato, ruta, backend, perfil, secreto ni activación. Un arranque normal de StoreCore sigue con el módulo `DISABLED`. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.
