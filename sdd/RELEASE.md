@@ -15,3 +15,6 @@
 - [ ] StoreCore `storecore-pos-integration-contract-v1` con Sol GO (hoy **WIP no approved**).
 - [ ] Secretos por referencia. No credenciales en el repo.
 - [x] Remote GitHub creado por el titular: `https://github.com/AgustinFalcon/blackstore` (privado).
+- [ ] Facturación homologada con su contrato, evidencia y responsables aprobados.
+- [ ] Correo Argentino homologado con adapter oficial, credenciales por referencia y evidencia E2E.
+- [ ] Crear `release/1.0` desde el `master` homologado; integrar StoreCore↔BlackStore sólo en ese carril.
