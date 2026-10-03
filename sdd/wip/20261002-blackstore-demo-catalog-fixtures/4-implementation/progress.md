@@ -9,10 +9,10 @@
 - [x] Regresión HTTP focalizada (`CashAndSaleControllerTest`: BUILD SUCCESSFUL).
 - [x] Regresiones del fixture corregidas y revalidadas (`CashAndSaleControllerTest`, `StoreCoreRecoveryPolicyTest`, `AutonomousCoreTest`: BUILD SUCCESSFUL): reserva técnica vacía conserva fallback `price-v1`; la saga con catálogo demo espera `price-demo-1`.
 - [x] Smoke dinámico por el proxy del frontend: `/`, `/caja`, `/catalogo`, `/ticket`, `/reportes`, catálogo de 5 artículos y reserva `RESERVED` con recibo.
-- [ ] Build/test frontend posterior a 22.2.1: bloqueado localmente por ACL de Windows al resolver rutas por encima del workspace; requiere CI hospedado.
+- [x] Build/test frontend posterior a 22.2.1: validado en CI hospedado; el runner local sigue bloqueado por ACL de Windows al resolver rutas por encima del workspace.
 - [ ] Deuda de tooling: la auditoría completa conserva 6 vulnerabilidades altas transitivas del stack Karma/chokidar/braces; no se aplicó el downgrade disruptivo sugerido por `npm audit fix --force`.
 - [x] Reviews Sol 6.1 funcional/SDD y seguridad: APPROVE, sin P0–P3.
-- [x] CI hospedado sobre el SHA publicado: GitHub Actions run `37095442285`, frontend test/build y backend completo exitosos.
+- [x] CI hospedado sobre el SHA publicado: GitHub Actions run `37095651618`, frontend test/build y backend completo exitosos.
 - [x] Las 2 pruebas Testcontainers bloqueadas localmente por daemon Docker inaccesible pasaron en el backend del CI hospedado.
 - [ ] Dos reviews Grok genuinas si el repositorio las exige para el PR final.
 
