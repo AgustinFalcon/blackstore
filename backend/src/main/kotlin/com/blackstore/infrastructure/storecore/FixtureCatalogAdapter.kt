@@ -7,6 +7,7 @@ import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.math.BigDecimal
 import java.time.Instant
 
 @Component
@@ -32,7 +33,11 @@ class FixtureCatalogAdapter(
             stale = false,
             items =
                 listOf(
-                    CatalogItem(sku = "SKU-1", name = "Cafe", variantId = "variant-1"),
+                    CatalogItem("SKU-1", "Café molido 500 g", "variant-1", "price-demo-1", BigDecimal("8490.00")),
+                    CatalogItem("SKU-YERBA-1K", "Yerba mate 1 kg", "variant-yerba-1k", "price-demo-1", BigDecimal("6790.00")),
+                    CatalogItem("SKU-AZUCAR-1K", "Azúcar 1 kg", "variant-azucar-1k", "price-demo-1", BigDecimal("1890.00")),
+                    CatalogItem("SKU-LECHE-1L", "Leche entera 1 l", "variant-leche-1l", "price-demo-1", BigDecimal("2150.00")),
+                    CatalogItem("SKU-GALLE-300", "Galletitas 300 g", "variant-galle-300", "price-demo-1", BigDecimal("3290.00")),
                 ),
         )
 

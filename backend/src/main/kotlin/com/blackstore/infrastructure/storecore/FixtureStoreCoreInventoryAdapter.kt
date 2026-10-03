@@ -49,7 +49,13 @@ class FixtureStoreCoreInventoryAdapter(
             crashBeforeReceipt = false
             throw IllegalStateException("fixture crash before receipt")
         }
-        val receipt = receipt(command.quadruple, StoreCoreOperationKind.RESERVE, StoreCoreOperationState.RESERVED)
+        val receipt =
+            receipt(
+                command.quadruple,
+                StoreCoreOperationKind.RESERVE,
+                StoreCoreOperationState.RESERVED,
+                command.lines.map { it.expectedPriceVersion }.distinct().ifEmpty { listOf("price-v1") },
+            )
         val validated =
             envelopeValidator.requireSuccess(
                 StoreCoreEnvelope(
@@ -123,7 +129,13 @@ class FixtureStoreCoreInventoryAdapter(
             envelopeValidator.requireSuccess(
                 StoreCoreEnvelope(
                     code = 200,
-                    data = receipt(quadruple, kind, state),
+                    data =
+                        receipt(
+                            quadruple,
+                            kind,
+                            state,
+                            receipts[quadruple.operationId]?.acceptedPriceVersions ?: listOf("price-v1"),
+                        ),
                     errorCode = null,
                     retryable = null,
                     message = null,
@@ -138,6 +150,7 @@ class FixtureStoreCoreInventoryAdapter(
         quadruple: OperationQuadruple,
         kind: StoreCoreOperationKind,
         state: StoreCoreOperationState,
+        acceptedPriceVersions: List<String>,
     ) = StoreCoreOperationReceipt(
         quadruple = quadruple,
         kind = kind,
@@ -145,7 +158,7 @@ class FixtureStoreCoreInventoryAdapter(
         reservationRef = "res-${quadruple.operationId}",
         receipt = "rcpt-${quadruple.operationId}",
         contract = StoreCoreContractRef(canonicalPath, contractVersion, "a".repeat(64)),
-        acceptedPriceVersions = listOf("price-v1"),
+        acceptedPriceVersions = acceptedPriceVersions,
         expiresAt = Instant.parse("2026-09-23T00:00:00Z"),
     )
 }

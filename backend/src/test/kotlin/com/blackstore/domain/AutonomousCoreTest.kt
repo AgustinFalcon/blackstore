@@ -113,7 +113,7 @@ class AutonomousCoreTest {
         val reserved = service.beginReserve(quadruple("op-1"), cashSessionId = 1, lines = listOf(line()), now = now)
         assertEquals(SaleStatus.RESERVED, reserved.status)
         assertEquals("rcpt-op-1", reserved.evidence?.receipt)
-        assertEquals(listOf("price-v1"), reserved.evidence?.acceptedPriceVersions)
+        assertEquals(listOf("price-demo-1"), reserved.evidence?.acceptedPriceVersions)
 
         val replay = service.beginReserve(quadruple("op-1"), cashSessionId = 1, lines = listOf(line()), now = now)
         assertEquals(reserved, replay)
