@@ -39,11 +39,11 @@ export class PaymentCoverage {
 }
 
 export class TransitionKind {
-  static readonly NewCommand = new TransitionKind('acción disponible', true);
-  static readonly RecoverExistingCommand = new TransitionKind('consultar operación pendiente', false);
-  static readonly TerminalReplay = new TransitionKind('operación ya completada', false);
-  static readonly Denied = new TransitionKind('acción denegada', false);
-  private constructor(readonly label: string, readonly permitsWrite: boolean) {}
+  static readonly NewCommand = new TransitionKind('acción disponible', true, true);
+  static readonly RecoverExistingCommand = new TransitionKind('recuperar comando pendiente', false, true);
+  static readonly TerminalReplay = new TransitionKind('operación ya completada', false, false);
+  static readonly Denied = new TransitionKind('acción denegada', false, false);
+  private constructor(readonly label: string, readonly permitsWrite: boolean, readonly permitsRequest: boolean) {}
 }
 
 export class TransitionDenial {
@@ -64,6 +64,7 @@ export class TransitionDecision {
   private constructor(readonly kind: TransitionKind, readonly reason: TransitionDenial) {}
   static deny(reason: TransitionDenial): TransitionDecision { return new TransitionDecision(TransitionKind.Denied, reason); }
   get permitsWrite(): boolean { return this.kind.permitsWrite; }
+  get permitsRequest(): boolean { return this.kind.permitsRequest; }
   get label(): string { return this.reason.label || this.kind.label; }
 }
 
@@ -132,7 +133,7 @@ export class TicketTransitionPolicy {
     if (snapshot.status === SaleStatus.Unknown || snapshot.status === SaleStatus.ReconciliationRequired) return TransitionDecision.deny(TransitionDenial.IneligibleState);
     if ((action === SaleAction.Commit && snapshot.status === SaleStatus.Committed) ||
         (action === SaleAction.Release && snapshot.status === SaleStatus.Released)) return TransitionDecision.TerminalReplay;
-    // Pending snapshots retain read-only recovery; the UI never constructs a replacement command.
+    // Pending snapshots may re-dispatch the same terminal route so the backend recovers the stored command.
     if ((action === SaleAction.Commit && snapshot.status === SaleStatus.CommitPending) ||
         (action === SaleAction.Release && snapshot.status === SaleStatus.ReleasePending)) return TransitionDecision.RecoverExistingCommand;
     if (snapshot.status !== SaleStatus.Reserved && snapshot.status !== SaleStatus.PaymentCaptured) return TransitionDecision.deny(TransitionDenial.IneligibleState);

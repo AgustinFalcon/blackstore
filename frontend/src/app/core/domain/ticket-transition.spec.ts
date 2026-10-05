@@ -60,7 +60,10 @@ describe('TicketTransitionPolicy (T01/T11)', () => {
 
   it('separates terminal replay and read-only pending recovery from new writes', () => {
     expect(TicketTransitionPolicy.decide(snapshot({ status: SaleStatus.Committed }), SaleAction.Commit).kind).toBe(TransitionKind.TerminalReplay);
-    expect(TicketTransitionPolicy.decide(snapshot({ status: SaleStatus.CommitPending }), SaleAction.Commit).kind).toBe(TransitionKind.RecoverExistingCommand);
+    const recovery = TicketTransitionPolicy.decide(snapshot({ status: SaleStatus.CommitPending }), SaleAction.Commit);
+    expect(recovery.kind).toBe(TransitionKind.RecoverExistingCommand);
+    expect(recovery.permitsWrite).toBeFalse();
+    expect(recovery.permitsRequest).toBeTrue();
     expect(TicketTransitionPolicy.decide(snapshot({ status: SaleStatus.CommitPending }), SaleAction.Capture, attempt).permitsWrite).toBeFalse();
     expect(TicketTransitionPolicy.decide(snapshot({ status: SaleStatus.Released }), SaleAction.Commit).permitsWrite).toBeFalse();
   });

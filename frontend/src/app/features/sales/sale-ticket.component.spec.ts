@@ -134,4 +134,35 @@ describe('SaleTicketComponent guarded writes (T05/T11)', () => {
     http.expectNone(`${API_BASE}/sales/${identity.operationId}/release`);
     expect(component.canFinish(SaleAction.Release)).toBeFalse();
   });
+
+  it('keeps the first correlated payment when the second split capture fails', () => {
+    component.amount = 10;
+    component.secondAmount = 8;
+    component.reserve();
+    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
+    const identity: TicketIdentity = reserve.request.body;
+    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18'));
+    http.expectOne(`${API_BASE}/payments`).flush(envelope({
+      ...identity, paymentId: 41, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50',
+    }));
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Partial, '8'));
+    http.expectOne(`${API_BASE}/payments`).flush('failed', { status: 503, statusText: 'Unavailable' });
+
+    expect(component.paymentId()).toBe(41);
+    expect(component.canFinish(SaleAction.Reverse)).toBeTrue();
+    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
+  });
+
+  it('re-dispatches a pending terminal route only to recover its existing command', () => {
+    const identity = finishPaidAttempt();
+    component.refresh();
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.CommitPending));
+    expect(component.canFinish(SaleAction.Commit)).toBeTrue();
+
+    component.commit();
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.CommitPending));
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}/commit`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.Committed));
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.Committed));
+    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
+  });
 });

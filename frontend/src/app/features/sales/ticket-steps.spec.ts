@@ -1,4 +1,4 @@
-import { firstValueFrom, of, Subject } from 'rxjs';
+import { firstValueFrom, of, Subject, throwError } from 'rxjs';
 import { PaymentMethod, PaymentStatus, SaleStatus } from '../../core/domain/pos-types';
 import { PaymentCoverage, TicketMoney } from '../../core/domain/ticket-transition';
 import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketPaymentJourney } from './ticket-steps';
@@ -75,5 +75,22 @@ describe('TicketPaymentJourney (T02/T05)', () => {
     port.refresh.and.returnValue(of(envelope({ ...identity, operationId: identity.saleId })));
     await expectAsync(firstValueFrom(journey.execute(context))).toBeRejected();
     expect(port.capture.calls.count()).toBe(2);
+  });
+
+  it('publishes a confirmed first capture before a later split step fails', async () => {
+    const progress: Array<{ pending: string; paymentId: number }> = [];
+    port.capture.and.returnValues(
+      of(envelope({ ...identity, paymentId: 1, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50' })),
+      throwError(() => new Error('second capture failed')),
+    );
+    port.refresh.and.returnValue(of(snapshot('8', PaymentCoverage.Partial)));
+    journey = new TicketPaymentJourney(
+      new ReserveTicketStep(port), new CapturePaymentStep(port), new RefreshTicketStep(port),
+      (result) => progress.push({ pending: result.snapshot.pending!.decimal, paymentId: result.payments[0].paymentId }),
+    );
+
+    await expectAsync(firstValueFrom(journey.execute(context))).toBeRejected();
+
+    expect(progress).toEqual([{ pending: '8.00', paymentId: 1 }]);
   });
 });

@@ -63,6 +63,7 @@ export class TicketPaymentJourney {
     private readonly reserve: ReserveTicketStep,
     private readonly capture: CapturePaymentStep,
     private readonly refresh: RefreshTicketStep,
+    private readonly onProgress: (result: TicketFlowResult) => void = () => undefined,
   ) {}
 
   execute(context: TicketAttemptContext): Observable<TicketFlowResult> {
@@ -79,7 +80,9 @@ export class TicketPaymentJourney {
                 next.pending.cents !== previous.snapshot.pending.cents - payment.amount.cents) {
               throw new Error('El saldo consultado no confirma el pago.');
             }
-            return { snapshot: next, payments: [...previous.payments, payment] };
+            const result = { snapshot: next, payments: [...previous.payments, payment] };
+            this.onProgress(result);
+            return result;
           }))),
         )));
       }

@@ -8,7 +8,7 @@ import { BaseResponse } from '../../core/models/base-response';
 import { CounterContextService } from '../../core/services/counter-context.service';
 import { concatMap, finalize, throwError } from 'rxjs';
 import { PaymentAttempt, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
-import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketPaymentJourney } from './ticket-steps';
+import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, TicketPaymentJourney } from './ticket-steps';
 
 @Component({
   selector: 'bs-sale-ticket',
@@ -158,10 +158,15 @@ export class SaleTicketComponent implements OnInit {
     refresh: (identity) => this.http.get<unknown>(`${API_BASE}/sales/${identity.operationId}`),
   };
   private readonly refreshStep = new RefreshTicketStep(this.port);
-  private readonly journey = new TicketPaymentJourney(new ReserveTicketStep(this.port), new CapturePaymentStep(this.port), this.refreshStep);
   readonly operationRef = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly paymentId = signal<number | null>(null);
+  private readonly journey = new TicketPaymentJourney(
+    new ReserveTicketStep(this.port),
+    new CapturePaymentStep(this.port),
+    this.refreshStep,
+    (result) => this.recordJourneyProgress(result),
+  );
   private readonly syncCatalogLine = effect(() => {
     const items = this.counter.catalog()?.items ?? [];
     const current = items.find((item) => item.sku === this.sku) ?? items[0];
@@ -244,11 +249,9 @@ export class SaleTicketComponent implements OnInit {
     this.journey.execute(context).pipe(finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
       next: (result) => {
         if (this.attempt !== context) return;
-        this.snapshot.set(result.snapshot);
-        this.paymentId.set(result.payments[0]?.paymentId ?? null);
-        this.message.set(`Reserva ${result.snapshot.status.label}. ${result.snapshot.coverage.label}.`);
+        this.recordJourneyProgress(result);
       },
-      error: (err: unknown) => { if (this.attempt === context) { this.snapshot.set(null); this.message.set(this.failureMessage(err)); } },
+      error: (err: unknown) => { if (this.attempt === context) this.message.set(this.failureMessage(err)); },
     });
   }
 
@@ -283,7 +286,7 @@ export class SaleTicketComponent implements OnInit {
     this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
       if (this.attempt !== context) return throwError(() => new Error('El intento ya no está activo.'));
       const decision = TicketTransitionPolicy.decide(snapshot, action);
-      if (!decision.permitsWrite) return throwError(() => new Error(decision.label));
+      if (!decision.permitsRequest) return throwError(() => new Error(decision.label));
       return this.http.post<unknown>(`${API_BASE}/sales/${context.identity.operationId}/${action.wire}`, {});
     }), concatMap((response) => {
       const snapshot = PosWireMapper.ticket(response, context.identity);
@@ -298,7 +301,14 @@ export class SaleTicketComponent implements OnInit {
   }
 
   canFinish(action: SaleAction): boolean {
-    return !this.busy() && TicketTransitionPolicy.decide(this.snapshot(), action).permitsWrite;
+    const decision = TicketTransitionPolicy.decide(this.snapshot(), action);
+    return !this.busy() && (action === SaleAction.Reverse ? decision.permitsWrite : decision.permitsRequest);
+  }
+
+  private recordJourneyProgress(result: TicketFlowResult): void {
+    this.snapshot.set(result.snapshot);
+    this.paymentId.set(result.payments[0]?.paymentId ?? this.paymentId());
+    this.message.set(`Reserva ${result.snapshot.status.label}. ${result.snapshot.coverage.label}.`);
   }
 
   private failureMessage(error: unknown): string {
