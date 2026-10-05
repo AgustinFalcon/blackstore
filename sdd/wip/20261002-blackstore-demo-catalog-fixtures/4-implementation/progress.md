@@ -12,7 +12,8 @@
 - [x] Build/test frontend posterior a 22.2.1: validado en CI hospedado; el runner local sigue bloqueado por ACL de Windows al resolver rutas por encima del workspace.
 - [ ] Deuda de tooling: la auditoría completa conserva 6 vulnerabilidades altas transitivas del stack Karma/chokidar/braces; no se aplicó el downgrade disruptivo sugerido por `npm audit fix --force`.
 - [x] Reviews Sol 6.1 funcional/SDD y seguridad: APPROVE, sin P0–P3.
-- [x] CI hospedado sobre el SHA publicado: GitHub Actions run `37095651618`, frontend test/build y backend completo exitosos.
+- [x] CI hospedado histórico del PR #21: GitHub Actions run `37095651618`, frontend test/build y backend completo exitosos.
+- [ ] CI hospedado del PR #22 (`11e8be441b79725d50a59a9d4ab69fcb60a40d9b`) pendiente de su ejecución final; no se atribuye el run histórico al HEAD actual.
 - [x] Las 2 pruebas Testcontainers bloqueadas localmente por daemon Docker inaccesible pasaron en el backend del CI hospedado.
 - [ ] Dos reviews Grok genuinas si el repositorio las exige para el PR final.
 
