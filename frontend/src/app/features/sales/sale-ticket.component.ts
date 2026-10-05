@@ -6,6 +6,9 @@ import { PaymentMethod, SaleAction, StaffRole } from '../../core/domain/pos-type
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
 import { CounterContextService } from '../../core/services/counter-context.service';
+import { concatMap, finalize, throwError } from 'rxjs';
+import { PaymentAttempt, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
+import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketPaymentJourney } from './ticket-steps';
 
 @Component({
   selector: 'bs-sale-ticket',
@@ -99,9 +102,9 @@ import { CounterContextService } from '../../core/services/counter-context.servi
             <p>Cuádruple operationId <span class="sku">{{ operationRef() }}</span> · GET local (no StoreCore)</p>
           }
           <p class="actions">
-            <button type="button" class="ghost" (click)="refresh()">Consultar estado</button>
-            <button type="button" class="primary" (click)="commit()">Confirmar venta</button>
-            <button type="button" class="ghost" (click)="release()">Liberar reserva</button>
+            <button type="button" class="ghost" (click)="refresh()" [disabled]="busy()">Consultar estado</button>
+            <button type="button" class="primary" (click)="commit()" [disabled]="!canFinish(commitAction)">Confirmar venta</button>
+            <button type="button" class="ghost" (click)="release()" [disabled]="!canFinish(releaseAction)">Liberar reserva</button>
           </p>
         </div>
       }
@@ -109,7 +112,7 @@ import { CounterContextService } from '../../core/services/counter-context.servi
         <div class="card">
           <form (ngSubmit)="reverse(id)">
             <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" required /></label>
-            <button type="submit">Reversar pago {{ id }}</button>
+            <button type="submit" [disabled]="!canFinish(reverseAction)">Reversar pago {{ id }}</button>
           </form>
         </div>
       }
@@ -141,7 +144,21 @@ export class SaleTicketComponent implements OnInit {
   secondAmount = 0;
   reversalReason = 'devolucion';
   readonly keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
-  private operationId = '';
+  readonly busy = signal(false);
+  readonly commitAction = SaleAction.Commit;
+  readonly releaseAction = SaleAction.Release;
+  readonly reverseAction = SaleAction.Reverse;
+  private attempt: TicketAttemptContext | null = null;
+  private readonly snapshot = signal<TicketSnapshot | null>(null);
+  private readonly port: TicketFlowPort = {
+    reserve: (body) => this.http.post<unknown>(`${API_BASE}/sales/reservations`, body),
+    capture: (attempt) => this.http.post<unknown>(`${API_BASE}/payments`, {
+      ...attempt.identity, method: attempt.method.wire, amount: attempt.amount.decimal, feeAmount: attempt.fee.decimal,
+    }),
+    refresh: (identity) => this.http.get<unknown>(`${API_BASE}/sales/${identity.operationId}`),
+  };
+  private readonly refreshStep = new RefreshTicketStep(this.port);
+  private readonly journey = new TicketPaymentJourney(new ReserveTicketStep(this.port), new CapturePaymentStep(this.port), this.refreshStep);
   readonly operationRef = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly paymentId = signal<number | null>(null);
@@ -161,7 +178,7 @@ export class SaleTicketComponent implements OnInit {
   }
 
   saleBlocked(): boolean {
-    return this.blockReason() !== null;
+    return this.busy() || this.blockReason() !== null;
   }
 
   applySku(sku: string): void {
@@ -191,76 +208,62 @@ export class SaleTicketComponent implements OnInit {
   }
 
   reserve(): void {
-    if (this.saleBlocked()) return;
-    const operationId = crypto.randomUUID();
-    this.operationId = operationId;
-    this.operationRef.set(operationId);
+    if (!TicketTransitionPolicy.beginReserve(this.busy(), this.blockReason() === null).permitsWrite) return;
+    // Acquire before UUID creation: synchronous double submit cannot create another identity.
+    this.busy.set(true);
+    const amount = TicketMoney.fromDecimal(this.amount);
+    const fee = TicketMoney.fromDecimal(this.fee);
+    const extra = TicketMoney.fromDecimal(this.secondAmount);
+    const price = TicketMoney.fromDecimal(this.originalUnitPrice);
+    const discount = TicketMoney.fromDecimal(this.discountAmount);
+    const decision = TicketTransitionPolicy.reservationAmounts({ price, discount, amount, fee, extra, secondMethod: this.secondMethod });
+    if (!decision.permitsWrite || !price || !discount || !amount || !fee || !extra) {
+      this.message.set(decision.label);
+      this.busy.set(false);
+      return;
+    }
+    const identity: TicketIdentity = Object.freeze({
+      clientInstanceId: '11111111-1111-1111-1111-111111111111',
+      deviceId: 'terminal-1', saleId: crypto.randomUUID(), operationId: crypto.randomUUID(),
+    });
+    const payments: PaymentAttempt[] = [Object.freeze({ identity, method: PaymentMethod.Cash, amount, fee })];
+    if (extra.cents > 0n) payments.push(Object.freeze({ identity, method: this.secondMethod, amount: extra, fee: TicketMoney.fromDecimal(0)! }));
+    const context: TicketAttemptContext = Object.freeze({
+      identity,
+      reservation: Object.freeze({
+        ...identity, cashSessionId: Number(this.counter.openSession()?.id), variantId: this.variantId,
+        quantity: 1, expectedPriceVersion: this.priceVersion, sku: this.sku, productName: this.productName,
+        originalUnitPrice: price.decimal, discountAmount: discount.decimal,
+      }),
+      payments: Object.freeze(payments),
+    });
+    this.attempt = context;
+    this.operationRef.set(identity.operationId);
+    this.snapshot.set(null);
     this.paymentId.set(null);
-    this.http
-      .post<BaseResponse<{ status: unknown; receipt: string | null }>>(`${API_BASE}/sales/reservations`, {
-        clientInstanceId: '11111111-1111-1111-1111-111111111111',
-        deviceId: 'terminal-1',
-        saleId: crypto.randomUUID(),
-        operationId,
-        cashSessionId: Number(this.counter.openSession()?.id),
-        variantId: this.variantId,
-        quantity: 1,
-        expectedPriceVersion: this.priceVersion,
-        sku: this.sku,
-        productName: this.productName,
-        originalUnitPrice: Number(this.originalUnitPrice),
-        discountAmount: Number(this.discountAmount),
-      })
-      .subscribe({
-        next: (reserve) => {
-          this.http
-            .post<BaseResponse<{ id: number; status: unknown; amount: number }>>(`${API_BASE}/payments`, {
-              operationId,
-              method: PaymentMethod.Cash.wire,
-              amount: Number(this.amount),
-              feeAmount: Number(this.fee),
-            })
-            .subscribe({
-              next: (payment) => {
-                if (payment.data?.id) this.paymentId.set(payment.data.id);
-                const extra = Number(this.secondAmount);
-                if (extra > 0) {
-                  this.http
-                    .post<BaseResponse<{ status: unknown }>>(`${API_BASE}/payments`, {
-                      operationId,
-                      method: this.secondMethod.wire,
-                      amount: extra,
-                      feeAmount: 0,
-                    })
-                    .subscribe({
-                      next: (split) => {
-                        const saleStatus = PosWireMapper.saleStatus(reserve.data);
-                        const paymentStatus = PosWireMapper.paymentStatus(payment.data);
-                        const splitStatus = PosWireMapper.paymentStatus(split.data);
-                        this.message.set(
-                          `Reserva ${saleStatus.label} ${reserve.data?.receipt ?? ''}. Pago ${paymentStatus.label} y ${splitStatus.label}.`,
-                        );
-                      },
-                      error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo dividir el pago'),
-                    });
-                  return;
-                }
-                const saleStatus = PosWireMapper.saleStatus(reserve.data);
-                const paymentStatus = PosWireMapper.paymentStatus(payment.data);
-                this.message.set(`Reserva ${saleStatus.label} ${reserve.data?.receipt ?? ''}. Pago ${paymentStatus.label}.`);
-              },
-              error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo cobrar'),
-            });
-        },
-        error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo reservar'),
-      });
+    this.journey.execute(context).pipe(finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
+      next: (result) => {
+        if (this.attempt !== context) return;
+        this.snapshot.set(result.snapshot);
+        this.paymentId.set(result.payments[0]?.paymentId ?? null);
+        this.message.set(`Reserva ${result.snapshot.status.label}. ${result.snapshot.coverage.label}.`);
+      },
+      error: (err: unknown) => { if (this.attempt === context) { this.snapshot.set(null); this.message.set(this.failureMessage(err)); } },
+    });
   }
 
   refresh(): void {
-    if (!this.operationId) return;
-    this.http.get<BaseResponse<{ status: unknown; operationId: string }>>(`${API_BASE}/sales/${this.operationId}`).subscribe({
-      next: (response) => this.message.set(`GET ${PosWireMapper.saleStatus(response.data).label} ${response.data?.operationId ?? ''}`),
-      error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo consultar'),
+    const context = this.attempt;
+    if (!context || this.busy()) return;
+    this.busy.set(true);
+    this.snapshot.set(null);
+    this.refreshStep.execute(context.identity).pipe(finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
+      next: (snapshot) => {
+        if (this.attempt !== context) return;
+        this.snapshot.set(snapshot);
+        this.message.set(`GET ${snapshot.status.label}. ${snapshot.coverage.label}.`);
+      },
+      error: (err: unknown) => { if (this.attempt === context) { this.snapshot.set(null); this.message.set(this.failureMessage(err)); } },
     });
   }
 
@@ -273,18 +276,45 @@ export class SaleTicketComponent implements OnInit {
   }
 
   private finish(action: SaleAction): void {
-    this.http
-      .post<BaseResponse<{ status: unknown }>>(`${API_BASE}/sales/${this.operationId}/${action.wire}`, {})
-      .subscribe({
-        next: (response) => this.message.set(`${action.resultSubject} ${PosWireMapper.saleStatus(response.data).label}`),
-        error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo cerrar la saga'),
-      });
+    const context = this.attempt;
+    if (!context || !this.canFinish(action)) return;
+    this.busy.set(true);
+    this.snapshot.set(null);
+    this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
+      if (this.attempt !== context) return throwError(() => new Error('El intento ya no está activo.'));
+      const decision = TicketTransitionPolicy.decide(snapshot, action);
+      if (!decision.permitsWrite) return throwError(() => new Error(decision.label));
+      return this.http.post<unknown>(`${API_BASE}/sales/${context.identity.operationId}/${action.wire}`, {});
+    }), concatMap((response) => {
+      const snapshot = PosWireMapper.ticket(response, context.identity);
+      if (!snapshot.evidenceValid) return throwError(() => new Error('Respuesta de venta no válida. Consultá el estado.'));
+      this.snapshot.set(snapshot);
+      this.message.set(`${action.resultSubject} ${snapshot.status.label}`);
+      return this.refreshStep.execute(context.identity);
+    }), finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
+      next: (snapshot) => { if (this.attempt === context) this.snapshot.set(snapshot); },
+      error: (err: unknown) => { if (this.attempt === context) { this.snapshot.set(null); this.message.set(this.failureMessage(err)); } },
+    });
+  }
+
+  canFinish(action: SaleAction): boolean {
+    return !this.busy() && TicketTransitionPolicy.decide(this.snapshot(), action).permitsWrite;
+  }
+
+  private failureMessage(error: unknown): string {
+    return error instanceof Error && !(error instanceof HttpErrorResponse) ? error.message : 'No se pudo comprobar la operación. Consultá su estado.';
   }
 
   reverse(paymentId: number): void {
-    this.http
-      .post<BaseResponse<{ status: unknown }>>(`${API_BASE}/payments/${paymentId}/reversals`, {
-        operationId: this.operationId,
+    const context = this.attempt;
+    if (!context || !this.canFinish(SaleAction.Reverse) || paymentId !== this.paymentId()) return;
+    this.busy.set(true);
+    this.snapshot.set(null);
+    this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
+      const decision = TicketTransitionPolicy.decide(snapshot, SaleAction.Reverse);
+      if (this.attempt !== context || !decision.permitsWrite) return throwError(() => new Error(decision.label));
+      return this.http.post<BaseResponse<{ status: unknown }>>(`${API_BASE}/payments/${paymentId}/reversals`, {
+        ...context.identity,
         reason: this.reversalReason,
         evidenceRef: `rev-${paymentId}`,
       }, {
@@ -293,10 +323,14 @@ export class SaleTicketComponent implements OnInit {
           'X-Role': StaffRole.Cashier.wire,
           'X-Trace-Id': crypto.randomUUID(),
         },
-      })
-      .subscribe({
-        next: (response) => this.message.set(`Reversa ${PosWireMapper.paymentStatus(response.data).label}. El pago original queda capturado.`),
-        error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo reversar'),
+      });
+    }), finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
+        next: (response) => {
+          if (this.attempt !== context) return;
+          this.paymentId.set(null);
+          this.message.set(`Reversa ${PosWireMapper.paymentStatus(response.data).label}. Consultá la venta antes de continuar.`);
+        },
+        error: (err: unknown) => { if (this.attempt === context) this.message.set(this.failureMessage(err)); },
       });
   }
 }

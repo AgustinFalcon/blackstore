@@ -155,26 +155,56 @@ class CashAndSaleControllerTest {
 
     @Test
     fun reversalAddsARefundAndLeavesTheCapturedPayment() {
+        reservePaymentTicket("op-pay", "sale-pay")
         val captured =
             mockMvc
                 .post("/api/v1/payments") {
                     contentType = MediaType.APPLICATION_JSON
-                    content = """{"operationId":"op-pay","method":"CASH","amount":10,"feeAmount":1}"""
+                    content = """{"clientInstanceId":"11111111-1111-1111-1111-111111111111","deviceId":"terminal-1","saleId":"sale-pay","operationId":"op-pay","method":"CASH","amount":10,"feeAmount":1}"""
                 }.andExpect {
                     status { isOk() }
                     jsonPath("$.data.status") { value("CAPTURED") }
                 }.andReturn()
-        val paymentId = JsonPath.read<Int>(captured.response.contentAsString, "$.data.id")
+        val paymentId = JsonPath.read<Int>(captured.response.contentAsString, "$.data.paymentId")
         mockMvc
             .post("/api/v1/payments/$paymentId/reversals") {
                 header("X-Actor-Id", "7")
                 header("X-Role", "CASHIER")
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"operationId":"op-pay","reason":"cliente devolvio","evidenceRef":"rcpt-op-pay"}"""
+                content = """{"clientInstanceId":"11111111-1111-1111-1111-111111111111","deviceId":"terminal-1","saleId":"sale-pay","operationId":"op-pay","reason":"cliente devolvio","evidenceRef":"rcpt-op-pay"}"""
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.data.status") { value("REFUNDED") }
-                jsonPath("$.data.id") { value(org.hamcrest.Matchers.not(paymentId)) }
+                jsonPath("$.data.paymentId") { value(org.hamcrest.Matchers.not(paymentId)) }
             }
+    }
+
+    private fun reservePaymentTicket(operation: String, saleId: String) {
+        mockMvc.post("/api/v1/sales/reservations") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"clientInstanceId":"11111111-1111-1111-1111-111111111111","deviceId":"terminal-1","saleId":"$saleId","operationId":"$operation","cashSessionId":1,"variantId":"variant-1","quantity":1,"expectedPriceVersion":"price-demo-1","sku":"SKU-1","productName":"Cafe","originalUnitPrice":18,"discountAmount":0}"""
+        }.andExpect { status { isOk() }; jsonPath("$.data.paymentCoverage") { value("UNPAID") }; jsonPath("$.data.totalAmount") { value(18.0) } }
+    }
+
+    @Test fun t11HttpCannotBypassPaymentTransitionPolicy() {
+        val identity = """"clientInstanceId":"11111111-1111-1111-1111-111111111111","deviceId":"terminal-1","saleId":"sale-http-policy","operationId":"op-http-policy""""
+        mockMvc.post("/api/v1/payments") { contentType = MediaType.APPLICATION_JSON; content = """{$identity,"method":"CASH","amount":10,"feeAmount":0}""" }.andExpect { status { isBadRequest() } }
+        reservePaymentTicket("op-http-policy", "sale-http-policy")
+        mockMvc.post("/api/v1/sales/op-http-policy/commit").andExpect { status { isBadRequest() } }
+        for (method in listOf("FUTURE", "", "{}")) {
+            mockMvc.post("/api/v1/payments") { contentType = MediaType.APPLICATION_JSON; content = """{$identity,"method":"$method","amount":10,"feeAmount":0}""" }.andExpect { status { isBadRequest() } }
+        }
+        mockMvc.post("/api/v1/payments") { contentType = MediaType.APPLICATION_JSON; content = """{$identity,"method":null,"amount":10,"feeAmount":0}""" }.andExpect { status { isBadRequest() } }
+        mockMvc.post("/api/v1/payments") { contentType = MediaType.APPLICATION_JSON; content = """{$identity,"method":{},"amount":10,"feeAmount":0}""" }.andExpect { status { isBadRequest() }; jsonPath("$.errorCode") { value("VALIDATION") } }
+        val payment = mockMvc.post("/api/v1/payments") { contentType = MediaType.APPLICATION_JSON; content = """{$identity,"method":"CASH","amount":10,"feeAmount":0}""" }.andExpect {
+            status { isOk() }; jsonPath("$.data.operationId") { value("op-http-policy") }; jsonPath("$.data.saleId") { value("sale-http-policy") }; jsonPath("$.data.paymentId") { exists() }
+        }.andReturn()
+        val id = JsonPath.read<Int>(payment.response.contentAsString, "$.data.paymentId")
+        mockMvc.post("/api/v1/sales/op-http-policy/release").andExpect { status { isBadRequest() } }
+        mockMvc.post("/api/v1/sales/op-http-policy/commit").andExpect { status { isBadRequest() } }
+        mockMvc.post("/api/v1/payments/$id/reversals") {
+            header("X-Actor-Id", "7"); header("X-Role", "CASHIER"); contentType = MediaType.APPLICATION_JSON
+            content = """{"clientInstanceId":"11111111-1111-1111-1111-111111111111","deviceId":"terminal-1","saleId":"wrong-sale","operationId":"op-http-policy","reason":"return","evidenceRef":"ev"}"""
+        }.andExpect { status { isBadRequest() } }
     }
 }

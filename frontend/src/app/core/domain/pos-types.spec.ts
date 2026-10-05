@@ -78,6 +78,9 @@ describe('POS closed wire types', () => {
     expect(PersistenceMode.fromWire('postgresql')).toBe(PersistenceMode.PostgreSql);
     expect(SaleAction.fromWire('commit')).toBe(SaleAction.Commit);
     expect(SaleAction.fromWire('release')).toBe(SaleAction.Release);
+    expect(SaleAction.fromWire('reserve')).toBe(SaleAction.Reserve);
+    expect(SaleAction.fromWire('capture')).toBe(SaleAction.Capture);
+    expect(SaleAction.fromWire('reverse')).toBe(SaleAction.Reverse);
 
     expectUnknownInputs(StaffRole.fromWire, StaffRole.Unknown);
     expectUnknownInputs(ReportFormula.fromWire, ReportFormula.Unknown);

@@ -7,6 +7,7 @@ import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.port.out.storecore.ReserveLineCommand
 import com.blackstore.domain.sales.SaleStatus
 import com.blackstore.domain.sales.TicketLine
+import com.blackstore.domain.sales.PaymentCoverage
 import com.blackstore.infrastructure.exception.GlobalExceptionHandler
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
@@ -51,12 +52,7 @@ class SaleController(
                 ?: java.util.UUID.randomUUID().toString()
         return ResponseEntity.ok(
             BaseResponse.success(
-                ReserveSaleResponse(
-                    operationId = saga.quadruple.operationId,
-                    status = saga.status,
-                    receipt = saga.evidence?.receipt,
-                    reservationRef = saga.evidence?.reservationRef,
-                ),
+                response(saga),
                 traceId,
             ),
         )
@@ -106,15 +102,18 @@ class SaleController(
                 ?: java.util.UUID.randomUUID().toString()
         return ResponseEntity.ok(
             BaseResponse.success(
-                ReserveSaleResponse(
-                    operationId = saga.quadruple.operationId,
-                    status = saga.status,
-                    receipt = saga.evidence?.receipt,
-                    reservationRef = saga.evidence?.reservationRef,
-                ),
+                response(saga),
                 traceId,
             ),
         )
+    }
+
+    private fun response(saga: com.blackstore.domain.sales.SaleSaga): ReserveSaleResponse {
+        val snapshot = localSaleSagaService.paymentSnapshot(saga)
+        return ReserveSaleResponse(saga.quadruple.operationId, saga.status, saga.evidence?.receipt, saga.evidence?.reservationRef,
+            saga.quadruple.clientInstanceId, saga.quadruple.deviceId, saga.quadruple.saleId,
+            snapshot.evidenceValid, snapshot.totalAmount, snapshot.pendingAmount, PaymentCoverageWire.toWire(snapshot.paymentCoverage), snapshot.hasPaymentHistory,
+            saga.blockSameOperationRepost, saga.retired)
     }
 }
 
@@ -151,4 +150,23 @@ data class ReserveSaleResponse(
     val status: SaleStatus,
     val receipt: String?,
     val reservationRef: String?,
+    val clientInstanceId: String,
+    val deviceId: String,
+    val saleId: String,
+    val evidenceValid: Boolean,
+    val totalAmount: BigDecimal?,
+    val pendingAmount: BigDecimal?,
+    val paymentCoverage: String,
+    val hasPaymentHistory: Boolean,
+    val blocked: Boolean,
+    val retired: Boolean,
 )
+
+private object PaymentCoverageWire {
+    fun toWire(value: PaymentCoverage): String = when (value) {
+        PaymentCoverage.Unpaid -> "UNPAID"
+        PaymentCoverage.Partial -> "PARTIAL"
+        PaymentCoverage.Paid -> "PAID"
+        PaymentCoverage.InvalidUnknown -> "INVALID_UNKNOWN"
+    }
+}

@@ -19,3 +19,4 @@ backend/.gradle/
 frontend/node_modules/
 frontend/dist/
 frontend/.angular/
+frontend/work/

@@ -20,6 +20,12 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
+import java.math.BigDecimal
+import com.blackstore.application.counter.CounterApplicationService
+import com.blackstore.application.sales.LocalSaleCoordinator
+import com.blackstore.domain.sales.TicketLine
+import com.blackstore.domain.sales.PaymentMethod
+import com.blackstore.infrastructure.counter.InMemoryCounterEntryStore
 
 class StoreCoreDurableSagaTest {
 
@@ -161,10 +167,10 @@ class StoreCoreDurableSagaTest {
             )
         conflict.commitScripts += ReserveScript.Fault("CONFLICT", retryable = true)
         val conflictSaga = service(conflict, InMemorySaleRecordStore())
-        assertEquals(SaleStatus.RESERVED, conflictSaga.beginReserve(q, 1, listOf(line()), now = now).status)
+        reservePaid(conflictSaga, q)
         val committed = conflictSaga.commit("op-commit", now)
         assertEquals(SaleStatus.COMMITTED, committed.status)
-        assertEquals(listOf("res-op-commit", storedRef), conflict.commitReservationRefs)
+        assertEquals(listOf("res-op-commit", "res-op-commit"), conflict.commitReservationRefs)
         assertEquals(2, conflict.commitAttempts.size)
         assertEquals(1, conflict.getAttempts.size)
 
@@ -182,7 +188,7 @@ class StoreCoreDurableSagaTest {
             )
         releasedGet.commitScripts += ReserveScript.Fault("CONFLICT", retryable = true)
         val releasedGetSaga = service(releasedGet, InMemorySaleRecordStore())
-        releasedGetSaga.beginReserve(releasedGetQ, 1, listOf(line()), now = now)
+        reservePaid(releasedGetSaga, releasedGetQ)
         val alreadyReleased = releasedGetSaga.commit("op-commit-released", now)
         assertEquals(SaleStatus.RELEASED, alreadyReleased.status)
         assertEquals("res-already-released", alreadyReleased.evidence?.reservationRef)
@@ -198,7 +204,7 @@ class StoreCoreDurableSagaTest {
                     ),
             )
         val pendingSaga = service(pendingAdapter, InMemorySaleRecordStore())
-        pendingSaga.beginReserve(pendingQ, 1, listOf(line()), now = now)
+        reservePaid(pendingSaga, pendingQ)
         assertEquals(SaleStatus.COMMIT_PENDING, pendingSaga.commit("op-commit-pending", now).status)
         pendingSaga.commit("op-commit-pending", now)
         assertEquals(1, pendingAdapter.commitAttempts.size)
@@ -213,7 +219,7 @@ class StoreCoreDurableSagaTest {
                     ),
             )
         val expiredSaga = service(expired, InMemorySaleRecordStore())
-        expiredSaga.beginReserve(expiredQ, 1, listOf(line()), now = now)
+        reservePaid(expiredSaga, expiredQ)
         val reconciled = expiredSaga.commit("op-commit-exp", now)
         assertEquals(SaleStatus.RECONCILIATION_REQUIRED, reconciled.status)
         assertEquals("EXPIRED remote tuple requires reconciliation", reconciled.reconciliationReason)
@@ -228,9 +234,9 @@ class StoreCoreDurableSagaTest {
                 commitScript = ReserveScript.Fault("IDEMPOTENCY_PAYLOAD_MISMATCH"),
             )
         val mismatchSaga = service(mismatch, InMemorySaleRecordStore())
-        mismatchSaga.beginReserve(mismatchQ, 1, listOf(line()), now = now)
+        reservePaid(mismatchSaga, mismatchQ)
         assertEquals(SaleStatus.COMMIT_PENDING, mismatchSaga.commit("op-commit-mis", now).status)
-        mismatchSaga.commit("op-commit-mis", now)
+        assertThrows<IllegalArgumentException> { mismatchSaga.commit("op-commit-mis", now) }
         assertEquals(1, mismatch.commitAttempts.size)
 
         val tombQ = quadruple("op-commit-410")
@@ -240,7 +246,7 @@ class StoreCoreDurableSagaTest {
                 commitScript = ReserveScript.Fault("OPERATION_RETIRED"),
             )
         val tombSaga = service(tomb, InMemorySaleRecordStore())
-        tombSaga.beginReserve(tombQ, 1, listOf(line()), now = now)
+        reservePaid(tombSaga, tombQ)
         assertTrue(tombSaga.commit("op-commit-410", now).retired)
         assertThrows<ForbiddenOperationException> { tombSaga.commit("op-commit-410", now) }
         assertEquals(1, tomb.commitAttempts.size)
@@ -253,7 +259,7 @@ class StoreCoreDurableSagaTest {
             )
         relConflict.releaseScripts += ReserveScript.Fault("CONFLICT", retryable = true)
         val relConflictSaga = service(relConflict, InMemorySaleRecordStore())
-        relConflictSaga.beginReserve(relConflictQ, 1, listOf(line()), now = now)
+        relConflictSaga.beginReserve(relConflictQ, 1, listOf(line()), ticketLines = listOf(ticketLine()), now = now)
         assertEquals(SaleStatus.RELEASED, relConflictSaga.release("op-rel-409").status)
         assertEquals(2, relConflict.releaseAttempts.size)
 
@@ -271,7 +277,7 @@ class StoreCoreDurableSagaTest {
             )
         committedGet.releaseScripts += ReserveScript.Fault("CONFLICT", retryable = true)
         val committedGetSaga = service(committedGet, InMemorySaleRecordStore())
-        committedGetSaga.beginReserve(committedGetQ, 1, listOf(line()), now = now)
+        committedGetSaga.beginReserve(committedGetQ, 1, listOf(line()), ticketLines = listOf(ticketLine()), now = now)
         val alreadyCommitted = committedGetSaga.release("op-rel-committed")
         assertEquals(SaleStatus.COMMITTED, alreadyCommitted.status)
         assertEquals("res-already-committed", alreadyCommitted.evidence?.reservationRef)
@@ -287,7 +293,7 @@ class StoreCoreDurableSagaTest {
                     ),
             )
         val relPendingSaga = service(relPending, InMemorySaleRecordStore())
-        relPendingSaga.beginReserve(relPendingQ, 1, listOf(line()), now = now)
+        relPendingSaga.beginReserve(relPendingQ, 1, listOf(line()), ticketLines = listOf(ticketLine()), now = now)
         assertEquals(SaleStatus.RELEASE_PENDING, relPendingSaga.release("op-rel-pending").status)
         relPendingSaga.release("op-rel-pending")
         assertEquals(1, relPending.releaseAttempts.size)
@@ -299,9 +305,9 @@ class StoreCoreDurableSagaTest {
                 releaseScript = ReserveScript.Fault("IDEMPOTENCY_PAYLOAD_MISMATCH"),
             )
         val relMisSaga = service(relMis, InMemorySaleRecordStore())
-        relMisSaga.beginReserve(relMisQ, 1, listOf(line()), now = now)
+        relMisSaga.beginReserve(relMisQ, 1, listOf(line()), ticketLines = listOf(ticketLine()), now = now)
         assertEquals(SaleStatus.RELEASE_PENDING, relMisSaga.release("op-rel-mis").status)
-        relMisSaga.release("op-rel-mis")
+        assertThrows<IllegalArgumentException> { relMisSaga.release("op-rel-mis") }
         assertEquals(1, relMis.releaseAttempts.size)
 
         val relTombQ = quadruple("op-rel-410")
@@ -311,7 +317,7 @@ class StoreCoreDurableSagaTest {
                 releaseScript = ReserveScript.Fault("OPERATION_RETIRED"),
             )
         val relTombSaga = service(relTomb, InMemorySaleRecordStore())
-        relTombSaga.beginReserve(relTombQ, 1, listOf(line()), now = now)
+        relTombSaga.beginReserve(relTombQ, 1, listOf(line()), ticketLines = listOf(ticketLine()), now = now)
         assertTrue(relTombSaga.release("op-rel-410").retired)
         assertThrows<ForbiddenOperationException> { relTombSaga.release("op-rel-410") }
         assertEquals(1, relTomb.releaseAttempts.size)
@@ -326,7 +332,7 @@ class StoreCoreDurableSagaTest {
                     ),
             )
         val releaseSaga = service(release, InMemorySaleRecordStore())
-        releaseSaga.beginReserve(releaseQ, 1, listOf(line()), now = now)
+        releaseSaga.beginReserve(releaseQ, 1, listOf(line()), ticketLines = listOf(ticketLine()), now = now)
         val releasedExpired = releaseSaga.release("op-rel-exp")
         assertEquals(SaleStatus.RECONCILIATION_REQUIRED, releasedExpired.status)
         assertEquals("res-op-rel-exp", releasedExpired.evidence?.reservationRef)
@@ -334,17 +340,27 @@ class StoreCoreDurableSagaTest {
         assertEquals(1, release.releaseAttempts.size)
     }
 
+    private val ledgers = mutableMapOf<LocalSaleSagaService, InMemoryCounterEntryStore>()
+    private fun ticketLine() = TicketLine("SKU-1", "Cafe", 1, BigDecimal("18"), BigDecimal.ZERO)
+    private fun reservePaid(saga: LocalSaleSagaService, identity: OperationQuadruple) {
+        assertEquals(SaleStatus.RESERVED, saga.beginReserve(identity, 1, listOf(line()), listOf(ticketLine()), now).status)
+        CounterApplicationService(ledgers.getValue(saga), saga, LocalSaleCoordinator.local).capture(identity, PaymentMethod.CASH, BigDecimal("18"), BigDecimal.ZERO)
+    }
     private fun service(
         inventory: ScriptedStoreCoreInventoryAdapter,
         store: InMemorySaleRecordStore,
-    ) = LocalSaleSagaService(
+    ): LocalSaleSagaService {
+        val ledger = InMemoryCounterEntryStore()
+        return LocalSaleSagaService(
         catalogPort = catalog,
         inventoryPort = inventory,
         retirementPort = inventory,
         saleRecordStore = store,
         canonicalPath = StoreCoreCanonicalContract.CANONICAL_PATH,
         contractVersion = StoreCoreCanonicalContract.VERSION,
-    )
+        counterEntryStore = ledger,
+    ).also { ledgers[it] = ledger }
+    }
 
     private fun quadruple(operationId: String) =
         OperationQuadruple("11111111-1111-1111-1111-111111111111", "terminal-1", "sale-1", operationId)

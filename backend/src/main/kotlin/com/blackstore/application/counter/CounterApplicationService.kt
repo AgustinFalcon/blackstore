@@ -10,6 +10,11 @@ import com.blackstore.domain.reports.ShiftFigures
 import com.blackstore.domain.sales.PaymentBook
 import com.blackstore.domain.sales.PaymentMethod
 import com.blackstore.domain.sales.PaymentRecord
+import com.blackstore.domain.sales.PaymentTransitionPolicy
+import com.blackstore.domain.sales.MoneyPolicy
+import com.blackstore.domain.model.OperationQuadruple
+import com.blackstore.domain.port.out.sales.SaleOperationQuery
+import com.blackstore.application.sales.LocalSaleCoordinator
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.Instant
@@ -18,6 +23,8 @@ import java.util.concurrent.atomic.AtomicLong
 @Service
 class CounterApplicationService(
     private val store: CounterEntryStore,
+    private val saleQuery: SaleOperationQuery,
+    private val coordinator: LocalSaleCoordinator,
 ) {
     private val payments = PaymentBook()
     private val roles = RoleAuthorizationPolicy()
@@ -29,9 +36,16 @@ class CounterApplicationService(
         amount: BigDecimal,
         feeAmount: BigDecimal,
     ): PaymentRecord {
-        val payment = payments.capture(ids.getAndIncrement(), method, amount, feeAmount)
-        return store.savePayment(payment, operationId)
+        val sale = saleQuery.resolveSale(operationId) ?: throw IllegalArgumentException("sale missing or ambiguous")
+        return capture(sale.quadruple, method, amount, feeAmount)
     }
+
+    fun capture(identity: OperationQuadruple, method: PaymentMethod, amount: BigDecimal, feeAmount: BigDecimal): PaymentRecord =
+        coordinator.coordinate(identity) {
+            val sale = saleQuery.findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
+            PaymentTransitionPolicy().capture(sale, store.paymentLedger(identity), method, amount, feeAmount).assertAllowed()
+            store.savePayment(payments.capture(ids.getAndIncrement(), method, MoneyPolicy.normalize(amount), MoneyPolicy.normalize(feeAmount)), identity)
+        }
 
     fun reverse(
         operationId: String,
@@ -41,7 +55,15 @@ class CounterApplicationService(
         reason: String,
         evidenceRef: String,
     ): PaymentRecord {
+        val sale = saleQuery.resolveSale(operationId) ?: throw IllegalArgumentException("sale missing or ambiguous")
+        return reverse(sale.quadruple, paymentId, actorId, role, reason, evidenceRef)
+    }
+
+    fun reverse(identity: OperationQuadruple, paymentId: Long, actorId: Long, role: StaffRole, reason: String, evidenceRef: String): PaymentRecord =
+        coordinator.coordinate(identity) {
         roles.assertAllowed(role, SessionAction.OPERATE, actorId, actorId)
+        val sale = saleQuery.findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
+        PaymentTransitionPolicy().reverse(sale, store.paymentLedger(identity), paymentId).assertAllowed()
         val original = store.findPayment(paymentId) ?: throw IllegalArgumentException("payment $paymentId was not found")
         val reversal =
             payments.reverse(
@@ -51,7 +73,7 @@ class CounterApplicationService(
                 reason = reason,
                 evidenceRef = evidenceRef,
             )
-        return store.savePayment(reversal, operationId)
+        store.savePayment(reversal, identity)
     }
 
     fun addExpense(

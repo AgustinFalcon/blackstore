@@ -3,6 +3,7 @@ package com.blackstore.domain.catalog
 import com.blackstore.application.sales.LocalSaleSagaService
 import com.blackstore.domain.exception.ForbiddenOperationException
 import com.blackstore.domain.model.OperationQuadruple
+import com.blackstore.domain.model.StoreCoreCanonicalContract
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.model.StoreCoreOperationKind
 import com.blackstore.domain.model.StoreCoreOperationReceipt
@@ -133,7 +134,7 @@ class CatalogReserveLinePolicyTest {
                 state = StoreCoreOperationState.RESERVED,
                 reservationRef = "res-${command.quadruple.operationId}",
                 receipt = "rcpt-${command.quadruple.operationId}",
-                contract = StoreCoreContractRef("/blackstore-integration/v1", "1.0.0-draft", "a".repeat(64)),
+                contract = StoreCoreContractRef("/blackstore-integration/v1", "1.0.0-draft", StoreCoreCanonicalContract.SHA256),
                 acceptedPriceVersions = listOf(command.lines.single().expectedPriceVersion),
                 expiresAt = Instant.parse("2026-09-25T00:00:00Z"),
             )

@@ -8,6 +8,7 @@ import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.model.StoreCoreOperationKind
 import com.blackstore.domain.model.StoreCoreOperationReceipt
 import com.blackstore.domain.model.StoreCoreOperationState
+import com.blackstore.domain.model.StoreCoreCanonicalContract
 import com.blackstore.domain.port.out.storecore.CommitInventoryCommand
 import com.blackstore.domain.port.out.storecore.OperationRetirementPort
 import com.blackstore.domain.port.out.storecore.ReconcileProjection
@@ -31,6 +32,7 @@ class FixtureStoreCoreInventoryAdapter(
     private val envelopeValidator: StoreCoreEnvelopeValidator,
     @Value("\${blackstore.storecore.contract.canonical-path}") private val canonicalPath: String,
     @Value("\${blackstore.storecore.contract.version}") private val contractVersion: String,
+    @Value("\${blackstore.storecore.contract.sha256}") private val openapiDigest: String = StoreCoreCanonicalContract.SHA256,
 ) : StoreCoreInventoryPort, StoreCoreReconcilePort, OperationRetirementPort {
 
     val reserveAttempts: MutableList<String> = mutableListOf()
@@ -157,7 +159,7 @@ class FixtureStoreCoreInventoryAdapter(
         state = state,
         reservationRef = "res-${quadruple.operationId}",
         receipt = "rcpt-${quadruple.operationId}",
-        contract = StoreCoreContractRef(canonicalPath, contractVersion, "a".repeat(64)),
+        contract = StoreCoreContractRef(canonicalPath, contractVersion, openapiDigest),
         acceptedPriceVersions = acceptedPriceVersions,
         expiresAt = Instant.parse("2026-09-23T00:00:00Z"),
     )

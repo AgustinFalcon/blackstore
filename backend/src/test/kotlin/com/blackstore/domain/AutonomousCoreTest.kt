@@ -92,6 +92,8 @@ class AutonomousCoreTest {
 
     @Test
     fun sagaPersistsOutboxBeforeReserveAndDoesNotRepostRetiredOperation() {
+        val ledger = com.blackstore.infrastructure.counter.InMemoryCounterEntryStore()
+        val ticket = listOf(TicketLine("SKU-1", "Cafe", 1, BigDecimal("18"), BigDecimal.ZERO))
         val catalog = FixtureCatalogAdapter("/blackstore-integration/v1", "1.0.0-draft")
         val inventory = FixtureStoreCoreInventoryAdapter(StoreCoreEnvelopeValidator(), "/blackstore-integration/v1", "1.0.0-draft")
         val service =
@@ -102,9 +104,10 @@ class AutonomousCoreTest {
                 saleRecordStore = NoOpSaleRecordStore(),
                 canonicalPath = "/blackstore-integration/v1",
                 contractVersion = "1.0.0-draft",
+                counterEntryStore = ledger,
             )
         inventory.crashBeforeReceipt = true
-        val pending = service.beginReserve(quadruple("op-1"), cashSessionId = 1, lines = listOf(line()), now = now)
+        val pending = service.beginReserve(quadruple("op-1"), cashSessionId = 1, lines = listOf(line()), ticketLines = ticket, now = now)
         assertEquals(SaleStatus.PENDING_RESERVATION, pending.status)
         assertEquals(1, pending.outbox.size)
         assertNull(pending.evidence)
@@ -125,18 +128,21 @@ class AutonomousCoreTest {
         }
         assertEquals(listOf("op-1", "op-1"), inventory.reserveAttempts)
 
+        com.blackstore.application.counter.CounterApplicationService(ledger, service, com.blackstore.application.sales.LocalSaleCoordinator.local)
+            .capture(quadruple("op-1"), PaymentMethod.CASH, BigDecimal("18"), BigDecimal.ZERO)
         val committed = service.commit("op-1", now)
         assertEquals(SaleStatus.COMMITTED, committed.status)
         assertEquals(1, committed.outbox.count { it.kind == com.blackstore.domain.model.StoreCoreOperationKind.COMMIT })
         assertEquals(committed, service.commit("op-1", now))
         assertEquals(1, inventory.commitAttempts.size)
 
-        val reservedRelease = service.beginReserve(quadruple("op-release"), cashSessionId = 1, lines = listOf(line()), now = now)
+        val reservedRelease = service.beginReserve(quadruple("op-release"), cashSessionId = 1, lines = listOf(line()), ticketLines = ticket, now = now)
         assertEquals(SaleStatus.RESERVED, reservedRelease.status)
         val released = service.release("op-release")
         assertEquals(SaleStatus.RELEASED, released.status)
         assertEquals(1, inventory.releaseAttempts.size)
 
+        val productionLedger = com.blackstore.infrastructure.counter.InMemoryCounterEntryStore()
         val production =
             LocalSaleSagaService(
                 catalogPort = catalog,
@@ -146,8 +152,11 @@ class AutonomousCoreTest {
                 canonicalPath = "/blackstore-integration/v1",
                 contractVersion = "1.0.0-draft",
                 environmentName = "PRODUCTION",
+                counterEntryStore = productionLedger,
             )
-        production.beginReserve(quadruple("op-prod"), cashSessionId = 1, lines = listOf(line()), now = now)
+        production.beginReserve(quadruple("op-prod"), cashSessionId = 1, lines = listOf(line()), ticketLines = ticket, now = now)
+        com.blackstore.application.counter.CounterApplicationService(productionLedger, production, com.blackstore.application.sales.LocalSaleCoordinator.local)
+            .capture(quadruple("op-prod"), PaymentMethod.CASH, BigDecimal("18"), BigDecimal.ZERO)
         assertThrows<ForbiddenOperationException> { production.commit("op-prod", now) }
         assertEquals(1, inventory.commitAttempts.size)
     }

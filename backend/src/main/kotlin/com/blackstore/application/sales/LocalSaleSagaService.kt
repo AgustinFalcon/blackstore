@@ -30,6 +30,13 @@ import com.blackstore.domain.sales.TicketLine
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.Instant
+import com.blackstore.domain.port.out.sales.SaleOperationQuery
+import com.blackstore.domain.port.out.counter.CounterEntryStore
+import com.blackstore.domain.sales.OperationLedger
+import com.blackstore.domain.sales.PaymentSnapshot
+import com.blackstore.domain.sales.PaymentTransitionPolicy
+import com.blackstore.domain.sales.TransitionDecision
+import java.util.concurrent.ConcurrentHashMap
 
 @Service
 class LocalSaleSagaService(
@@ -41,26 +48,32 @@ class LocalSaleSagaService(
     @Value("\${blackstore.storecore.contract.version}") private val contractVersion: String,
     @Value("\${blackstore.companion.stored.environment}") private val environmentName: String = "TEST",
     @Value("\${blackstore.storecore.contract.sha256}") private val openapiDigest: String = StoreCoreCanonicalContract.SHA256,
-) {
+    private val counterEntryStore: CounterEntryStore? = null,
+    private val coordinator: LocalSaleCoordinator = LocalSaleCoordinator.local,
+) : SaleOperationQuery {
     private val catalogPolicy = CatalogSalePolicy()
     private val reserveLinePolicy = CatalogReserveLinePolicy()
     private val retiredPolicy = RetiredOperationPolicy()
     private val fiscalPolicy = FiscalBoundaryPolicy()
-    private val sales = linkedMapOf<String, SaleSaga>()
-    private val reserveLinesByOperation = linkedMapOf<String, List<ReserveLineCommand>>()
+    private val sales = ConcurrentHashMap<OperationQuadruple, SaleSaga>()
+    private val reserveLinesByOperation = ConcurrentHashMap<OperationQuadruple, List<ReserveLineCommand>>()
 
-    fun beginReserve(
+    fun beginReserve(quadruple: OperationQuadruple, cashSessionId: Long, lines: List<ReserveLineCommand>, ticketLines: List<TicketLine> = emptyList(), now: Instant): SaleSaga =
+        coordinator.coordinate(quadruple) { beginReserveCoordinated(quadruple, cashSessionId, lines, ticketLines, now) }
+
+    private fun beginReserveCoordinated(
         quadruple: OperationQuadruple,
         cashSessionId: Long,
         lines: List<ReserveLineCommand>,
         ticketLines: List<TicketLine> = emptyList(),
         now: Instant,
     ): SaleSaga {
+        com.blackstore.domain.sales.MoneyPolicy.normalize(ticketLines.fold(java.math.BigDecimal.ZERO) { sum, line -> sum + line.effectiveUnitPrice.multiply(java.math.BigDecimal(line.quantity)) })
         val resolved =
-            reserveLinesByOperation[quadruple.operationId]
+            reserveLinesByOperation[quadruple]
                 ?: reserveLinePolicy.resolve(catalogPort.currentSnapshot(), lines, ticketLines)
-        reserveLinesByOperation[quadruple.operationId] = resolved
-        sales[quadruple.operationId]?.let { existing ->
+        reserveLinesByOperation[quadruple] = resolved
+        sales[quadruple]?.let { existing ->
             retiredPolicy.assertCanPost(existing.retired || retirementPort.isRetired(quadruple.operationId))
             if (existing.blockSameOperationRepost) return existing
             if (existing.status != SaleStatus.PENDING_RESERVATION || existing.evidence != null) return existing
@@ -68,7 +81,7 @@ class LocalSaleSagaService(
         }
         catalogPolicy.assertSaleAllowed(catalogPort.currentSnapshot(), now)
         retiredPolicy.assertCanPost(retirementPort.isRetired(quadruple.operationId))
-        val already = sales[quadruple.operationId]
+        val already = sales[quadruple]
         val pending =
             already
                 ?: SaleSaga(quadruple = quadruple, cashSessionId = cashSessionId, lines = ticketLines)
@@ -82,27 +95,32 @@ class LocalSaleSagaService(
                             requestHash = StoreCoreRequestHash.hex(StoreCoreOperationKind.RESERVE, quadruple.operationId),
                         ),
                     )
-        sales[quadruple.operationId] = pending
         if (already == null) {
             saleRecordStore.recordIntentAndOutbox(pending)
         }
+        sales[quadruple] = pending
         return callReserve(pending, resolved)
     }
 
     fun commit(operationId: String, now: Instant = Instant.now()): SaleSaga {
-        val current = sales[operationId] ?: throw IllegalArgumentException("sale $operationId is not in this process")
-        if (current.status == SaleStatus.COMMITTED) return current
-        retiredPolicy.assertCanPost(current.retired || retirementPort.isRetired(operationId))
-        if (current.status == SaleStatus.RECONCILIATION_REQUIRED || current.blockSameOperationRepost && current.status == SaleStatus.COMMIT_PENDING) {
-            return current
-        }
+        val identity = resolveSale(operationId)?.quadruple ?: throw IllegalArgumentException("sale missing or ambiguous")
+        return coordinator.coordinate(identity) { commitCoordinated(identity, now) }
+    }
+
+    private fun commitCoordinated(identity: OperationQuadruple, now: Instant): SaleSaga {
+        val current = findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
+        retiredPolicy.assertCanPost(current.retired || retirementPort.isRetired(identity.operationId))
+        val decision = PaymentTransitionPolicy().terminal(current, ledger(identity), StoreCoreOperationKind.COMMIT)
+        decision.assertAllowed()
+        if (decision == TransitionDecision.RecoverExistingCommand || decision == TransitionDecision.TerminalReplay) assertOriginalCommand(current, StoreCoreOperationKind.COMMIT)
+        if (decision == TransitionDecision.TerminalReplay) return current
         fiscalPolicy.assertCanCommit(
             CompanionEnvironment.valueOf(environmentName),
             current.fiscalStatus,
             authorization = null,
             now = now,
         )
-        if (current.status == SaleStatus.COMMIT_PENDING && current.recoverWithGet) {
+        if (decision == TransitionDecision.RecoverExistingCommand) {
             return recoverCommit(current)
         }
         val pending =
@@ -114,22 +132,27 @@ class LocalSaleSagaService(
                 SaleStatus.COMMIT_PENDING -> current
                 else -> throw IllegalArgumentException("sale ${current.status} cannot commit")
             }
-        sales[operationId] = pending
+        sales[identity] = pending
         saleRecordStore.recordCommitPending(pending)
         return callCommit(pending)
     }
 
     fun release(operationId: String): SaleSaga {
-        val current = sales[operationId] ?: throw IllegalArgumentException("sale $operationId is not in this process")
-        if (current.status == SaleStatus.RELEASED) return current
+        val identity = resolveSale(operationId)?.quadruple ?: throw IllegalArgumentException("sale missing or ambiguous")
+        return coordinator.coordinate(identity) { releaseCoordinated(identity) }
+    }
+
+    private fun releaseCoordinated(identity: OperationQuadruple): SaleSaga {
+        val current = findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
         if (current.status == SaleStatus.COMMITTED) {
             throw IllegalArgumentException("a committed sale is not released")
         }
-        retiredPolicy.assertCanPost(current.retired || retirementPort.isRetired(operationId))
-        if (current.status == SaleStatus.RECONCILIATION_REQUIRED || current.blockSameOperationRepost && current.status == SaleStatus.RELEASE_PENDING) {
-            return current
-        }
-        if (current.status == SaleStatus.RELEASE_PENDING && current.recoverWithGet) {
+        retiredPolicy.assertCanPost(current.retired || retirementPort.isRetired(identity.operationId))
+        val decision = PaymentTransitionPolicy().terminal(current, ledger(identity), StoreCoreOperationKind.RELEASE)
+        decision.assertAllowed()
+        if (decision == TransitionDecision.RecoverExistingCommand || decision == TransitionDecision.TerminalReplay) assertOriginalCommand(current, StoreCoreOperationKind.RELEASE)
+        if (decision == TransitionDecision.TerminalReplay) return current
+        if (decision == TransitionDecision.RecoverExistingCommand) {
             return recoverRelease(current)
         }
         val pending =
@@ -139,7 +162,7 @@ class LocalSaleSagaService(
                 SaleStatus.RELEASE_PENDING -> current
                 else -> throw IllegalArgumentException("sale ${current.status} cannot release")
             }
-        sales[operationId] = pending
+        sales[identity] = pending
         saleRecordStore.recordReleasePending(pending)
         return callRelease(pending)
     }
@@ -178,7 +201,7 @@ class LocalSaleSagaService(
                 inventoryPort.commit(
                     CommitInventoryCommand(
                         quadruple = pending.quadruple,
-                        reservationRef = pending.evidence?.reservationRef ?: error("reservation evidence is missing"),
+                        reservationRef = pending.outbox.single { it.kind == StoreCoreOperationKind.COMMIT }.reservationRef ?: error("original command body is missing"),
                     ),
                 ),
                 expected = StoreCoreOperationState.COMMITTED,
@@ -203,7 +226,7 @@ class LocalSaleSagaService(
                 inventoryPort.release(
                     ReleaseInventoryCommand(
                         quadruple = pending.quadruple,
-                        reservationRef = pending.evidence?.reservationRef ?: error("reservation evidence is missing"),
+                        reservationRef = pending.outbox.single { it.kind == StoreCoreOperationKind.RELEASE }.reservationRef ?: error("original command body is missing"),
                     ),
                 ),
                 expected = StoreCoreOperationState.RELEASED,
@@ -222,6 +245,7 @@ class LocalSaleSagaService(
     }
 
     private fun applyReserveReceipt(pending: SaleSaga, receipt: StoreCoreOperationReceipt): SaleSaga {
+        assertReceipt(pending, receipt)
         recordReceiptInbox(pending, receipt)
         return when (StoreCoreRecoveryPolicy.actionFor(receipt)) {
             StoreCoreRecoveryAction.RETAIN_PENDING -> store(pending.copy(recoverWithGet = false))
@@ -260,7 +284,7 @@ class LocalSaleSagaService(
                 val afterGet = applyReserveReceipt(pending, recovered)
                 if (shouldSameBodyPost(StoreCoreOperationKind.RESERVE, afterGet, recovered)) {
                     val retry = store(afterGet.copy(sameBodyRetries = afterGet.sameBodyRetries + 1, recoverWithGet = false))
-                    return callReserve(retry, reserveLinesByOperation[retry.quadruple.operationId].orEmpty())
+                    return callReserve(retry, reserveLinesByOperation[retry.quadruple].orEmpty())
                 }
                 afterGet
             }
@@ -281,6 +305,7 @@ class LocalSaleSagaService(
         expected: StoreCoreOperationState,
         complete: (SaleSaga) -> SaleSaga,
     ): SaleSaga {
+        assertReceipt(pending, receipt)
         recordReceiptInbox(pending, receipt)
         return when (StoreCoreRecoveryPolicy.actionFor(receipt)) {
             StoreCoreRecoveryAction.RETAIN_PENDING -> store(pending.markGetOnly())
@@ -380,7 +405,7 @@ class LocalSaleSagaService(
     }
 
     private fun store(saga: SaleSaga): SaleSaga {
-        sales[saga.quadruple.operationId] = saga
+        sales[saga.quadruple] = saga
         return saga
     }
 
@@ -396,13 +421,28 @@ class LocalSaleSagaService(
 
     private fun command(saga: SaleSaga, kind: StoreCoreOperationKind): OutboxCommand {
         val reserve = saga.outbox.first { it.kind == StoreCoreOperationKind.RESERVE }
-        return reserve.copy(kind = kind, requestHash = StoreCoreRequestHash.hex(kind, saga.quadruple.operationId))
+        return reserve.copy(kind = kind, reservationRef = saga.evidence?.reservationRef, requestHash = StoreCoreRequestHash.hex(kind, saga.quadruple.operationId + saga.evidence?.reservationRef))
+    }
+
+    private fun assertOriginalCommand(sale: SaleSaga, kind: StoreCoreOperationKind) {
+        val original = sale.outbox.single { it.kind == kind }
+        require(original.canonicalPath == canonicalPath && original.contractVersion == contractVersion && original.openapiDigest == openapiDigest &&
+            original.requestHash == StoreCoreRequestHash.hex(kind, sale.quadruple.operationId + original.reservationRef)) { "original command evidence is incompatible" }
+    }
+
+    private fun assertReceipt(sale: SaleSaga, receipt: StoreCoreOperationReceipt) {
+        require(receipt.quadruple == sale.quadruple && receipt.contract.canonicalPath == canonicalPath && receipt.contract.contractVersion == contractVersion &&
+            (receipt.state == StoreCoreOperationState.PENDING || receipt.contract.openapiDigestSha256 == openapiDigest)) { "receipt identity or contract evidence mismatch" }
     }
 
     fun retire(operationId: String) {
         retirementPort.markRetired(operationId)
-        sales[operationId]?.let { sales[operationId] = it.markRetired() }
+        resolveSale(operationId)?.let { sale -> coordinator.coordinate(sale.quadruple) { sales[sale.quadruple] = sale.markRetired() } }
     }
 
-    fun stored(operationId: String): SaleSaga? = sales[operationId]
+    fun stored(operationId: String): SaleSaga? = resolveSale(operationId)
+    override fun resolveSale(operationId: String): SaleSaga? = sales.values.filter { it.quadruple.operationId == operationId }.singleOrNull()
+    override fun findSale(identity: OperationQuadruple): SaleSaga? = sales[identity]?.let { if (retirementPort.isRetired(identity.operationId)) it.markRetired() else it }
+    private fun ledger(identity: OperationQuadruple): OperationLedger = counterEntryStore?.paymentLedger(identity) ?: OperationLedger.Unknown
+    fun paymentSnapshot(sale: SaleSaga): PaymentSnapshot = coordinator.coordinate(sale.quadruple) { PaymentTransitionPolicy().snapshot(findSale(sale.quadruple) ?: sale, ledger(sale.quadruple)) }
 }
