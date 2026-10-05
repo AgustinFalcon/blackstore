@@ -2,6 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { API_BASE } from '../../core/api';
+import { PaymentMethod, SaleAction, StaffRole } from '../../core/domain/pos-types';
+import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
 import { CounterContextService } from '../../core/services/counter-context.service';
 
@@ -72,7 +74,14 @@ import { CounterContextService } from '../../core/services/counter-context.servi
             <input name="amount" type="number" class="money" [(ngModel)]="amount" min="0.01" required />
           </label>
           <label>Comisión <input name="fee" type="number" class="money" [(ngModel)]="fee" min="0" required /></label>
-          <label>Segundo medio <input name="secondMethod" [(ngModel)]="secondMethod" /></label>
+          <label>
+            Segundo medio
+            <select name="secondMethod" [(ngModel)]="secondMethod">
+              @for (method of paymentMethods; track method.wire) {
+                <option [ngValue]="method">{{ method.label }}</option>
+              }
+            </select>
+          </label>
           <label>Segundo importe <input name="secondAmount" type="number" class="money" [(ngModel)]="secondAmount" min="0" /></label>
           <button type="submit" [disabled]="saleBlocked()">Reservar y cobrar</button>
         </form>
@@ -127,7 +136,8 @@ export class SaleTicketComponent implements OnInit {
   discountAmount = 2;
   amount = 18;
   fee = 0.5;
-  secondMethod = 'CARD';
+  readonly paymentMethods = PaymentMethod.selectable;
+  secondMethod: PaymentMethod = PaymentMethod.Card;
   secondAmount = 0;
   reversalReason = 'devolucion';
   readonly keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
@@ -187,7 +197,7 @@ export class SaleTicketComponent implements OnInit {
     this.operationRef.set(operationId);
     this.paymentId.set(null);
     this.http
-      .post<BaseResponse<{ status: string; receipt: string | null }>>(`${API_BASE}/sales/reservations`, {
+      .post<BaseResponse<{ status: unknown; receipt: string | null }>>(`${API_BASE}/sales/reservations`, {
         clientInstanceId: '11111111-1111-1111-1111-111111111111',
         deviceId: 'terminal-1',
         saleId: crypto.randomUUID(),
@@ -204,9 +214,9 @@ export class SaleTicketComponent implements OnInit {
       .subscribe({
         next: (reserve) => {
           this.http
-            .post<BaseResponse<{ id: number; status: string; amount: number }>>(`${API_BASE}/payments`, {
+            .post<BaseResponse<{ id: number; status: unknown; amount: number }>>(`${API_BASE}/payments`, {
               operationId,
-              method: 'CASH',
+              method: PaymentMethod.Cash.wire,
               amount: Number(this.amount),
               feeAmount: Number(this.fee),
             })
@@ -216,22 +226,28 @@ export class SaleTicketComponent implements OnInit {
                 const extra = Number(this.secondAmount);
                 if (extra > 0) {
                   this.http
-                    .post<BaseResponse<{ status: string }>>(`${API_BASE}/payments`, {
+                    .post<BaseResponse<{ status: unknown }>>(`${API_BASE}/payments`, {
                       operationId,
-                      method: this.secondMethod || 'CARD',
+                      method: this.secondMethod.wire,
                       amount: extra,
                       feeAmount: 0,
                     })
                     .subscribe({
-                      next: (split) =>
+                      next: (split) => {
+                        const saleStatus = PosWireMapper.saleStatus(reserve.data);
+                        const paymentStatus = PosWireMapper.paymentStatus(payment.data);
+                        const splitStatus = PosWireMapper.paymentStatus(split.data);
                         this.message.set(
-                          `Reserva ${reserve.data?.status} ${reserve.data?.receipt}. Pago ${payment.data?.status} y ${split.data?.status}.`,
-                        ),
+                          `Reserva ${saleStatus.label} ${reserve.data?.receipt ?? ''}. Pago ${paymentStatus.label} y ${splitStatus.label}.`,
+                        );
+                      },
                       error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo dividir el pago'),
                     });
                   return;
                 }
-                this.message.set(`Reserva ${reserve.data?.status} ${reserve.data?.receipt}. Pago ${payment.data?.status}.`);
+                const saleStatus = PosWireMapper.saleStatus(reserve.data);
+                const paymentStatus = PosWireMapper.paymentStatus(payment.data);
+                this.message.set(`Reserva ${saleStatus.label} ${reserve.data?.receipt ?? ''}. Pago ${paymentStatus.label}.`);
               },
               error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo cobrar'),
             });
@@ -242,44 +258,44 @@ export class SaleTicketComponent implements OnInit {
 
   refresh(): void {
     if (!this.operationId) return;
-    this.http.get<BaseResponse<{ status: string; operationId: string }>>(`${API_BASE}/sales/${this.operationId}`).subscribe({
-      next: (response) => this.message.set(`GET ${response.data?.status} ${response.data?.operationId}`),
+    this.http.get<BaseResponse<{ status: unknown; operationId: string }>>(`${API_BASE}/sales/${this.operationId}`).subscribe({
+      next: (response) => this.message.set(`GET ${PosWireMapper.saleStatus(response.data).label} ${response.data?.operationId ?? ''}`),
       error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo consultar'),
     });
   }
 
   commit(): void {
-    this.finish('commit');
+    this.finish(SaleAction.Commit);
   }
 
   release(): void {
-    this.finish('release');
+    this.finish(SaleAction.Release);
   }
 
-  private finish(action: 'commit' | 'release'): void {
+  private finish(action: SaleAction): void {
     this.http
-      .post<BaseResponse<{ status: string }>>(`${API_BASE}/sales/${this.operationId}/${action}`, {})
+      .post<BaseResponse<{ status: unknown }>>(`${API_BASE}/sales/${this.operationId}/${action.wire}`, {})
       .subscribe({
-        next: (response) => this.message.set(action === 'commit' ? `Venta ${response.data?.status}` : `Reserva ${response.data?.status}`),
+        next: (response) => this.message.set(`${action.resultSubject} ${PosWireMapper.saleStatus(response.data).label}`),
         error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo cerrar la saga'),
       });
   }
 
   reverse(paymentId: number): void {
     this.http
-      .post<BaseResponse<{ status: string }>>(`${API_BASE}/payments/${paymentId}/reversals`, {
+      .post<BaseResponse<{ status: unknown }>>(`${API_BASE}/payments/${paymentId}/reversals`, {
         operationId: this.operationId,
         reason: this.reversalReason,
         evidenceRef: `rev-${paymentId}`,
       }, {
         headers: {
           'X-Actor-Id': String(this.counter.cashierId()),
-          'X-Role': 'CASHIER',
+          'X-Role': StaffRole.Cashier.wire,
           'X-Trace-Id': crypto.randomUUID(),
         },
       })
       .subscribe({
-        next: (response) => this.message.set(`Reversa ${response.data?.status}. El pago original queda capturado.`),
+        next: (response) => this.message.set(`Reversa ${PosWireMapper.paymentStatus(response.data).label}. El pago original queda capturado.`),
         error: (err: HttpErrorResponse) => this.message.set(err.error?.errorCode ?? err.error?.message ?? 'No se pudo reversar'),
       });
   }

@@ -2,16 +2,11 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { API_BASE } from '../../core/api';
+import { PaymentMethod, PersistenceMode, StaffRole } from '../../core/domain/pos-types';
+import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
+import { CashSessionData, CashSessionWire, WorkspaceWire } from '../../core/models/pos-models';
 import { CounterContextService } from '../../core/services/counter-context.service';
-
-interface CashSessionData {
-  id: number;
-  terminalId: number;
-  cashierId: number;
-  status: string;
-  openingCash: number;
-}
 
 @Component({
   selector: 'bs-cash-session',
@@ -22,7 +17,7 @@ interface CashSessionData {
       <h2>Caja</h2>
       <p class="lede">Una sesión abierta por terminal. El cierre queda auditado y no edita la apertura.</p>
       <div class="card">
-        <p>Persistencia: <span class="sku">{{ persistence() }}</span></p>
+        <p>Persistencia: <span class="sku">{{ persistence().label }}</span></p>
         @if (loading()) {
           <p class="skeleton" aria-hidden="true"></p>
           <p>Cargando puesto de trabajo…</p>
@@ -31,16 +26,16 @@ interface CashSessionData {
           <label>Terminal <input name="terminalId" type="number" [(ngModel)]="terminalId" required /></label>
           <label>Cajero <input name="cashierId" type="number" [(ngModel)]="cashierId" required /></label>
           <label>Apertura <input name="openingCash" type="number" [(ngModel)]="openingCash" min="0" required /></label>
-          <button type="submit" [disabled]="session()?.status === 'OPEN'">Abrir sesión</button>
+          <button type="submit" [disabled]="session() !== null && !session()?.status?.canStartNewSession">Abrir sesión</button>
         </form>
       </div>
       @if (session(); as opened) {
         <div class="card">
           <p>
             Sesión {{ opened.id }} en terminal {{ opened.terminalId }}
-            <span class="badge" [class.ok]="opened.status === 'OPEN'" [class.info]="opened.status === 'CLOSED'">{{ opened.status }}</span>
+            <span class="badge" [class.ok]="opened.status.isOpen" [class.info]="opened.status.isClosed">{{ opened.status.label }}</span>
           </p>
-          @if (opened.status === 'OPEN') {
+          @if (opened.status.isOpen) {
             <form (ngSubmit)="close()">
               <label>Declarado <input name="declared" type="number" [(ngModel)]="declared" min="0" required /></label>
               <label>Motivo de cierre <input name="closeReason" [(ngModel)]="closeReason" required /></label>
@@ -76,7 +71,7 @@ export class CashSessionComponent {
   terminalId = 10;
   cashierId = 7;
   openingCash = 0;
-  readonly persistence = signal('memory');
+  readonly persistence = signal(PersistenceMode.Unknown);
   readonly loading = signal(true);
   expenseCategory = 'insumos';
   expenseAmount = 2;
@@ -95,22 +90,25 @@ export class CashSessionComponent {
     this.error.set(null);
     this.loading.set(true);
     this.counter.load();
-    this.http.get<BaseResponse<{ terminalId: number; cashierId: number; persistence: string }>>(`${API_BASE}/workspace`).subscribe({
+    this.http.get<BaseResponse<WorkspaceWire>>(`${API_BASE}/workspace`).subscribe({
       next: (response) => {
         if (!response.data) return;
-        this.terminalId = response.data.terminalId;
-        this.cashierId = response.data.cashierId;
-        this.persistence.set(response.data.persistence);
+        const workspace = PosWireMapper.workspace(response.data);
+        this.terminalId = workspace.terminalId;
+        this.cashierId = workspace.cashierId;
+        this.persistence.set(workspace.persistence);
       },
       error: () => {
         this.loading.set(false);
         this.error.set('No se pudo leer el puesto de trabajo');
       },
     });
-    this.http.get<BaseResponse<CashSessionData[]>>(`${API_BASE}/cash-sessions`).subscribe({
+    this.http.get<BaseResponse<CashSessionWire[]>>(`${API_BASE}/cash-sessions`).subscribe({
       next: (response) => {
-        const open = response.data?.find((item) => item.status === 'OPEN');
-        if (open) this.session.set(open);
+        const sessions = PosWireMapper.cashSessions(response.data);
+        const session = sessions.find((item) => item.status.isOpen)
+          ?? sessions.find((item) => !item.status.canStartNewSession);
+        this.session.set(session ?? null);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
@@ -118,23 +116,25 @@ export class CashSessionComponent {
   }
 
   open(): void {
+    const current = this.session();
+    if (current && !current.status.canStartNewSession) return;
     this.error.set(null);
     this.http
-      .post<BaseResponse<CashSessionData>>(`${API_BASE}/cash-sessions`, {
+      .post<BaseResponse<CashSessionWire>>(`${API_BASE}/cash-sessions`, {
         terminalId: Number(this.terminalId),
         cashierId: Number(this.cashierId),
         openingCash: Number(this.openingCash),
       }, {
         headers: {
           'X-Actor-Id': String(this.cashierId),
-          'X-Role': 'CASHIER',
+          'X-Role': StaffRole.Cashier.wire,
           'X-Trace-Id': crypto.randomUUID(),
         },
       })
       .subscribe({
         next: (response) => {
           if (response.data) {
-            this.session.set(response.data);
+            this.session.set(PosWireMapper.cashSession(response.data));
             this.counter.load();
           } else this.error.set(response.errorCode ?? 'Sin datos');
         },
@@ -147,24 +147,25 @@ export class CashSessionComponent {
 
   close(): void {
     const opened = this.session();
-    if (!opened) return;
+    if (!opened?.status.isOpen) return;
     this.error.set(null);
     this.http
-      .post<BaseResponse<CashSessionData>>(`${API_BASE}/cash-sessions/${opened.id}/close`, {
+      .post<BaseResponse<CashSessionWire>>(`${API_BASE}/cash-sessions/${opened.id}/close`, {
         declared: Number(this.declared),
         reason: this.closeReason,
       }, {
         headers: {
           'X-Actor-Id': String(this.cashierId),
-          'X-Role': 'CASHIER',
+          'X-Role': StaffRole.Cashier.wire,
           'X-Trace-Id': crypto.randomUUID(),
         },
       })
       .subscribe({
         next: (response) => {
           if (response.data) {
-            this.session.set(response.data);
-            this.notice.set(`Sesión ${response.data.id} cerrada`);
+            const session = PosWireMapper.cashSession(response.data);
+            this.session.set(session);
+            this.notice.set(`Sesión ${session.id} ${session.status.label}`);
             this.counter.load();
           }
         },
@@ -177,7 +178,7 @@ export class CashSessionComponent {
 
   addExpense(): void {
     const opened = this.session();
-    if (!opened) return;
+    if (!opened?.status.isOpen) return;
     this.error.set(null);
     this.http
       .post<BaseResponse<{ id: number; amount: number; category: string }>>(`${API_BASE}/expenses`, {
@@ -185,11 +186,11 @@ export class CashSessionComponent {
         category: this.expenseCategory,
         amount: Number(this.expenseAmount),
         reason: this.expenseReason,
-        method: 'CASH',
+        method: PaymentMethod.Cash.wire,
       }, {
         headers: {
           'X-Actor-Id': String(this.cashierId),
-          'X-Role': 'CASHIER',
+          'X-Role': StaffRole.Cashier.wire,
           'X-Trace-Id': crypto.randomUUID(),
         },
       })

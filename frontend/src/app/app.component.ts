@@ -2,6 +2,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { HealthApiService } from './core/services/health-api.service';
 import { isSuccessResponse } from './core/models/base-response';
+import { StaffRole } from './core/domain/pos-types';
 
 @Component({
   selector: 'bs-root',
@@ -22,7 +23,7 @@ import { isSuccessResponse } from './core/models/base-response';
       <div class="main">
         <header>
           <h1>BlackStore POS</h1>
-          <p class="role">CASHIER · simulador local</p>
+          <p class="role">{{ currentRole.label }} · simulador local</p>
         </header>
         @if (healthLoading()) {
           <p class="banner info" role="status">Comprobando salud del backend…</p>
@@ -109,6 +110,7 @@ import { isSuccessResponse } from './core/models/base-response';
   ],
 })
 export class AppComponent implements OnInit {
+  readonly currentRole = StaffRole.Cashier;
   private readonly healthApi = inject(HealthApiService);
   readonly blocked = signal(true);
   readonly backendDown = signal(false);

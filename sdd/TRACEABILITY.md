@@ -17,5 +17,7 @@
 | loopback HTTP en coroutines | issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10) | `delay` + `Dispatchers.IO`, no `Thread.sleep` |
 | `DispatcherProvider` inyectado | issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12) | IO por constructor/Spring; no dominio ni `@Scheduled` |
 | Reusar provider en HTTP nuevo | issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16) | futuro; no código ahora; live/fiscal/ML NO-GO |
+| vocabularios wire POS cerrados | issue [#18](https://github.com/AgustinFalcon/blackstore/issues/18) / PR #19 | `pos-types.ts`, `PosWireMapper`, tipos `Unknown` fail-closed y regresiones de las cinco rutas existentes; sin ruta/backend/contrato nuevo |
+| Verify hospedado | issue [#20](https://github.com/AgustinFalcon/blackstore/issues/20) / PR #19 | `.github/workflows/verify.yml`: backend tests + frontend tests/build, permisos read-only, actions por SHA; éxito hosted del HEAD final pendiente de registrar |
 
 ## Adapter dependency map

@@ -8,6 +8,10 @@ Un comercio, un proceso BlackStore, una PostgreSQL propia. StoreCore es hermano,
 
 Kotlin domain sin frameworks. Application: ticket, caja, factura, puerto StoreCore. Adapters: HTTP POS, persistence, cliente StoreCore (bloqueado hasta GO). Angular: consola de mostrador.
 
+## Frontend wire vocabularies
+
+Todo estado, rol, medio de pago, fórmula, período, modo de persistencia o acción finita que entra por HTTP se traduce en `PosWireMapper` antes de llegar a signals o views. En TypeScript el dominio usa clases con constructor privado, instancias estáticas, un único `fromWire` y `Unknown` neutral. Etiquetas y reglas de acción viven en el tipo; componentes y tests no comparan strings wire ni muestran el valor crudo. En este corte, `CashSessionStatus.Unknown` no habilita apertura, cierre ni egresos de caja. Las transiciones de reserva y pago conservan su orquestación existente; una política fail-closed completa para sus escrituras requiere un corte SDD dedicado y pruebas de transición antes de afirmarse como garantía global.
+
 ## Stock client
 
 Persistir intención + cuádruple + `canonical_path` + `contractVersion` + digest + `request_hash` en outbox **antes** del HTTP. Inbox acepta PENDING (`receipt` null) y deduplica por cuádruple + kind + `response_hash`. Timeout → GET. Matriz 409 StoreCore: stock/stale/validation → nuevo `operation_id`; CONFLICT → misma cuádruple; mismatch/EXPIRED conservan evidencia. Sin `allow_oversell`. Sellable = `GREATEST(0, available_quantity - safety_stock)` y `available_quantity` ya es neta de reserved.
