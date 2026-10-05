@@ -1,5 +1,6 @@
 package com.blackstore.presentation.controller
 
+import com.blackstore.application.sales.LocalSaleSagaService
 import com.jayway.jsonpath.JsonPath
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Test
@@ -17,6 +18,9 @@ class CashAndSaleControllerTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
+
+    @Autowired
+    private lateinit var localSaleSagaService: LocalSaleSagaService
 
     @Test
     fun cashierOpensOwnSessionAndAuditorIsRejected() {
@@ -54,7 +58,11 @@ class CashAndSaleControllerTest {
             jsonPath("$.data.stale") { value(false) }
             jsonPath("$.data.version") { value("fixture-v1") }
             jsonPath("$.data.items[0].sku") { value("SKU-1") }
-            jsonPath("$.data.items[0].name") { value("Cafe") }
+            jsonPath("$.data.items[0].name") { value("Café molido 500 g") }
+            jsonPath("$.data.items.length()") { value(5) }
+            jsonPath("$.data.items[1].sku") { value("SKU-YERBA-1K") }
+            jsonPath("$.data.items[1].priceVersion") { value("price-demo-1") }
+            jsonPath("$.data.items[4].unitPrice") { value(3290.0) }
         }
         mockMvc.get("/api/v1/reports/shift").andExpect {
             status { isOk() }
@@ -75,6 +83,9 @@ class CashAndSaleControllerTest {
 
     @Test
     fun fixtureReserveReturnsReceiptWithoutHttp() {
+        val catalog = mockMvc.get("/api/v1/catalog").andReturn()
+        val expectedPriceVersion = JsonPath.read<String>(catalog.response.contentAsString, "$.data.items[0].priceVersion")
+
         mockMvc
             .post("/api/v1/sales/reservations") {
                 header("X-Trace-Id", "trace-sale")
@@ -89,7 +100,7 @@ class CashAndSaleControllerTest {
                       "cashSessionId": 1,
                       "variantId": "variant-1",
                       "quantity": 1,
-                      "expectedPriceVersion": "price-v1"
+                      "expectedPriceVersion": "$expectedPriceVersion"
                     }
                     """.trimIndent()
             }.andExpect {
@@ -98,6 +109,10 @@ class CashAndSaleControllerTest {
                 jsonPath("$.data.receipt") { value("rcpt-op-http") }
                 jsonPath("$.errorCode") { value(nullValue()) }
             }
+        org.junit.jupiter.api.Assertions.assertEquals(
+            listOf(expectedPriceVersion),
+            localSaleSagaService.stored("op-http")?.evidence?.acceptedPriceVersions,
+        )
         mockMvc.get("/api/v1/sales/op-http").andExpect {
             status { isOk() }
             jsonPath("$.data.status") { value("RESERVED") }
