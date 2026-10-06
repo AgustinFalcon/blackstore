@@ -13,7 +13,7 @@ enum class AuthenticationFailure(val securityFailure: StaffSecurityFailure) {
     RATE_LIMITED(StaffSecurityFailure.RATE_LIMITED), ALREADY_AUTHENTICATED(StaffSecurityFailure.ALREADY_AUTHENTICATED), UNKNOWN(StaffSecurityFailure.UNKNOWN)
 }
 enum class StaffPermission {
-    PublicHealthRead, CsrfBootstrap, StaffLogin, SessionRead, StaffLogout, CatalogRead, WorkspaceRead,
+    PublicHealthRead, CorsPreflight, CsrfBootstrap, StaffLogin, SessionRead, StaffLogout, CatalogRead, WorkspaceRead,
     CashSessionList, CashSessionOpen, CashSessionClose, SaleReserve, SaleRead, SaleCommit, SaleRelease,
     PaymentCapture, PaymentReverse, ExpenseRecord, ShiftReportRead, DailyReportRead, Unknown
 }
@@ -43,7 +43,7 @@ class StaffAuthorizationPolicy {
     private val readers = setOf(StaffRole.SUPERVISOR, StaffRole.OWNER, StaffRole.AUDITOR)
     fun permits(role: StaffRole, permission: StaffPermission): Boolean = when (permission) {
         // Public endpoints use their separate anonymous route context, never a staff role.
-        StaffPermission.PublicHealthRead, StaffPermission.CsrfBootstrap, StaffPermission.StaffLogin -> false
+        StaffPermission.PublicHealthRead, StaffPermission.CorsPreflight, StaffPermission.CsrfBootstrap, StaffPermission.StaffLogin -> false
         StaffPermission.SessionRead, StaffPermission.StaffLogout -> role in operators || role == StaffRole.AUDITOR
         StaffPermission.CashSessionList, StaffPermission.ShiftReportRead, StaffPermission.DailyReportRead ->
             if (permission == StaffPermission.CashSessionList) role in operators || role == StaffRole.AUDITOR else role in readers

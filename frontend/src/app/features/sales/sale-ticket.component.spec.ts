@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { API_BASE } from '../../core/api';
 import { PaymentStatus, SaleAction, SaleStatus } from '../../core/domain/pos-types';
 import { PaymentCoverage, TicketIdentity } from '../../core/domain/ticket-transition';
@@ -70,6 +70,20 @@ describe('SaleTicketComponent guarded writes (T05/T11)', () => {
     expect(component.canFinish(SaleAction.Commit)).toBeFalse();
     expect(component.canFinish(SaleAction.Release)).toBeFalse();
   });
+
+  it('cancels an asynchronous reservation before another session can continue it', fakeAsync(() => {
+    component.reserve();
+    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
+    const identity: TicketIdentity = reserve.request.body;
+    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18', SaleStatus.PendingReservation));
+
+    TestBed.inject(SessionStore).changed.next();
+    tick(250);
+
+    http.expectNone(`${API_BASE}/sales/${identity.operationId}`);
+    http.expectNone(`${API_BASE}/payments`);
+    expect(component.busy()).toBeFalse();
+  }));
 
   it('keeps immutable requested payment amounts when form edits occur during reserve', () => {
     component.amount = 10;

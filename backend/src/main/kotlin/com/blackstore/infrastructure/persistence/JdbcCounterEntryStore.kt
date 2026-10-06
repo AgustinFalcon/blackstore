@@ -74,7 +74,14 @@ class JdbcCounterEntryStore(
                 )
             }
             if (payment.status == PaymentStatus.CAPTURED) {
-                writer.insertAudit(connection, trustedActor, com.blackstore.domain.identity.SecurityAuditEvent.PAYMENT_CAPTURED.name, "payment", id)
+                writer.insertAudit(
+                    connection,
+                    trustedActor,
+                    com.blackstore.domain.identity.SecurityAuditEvent.PAYMENT_CAPTURED.name,
+                    "payment",
+                    id,
+                    detail = payment.reason,
+                )
             }
             sales.bumpVersion(connection,projectionId,stored.version)
             payment.copy(id = id)

@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { API_BASE } from '../../core/api';
@@ -9,7 +9,7 @@ import { StaffPermission } from '../../core/domain/session-types';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
 import { CounterContextService } from '../../core/services/counter-context.service';
-import { concatMap, finalize, throwError } from 'rxjs';
+import { concatMap, finalize, takeUntil, throwError } from 'rxjs';
 import { PaymentAttempt, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, StartNewSale } from './ticket-steps';
 
@@ -135,6 +135,7 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
 export class SaleTicketComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly identity = inject(SessionStore);
+  private readonly destroyRef = inject(DestroyRef);
   readonly counter = inject(CounterContextService);
   sku = '';
   productName = '';
@@ -264,7 +265,11 @@ export class SaleTicketComponent implements OnInit {
     this.operationRef.set(identity.operationId);
     this.snapshot.set(null);
     this.paymentId.set(null);
-    this.journey.execute(context).pipe(finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
+    this.journey.execute(context).pipe(
+      takeUntil(this.identity.changed),
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => { if (this.attempt === context) this.busy.set(false); }),
+    ).subscribe({
       next: (result) => {
         if (this.attempt !== context) return;
         this.recordJourneyProgress(result);
@@ -278,7 +283,11 @@ export class SaleTicketComponent implements OnInit {
     if (!context || this.busy()) return;
     this.busy.set(true);
     this.snapshot.set(null);
-    this.refreshStep.execute(context.identity).pipe(finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
+    this.refreshStep.execute(context.identity).pipe(
+      takeUntil(this.identity.changed),
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => { if (this.attempt === context) this.busy.set(false); }),
+    ).subscribe({
       next: (snapshot) => {
         if (this.attempt !== context) return;
         this.snapshot.set(snapshot);
@@ -312,7 +321,8 @@ export class SaleTicketComponent implements OnInit {
       this.snapshot.set(snapshot);
       this.message.set(`${action.resultSubject} ${snapshot.status.label}`);
       return this.refreshStep.execute(context.identity);
-    }), finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
+    }), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef),
+    finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
       next: (snapshot) => { if (this.attempt === context) this.snapshot.set(snapshot); },
       error: (err: unknown) => { if (this.attempt === context) { this.snapshot.set(null); this.message.set(this.failureMessage(err)); } },
     });
@@ -352,7 +362,8 @@ export class SaleTicketComponent implements OnInit {
           'X-Trace-Id': crypto.randomUUID(),
         },
       });
-    }), finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
+    }), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef),
+    finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
         next: (response) => {
           if (this.attempt !== context) return;
           this.paymentId.set(null);
