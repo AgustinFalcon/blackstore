@@ -56,4 +56,13 @@ class DurableCommandMapper {
   return json.writeValueAsString(node)
  }
  fun hash(raw: String): String = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+ fun remoteEvidence(receipt: com.blackstore.domain.model.StoreCoreOperationReceipt): String {
+  val identity=receipt.quadruple
+  val node=json.createObjectNode().put("schemaVersion",1).put("kind",receipt.kind.name).put("state",receipt.state.name)
+   .put("clientInstanceId",identity.clientInstanceId).put("deviceId",identity.deviceId).put("saleId",identity.saleId).put("operationId",identity.operationId)
+   .put("canonicalPath",receipt.contract.canonicalPath).put("contractVersion",receipt.contract.contractVersion).put("openapiDigest",receipt.contract.openapiDigestSha256)
+   .put("reservationRef",receipt.reservationRef).put("receipt",receipt.receipt).put("expiresAt",receipt.expiresAt?.toString())
+  val versions=node.putArray("acceptedPriceVersions");receipt.acceptedPriceVersions.forEach(versions::add)
+  return json.writeValueAsString(node)
+ }
 }

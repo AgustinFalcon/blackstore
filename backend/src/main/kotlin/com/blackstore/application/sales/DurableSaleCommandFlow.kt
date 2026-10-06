@@ -1,6 +1,7 @@
 package com.blackstore.application.sales
 
 import com.blackstore.domain.exception.StoreCoreRemoteFault
+import com.blackstore.domain.exception.StoreCoreFailureCode
 import com.blackstore.domain.model.*
 import com.blackstore.domain.port.out.sales.DurableSaleStore
 import com.blackstore.domain.port.out.storecore.*
@@ -123,26 +124,28 @@ class DurableSaleCommandFlow(private val store: DurableSaleStore, inventory: Sto
                 catch (_: IllegalStateException) { defer(claim, RecoveryReason.REMOTE_UNAVAILABLE); return }
                 catch (_: java.io.IOException) { defer(claim, RecoveryReason.REMOTE_UNAVAILABLE); return }
                 catch (_: IllegalArgumentException) { defer(claim, RecoveryReason.UNKNOWN, true); return }
-                if (!compatible(claim, receipt) || receipt.kind != command.kind) { defer(claim, RecoveryReason.CONTRACT_INCOMPATIBLE, true); return }
+                if (!compatible(claim, receipt) || receipt.kind != command.kind) { store.reconcileClaimEvidence(claim, receipt, RecoveryReason.CONTRACT_INCOMPATIBLE); return }
                 val received = policy.resolve(CommandKind.valueOf(command.kind.name), receipt)
                 when (received) {
                     RecoveryDisposition.ApplyEvidence, RecoveryDisposition.WaitAndGet -> apply.execute(claim, receipt)
-                    is RecoveryDisposition.ReconciliationRequired -> defer(claim, received.reason, true)
+                    is RecoveryDisposition.ReconciliationRequired -> store.reconcileClaimEvidence(claim, receipt, received.reason)
                     else -> defer(claim, RecoveryReason.UNKNOWN, true)
                 }
             }
-            is RecoveryDisposition.ReconciliationRequired -> defer(claim, disposition.reason, true)
+            is RecoveryDisposition.ReconciliationRequired -> result.second?.let { store.reconcileClaimEvidence(claim, it, disposition.reason) }
+                ?: defer(claim, disposition.reason, true)
             RecoveryDisposition.Unknown -> defer(claim, RecoveryReason.UNKNOWN, true)
         }
     }
     private fun remoteFault(claim: ClaimedSaleCommand, fault: StoreCoreRemoteFault) {
-        when (fault.errorCode) {
-            "CONFLICT" -> defer(claim, RecoveryReason.REMOTE_PENDING)
-            "IDEMPOTENCY_PAYLOAD_MISMATCH" -> defer(claim, RecoveryReason.PAYLOAD_MISMATCH, true)
-            "EXPIRED", "OPERATION_RETIRED" -> defer(claim, RecoveryReason.EXPIRED, true)
-            "NOT_FOUND" -> if (claim.uncertain && claim.command.kind == StoreCoreOperationKind.RESERVE) defer(claim, RecoveryReason.REMOTE_PENDING)
+        when (fault.failureCode) {
+            StoreCoreFailureCode.CONFLICT -> defer(claim, RecoveryReason.REMOTE_PENDING)
+            StoreCoreFailureCode.IDEMPOTENCY_PAYLOAD_MISMATCH -> defer(claim, RecoveryReason.PAYLOAD_MISMATCH, true)
+            StoreCoreFailureCode.EXPIRED, StoreCoreFailureCode.OPERATION_RETIRED -> defer(claim, RecoveryReason.EXPIRED, true)
+            StoreCoreFailureCode.NOT_FOUND -> if (claim.uncertain && claim.command.kind == StoreCoreOperationKind.RESERVE) defer(claim, RecoveryReason.REMOTE_PENDING)
                 else defer(claim, RecoveryReason.NOT_FOUND_TERMINAL, true)
-            else -> defer(claim, if (fault.retryable) RecoveryReason.REMOTE_UNAVAILABLE else RecoveryReason.UNKNOWN, !fault.retryable)
+            StoreCoreFailureCode.INSUFFICIENT_STOCK, StoreCoreFailureCode.CATALOG_VERSION_STALE, StoreCoreFailureCode.VALIDATION -> defer(claim, RecoveryReason.UNKNOWN, true)
+            StoreCoreFailureCode.UNKNOWN -> defer(claim, if (fault.retryable) RecoveryReason.REMOTE_UNAVAILABLE else RecoveryReason.UNKNOWN, !fault.retryable)
         }
     }
 }

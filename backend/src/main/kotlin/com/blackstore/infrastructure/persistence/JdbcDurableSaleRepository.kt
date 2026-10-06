@@ -3,6 +3,7 @@ package com.blackstore.infrastructure.persistence
 import com.blackstore.domain.port.out.sales.DurableSaleStore
 import com.blackstore.domain.sales.*
 import com.blackstore.domain.model.OperationQuadruple
+import com.blackstore.domain.model.StoreCoreOperationReceipt
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.sql.Connection
 import java.time.Duration
@@ -68,14 +69,51 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
  private fun claim(operationId: String?,kind: CommandKind?,lease: Duration): ClaimedSaleCommand? = transaction { c ->
   require(lease.seconds in 1..300 && kind!=CommandKind.UNKNOWN)
   val filter=if(operationId==null) "" else " AND o.operation_id=? AND o.operation_kind=?"
+  var claimed: ClaimedSaleCommand? = null
+  var poisoned: Boolean
+  do {
+  poisoned=false
   c.prepareStatement("SELECT o.*,d.claim_epoch,d.attempts,d.state AS delivery_state FROM storecore_command_delivery d JOIN storecore_outbox_commands o ON o.id=d.command_id WHERE ((d.state IN ('PENDING','UNCERTAIN') AND d.next_attempt_at<=now()) OR (d.state='IN_FLIGHT' AND d.lease_until<=now()))$filter ORDER BY o.id FOR UPDATE OF d SKIP LOCKED LIMIT 1").use { s ->
    if(operationId!=null) {s.setObject(1,UUID.fromString(operationId));s.setString(2,kind!!.name)}
    s.executeQuery().use { r -> if(!r.next()) null else {
-    val id=r.getLong("id");val command=mapper.decode(r.getString("canonical_payload"),r.getString("payload_hash"),r.getString("request_hash"))
+    val id=r.getLong("id")
+    // Invalid/unknown records cannot reach HTTP or repeatedly monopolize the head of the queue.
+    val command=runCatching { mapper.decode(r.getString("canonical_payload"),r.getString("payload_hash"),r.getString("request_hash")) }.getOrNull()
+    if(command==null) {
+     c.prepareStatement("UPDATE storecore_command_delivery SET state='LEGACY_INCOMPLETE',last_error_code='INCOMPLETE_EVIDENCE',lease_until=NULL,updated_at=now() WHERE command_id=?").use { u ->u.setLong(1,id);check(u.executeUpdate()==1) }
+     poisoned=true
+     null
+    } else {
     val token=UUID.randomUUID();val epoch=r.getLong("claim_epoch")+1;val attempts=r.getInt("attempts")+1
     c.prepareStatement("UPDATE storecore_command_delivery SET state='IN_FLIGHT',claim_token=?,claim_epoch=?,lease_until=now()+(? * interval '1 second'),attempts=?,updated_at=now() WHERE command_id=?").use { u -> u.setObject(1,token);u.setLong(2,epoch);u.setLong(3,lease.seconds);u.setInt(4,attempts);u.setLong(5,id);check(u.executeUpdate()==1) }
-    ClaimedSaleCommand(id,command,token,epoch,mapper.delivery(r.getString("delivery_state"))!=DeliveryState.PENDING,attempts,r.getLong("actor_id"),r.getLong("cash_session_id"))
+    claimed=ClaimedSaleCommand(id,command,token,epoch,mapper.delivery(r.getString("delivery_state"))!=DeliveryState.PENDING,attempts,r.getLong("actor_id"),r.getLong("cash_session_id"))
+    claimed
+    }
    } }
+  }
+  } while(poisoned)
+  claimed
+ }
+ override fun reconcileClaimEvidence(claim: ClaimedSaleCommand,receipt: StoreCoreOperationReceipt,reason: RecoveryReason): AttemptOutcome = transaction { c ->
+  val stored=lock(c,claim.command.quadruple.operationId)
+  val current=c.prepareStatement("SELECT state,claim_token,claim_epoch,lease_until>now() AS active FROM storecore_command_delivery WHERE command_id=? FOR UPDATE").use { s ->s.setLong(1,claim.id);s.executeQuery().use { r ->check(r.next());r.getString(1)==DeliveryState.IN_FLIGHT.name && r.getObject(2)==claim.claimToken && r.getLong(3)==claim.claimEpoch && r.getBoolean(4) } }
+  // Use an explicit allowlist even for incompatible responses. Never copy an envelope, bearer or request headers.
+  val evidence=mapper.remoteEvidence(receipt)
+  val hash=mapper.hash(evidence)
+  val identity=claim.command.quadruple
+  val inbox=c.prepareStatement("INSERT INTO storecore_inbox_events(client_instance_id,device_id,sale_id,operation_id,operation_kind,state,receipt,reservation_ref,response_hash,contract_version,openapi_digest,payload_redacted,evidence_json,evidence_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,'{}',?::jsonb,?) ON CONFLICT(client_instance_id,device_id,sale_id,operation_id,operation_kind,response_hash) DO NOTHING RETURNING id").use { s ->
+   s.setObject(1,UUID.fromString(identity.clientInstanceId));s.setString(2,identity.deviceId);s.setString(3,identity.saleId);s.setObject(4,UUID.fromString(identity.operationId));s.setString(5,claim.command.kind.name);s.setString(6,receipt.state.name)
+   s.setString(7,receipt.receipt);s.setObject(8,receipt.reservationRef?.let { ref -> runCatching {UUID.fromString(ref)}.getOrElse { UUID.nameUUIDFromBytes(ref.toByteArray()) } });s.setString(9,hash)
+   s.setString(10,claim.command.contractVersion);s.setString(11,claim.command.openapiDigest);s.setString(12,evidence);s.setString(13,hash)
+   s.executeQuery().use { r ->if(r.next()) r.getLong(1) else c.prepareStatement("SELECT id FROM storecore_inbox_events WHERE client_instance_id=? AND device_id=? AND sale_id=? AND operation_id=? AND operation_kind=? AND response_hash=? AND evidence_hash=?").use { q ->q.setObject(1,UUID.fromString(identity.clientInstanceId));q.setString(2,identity.deviceId);q.setString(3,identity.saleId);q.setObject(4,UUID.fromString(identity.operationId));q.setString(5,claim.command.kind.name);q.setString(6,hash);q.setString(7,hash);q.executeQuery().use { rows ->check(rows.next());rows.getLong(1) } } }
+  }
+  c.prepareStatement("INSERT INTO storecore_inbox_applications(inbox_id,command_id,claim_token,state,late_reason) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING").use { s ->s.setLong(1,inbox);s.setLong(2,claim.id);s.setObject(3,claim.claimToken);s.setString(4,if(current) "APPLIED" else "LATE_IGNORED");s.setString(5,if(current) null else RecoveryReason.LEASE_EXPIRED.name);s.executeUpdate() }
+  if(!current) AttemptOutcome.LATE_IGNORED else {
+   c.prepareStatement("UPDATE sale_state_projection SET status='RECONCILIATION_REQUIRED',reconciliation_reason=?,version=version+1,updated_at=now() WHERE id=? AND version=? AND status IN ('PENDING_RESERVATION','RESERVED','PAYMENT_CAPTURED','COMMIT_PENDING','RELEASE_PENDING')").use { s ->s.setString(1,reason.name);s.setLong(2,stored.projectionId);s.setLong(3,stored.version);check(s.executeUpdate()==1) }
+   c.prepareStatement("UPDATE storecore_command_delivery SET state='RECONCILIATION_REQUIRED',last_error_code=?,lease_until=NULL,updated_at=now() WHERE command_id=? AND claim_token=? AND claim_epoch=? AND state='IN_FLIGHT'").use { s ->s.setString(1,reason.name);s.setLong(2,claim.id);s.setObject(3,claim.claimToken);s.setLong(4,claim.claimEpoch);check(s.executeUpdate()==1) }
+   c.prepareStatement("INSERT INTO outbox_delivery_attempts(command_id,attempt_no,state,started_at,completed_at,error_redacted) VALUES(?,?,'DEAD',now(),now(),?) ON CONFLICT DO NOTHING").use { s ->s.setLong(1,claim.id);s.setInt(2,claim.attempts);s.setString(3,reason.name);s.executeUpdate() }
+   writer.insertAudit(c,claim.actorId,"RECONCILIATION_REQUIRED","sale",stored.projectionId,reason.name)
+   AttemptOutcome.RECONCILIATION_REQUIRED
   }
  }
  override fun deferClaim(claim: ClaimedSaleCommand,reason: RecoveryReason,delay: Duration,reconciliation: Boolean): Boolean = transaction { c ->

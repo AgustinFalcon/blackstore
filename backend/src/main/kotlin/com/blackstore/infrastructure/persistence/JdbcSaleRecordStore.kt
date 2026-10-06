@@ -29,11 +29,16 @@ class JdbcSaleRecordStore(
             val existing = connection.prepareStatement("SELECT id FROM sale_state_projection WHERE operation_id=?").use { s ->s.setObject(1,operationId);s.executeQuery().use { r ->if(r.next()) r.getLong(1) else null } }
             if(existing!=null) {
                 val stored=durable.read(connection,existing)
-                require(stored.saga.quadruple==saga.quadruple && stored.saga.cashSessionId==saga.cashSessionId && stored.saga.createdBy==saga.createdBy && stored.saga.lines==saga.lines)
-                require(stored.saga.outbox.firstOrNull { it.kind==command.kind }?.let { mapper.encode(it)==mapper.encode(command) } == true) { "IDEMPOTENCY_PAYLOAD_MISMATCH" }
+                require(stored.saga.quadruple==saga.quadruple && stored.saga.cashSessionId==saga.cashSessionId && stored.saga.createdBy==saga.createdBy &&
+                    stored.saga.lines.map { it.copy(originalUnitPrice=MoneyPolicy.normalize(it.originalUnitPrice),discountAmount=MoneyPolicy.normalize(it.discountAmount)) } ==
+                    saga.lines.map { it.copy(originalUnitPrice=MoneyPolicy.normalize(it.originalUnitPrice),discountAmount=MoneyPolicy.normalize(it.discountAmount)) })
+                require(stored.saga.outbox.firstOrNull { it.kind==command.kind }?.let { it.requestHash==command.requestHash && mapper.encode(it)==mapper.encode(command) } == true) { "IDEMPOTENCY_PAYLOAD_MISMATCH" }
                 return@asRole
             }
-            authorize(connection,saga,saga.createdBy ?: error("trusted actor required"),null)
+            val admission=saga.staffCommandAudit
+            require(admission==null || (admission.event==SaleStaffCommandEvent.RESERVE_REQUESTED && admission.actor.value==saga.createdBy))
+            val actor=saga.createdBy ?: error("trusted actor required")
+            authorize(connection,saga,actor,admission?.reason)
             val id =
                 writer.insertPendingSale(
                     connection = connection,
@@ -46,7 +51,7 @@ class JdbcSaleRecordStore(
                     contractVersion = command.contractVersion,
                     openapiDigest = digest,
                 )
-            insertCanonicalCommand(connection,saga,command,saga.createdBy!!,null)
+            insertCanonicalCommand(connection,saga,command,actor,admission?.reason)
             writer.insertAudit(connection, saga.createdBy, "INTENT_CREATED", "sale", id)
             saga.lines.forEach { line ->
                 writer.insertSaleLine(

@@ -74,7 +74,8 @@ class LocalSaleSagaService(
     fun beginReserve(staff: AuthenticatedStaff, quadruple: OperationQuadruple, cashSessionId: Long, lines: List<ReserveLineCommand>, ticketLines: List<TicketLine>, now: Instant, reason: String?): SaleSaga {
         return coordinator.coordinate(quadruple) {
             authority().reserve(staff,quadruple,cashSessionId,findSale(quadruple)?.cashSessionId,reason)
-            beginReserveCoordinated(quadruple,cashSessionId,lines,ticketLines,now,staff.id.value)
+            beginReserveCoordinated(quadruple,cashSessionId,lines,ticketLines,now,staff.id.value,
+                com.blackstore.domain.sales.SaleStaffCommandAudit(com.blackstore.domain.sales.SaleStaffCommandEvent.RESERVE_REQUESTED,staff.id,reason))
         }
     }
     fun stored(staff: AuthenticatedStaff, operationId: String): SaleSaga? { authority().sale(staff,StaffPermission.SaleRead,operationId); return stored(operationId) }
@@ -134,14 +135,16 @@ class LocalSaleSagaService(
         ticketLines: List<TicketLine> = emptyList(),
         now: Instant,
         createdBy: Long? = null,
+        admission: com.blackstore.domain.sales.SaleStaffCommandAudit? = null,
     ): SaleSaga {
         durable()?.let { store ->
+            val requestHash = ReserveRequestFingerprint.hash(quadruple, cashSessionId, lines, ticketLines, admission?.reason)
             val existing = store.findDurable(quadruple.operationId)
             if (existing != null) {
-                require(existing.saga.quadruple == quadruple && existing.saga.cashSessionId == cashSessionId && existing.saga.lines == ticketLines) { "idempotency payload mismatch" }
+                require(existing.saga.quadruple == quadruple && existing.saga.cashSessionId == cashSessionId) { "idempotency payload mismatch" }
                 val original = existing.saga.outbox.singleOrNull { it.kind == StoreCoreOperationKind.RESERVE }
                 val payload = original?.payload as? com.blackstore.domain.sales.CanonicalCommandPayload.Reserve
-                require(payload != null && payload.lines == lines.map { com.blackstore.domain.sales.CanonicalReserveLine(it.variantId,it.quantity,it.expectedPriceVersion) }) { "idempotency payload mismatch" }
+                require(payload != null && original.requestHash == requestHash) { "idempotency payload mismatch" }
                 if (existing.saga.status != SaleStatus.PENDING_RESERVATION || existing.saga.blockSameOperationRepost || existing.saga.retired) return existing.saga
                 return dispatchDurable(existing.saga, com.blackstore.domain.sales.CommandKind.RESERVE)
             }
@@ -149,9 +152,9 @@ class LocalSaleSagaService(
             catalogPolicy.assertSaleAllowed(snapshot, now)
             val resolved = reserveLinePolicy.resolve(snapshot, lines, ticketLines)
             retiredPolicy.assertCanPost(retirementPort.isRetired(quadruple.operationId))
-            val pending = SaleSaga(quadruple, cashSessionId, lines = ticketLines, createdBy = createdBy).withReserveCommand(
+            val pending = SaleSaga(quadruple, cashSessionId, lines = ticketLines, createdBy = createdBy, staffCommandAudit = admission).withReserveCommand(
                 OutboxCommand(quadruple, StoreCoreOperationKind.RESERVE, canonicalPath, contractVersion, openapiDigest,
-                    StoreCoreRequestHash.hex(StoreCoreOperationKind.RESERVE, quadruple.operationId),
+                    requestHash,
                     payload = com.blackstore.domain.sales.CanonicalCommandPayload.Reserve(requireNotNull(snapshot).version,
                         resolved.map { com.blackstore.domain.sales.CanonicalReserveLine(it.variantId,it.quantity,it.expectedPriceVersion) })))
             saleRecordStore.recordIntentAndOutbox(pending)

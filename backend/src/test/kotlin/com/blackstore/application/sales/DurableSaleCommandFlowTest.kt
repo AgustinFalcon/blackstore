@@ -11,6 +11,37 @@ import java.time.Instant
 import java.util.UUID
 
 class DurableSaleCommandFlowTest {
+    @Test fun `remote failures translate once and unknown retryable remains GET only`() {
+        for (code in com.blackstore.domain.exception.StoreCoreFailureCode.entries) {
+            val wire=if(code==com.blackstore.domain.exception.StoreCoreFailureCode.UNKNOWN) "future-provider-error" else code.name
+            assertEquals(code,com.blackstore.domain.exception.StoreCoreRemoteFault(wire).failureCode)
+        }
+        for (retryable in listOf(true,false)) {
+            val claim=claim(StoreCoreOperationKind.RESERVE,false)
+            val store=org.mockito.Mockito.mock(DurableSaleStore::class.java)
+            val inventory=org.mockito.Mockito.mock(StoreCoreInventoryPort::class.java)
+            org.mockito.Mockito.`when`(store.claimNext(Duration.ofSeconds(30))).thenReturn(claim)
+            org.mockito.Mockito.`when`(inventory.reserve(ReserveInventoryCommand(identity,"historical-catalog",listOf(ReserveLineCommand("historical-variant",2,"historical-price")))))
+                .thenThrow(com.blackstore.domain.exception.StoreCoreRemoteFault("future-provider-error",retryable))
+            DurableSaleCommandFlow(store,inventory).runNext()
+            org.mockito.Mockito.verify(store).deferClaim(claim,if(retryable) RecoveryReason.REMOTE_UNAVAILABLE else RecoveryReason.UNKNOWN,Duration.ofSeconds(1),!retryable)
+            org.mockito.Mockito.verify(inventory).reserve(ReserveInventoryCommand(identity,"historical-catalog",listOf(ReserveLineCommand("historical-variant",2,"historical-price"))))
+            org.mockito.Mockito.verifyNoMoreInteractions(inventory)
+        }
+    }
+    @Test fun `reconciliation matrix preserves the received receipt instead of discarding it`() {
+        for (uncertain in listOf(false,true)) for (state in listOf(StoreCoreOperationState.EXPIRED,StoreCoreOperationState.COMMITTED,StoreCoreOperationState.RELEASED)) {
+            val claim=claim(StoreCoreOperationKind.RESERVE,uncertain)
+            val store=org.mockito.Mockito.mock(DurableSaleStore::class.java)
+            val inventory=org.mockito.Mockito.mock(StoreCoreInventoryPort::class.java)
+            val response=receipt(state)
+            org.mockito.Mockito.`when`(store.claimNext(Duration.ofSeconds(30))).thenReturn(claim)
+            if(uncertain) org.mockito.Mockito.`when`(inventory.getOperation(identity)).thenReturn(response)
+            else org.mockito.Mockito.`when`(inventory.reserve(ReserveInventoryCommand(identity,"historical-catalog",listOf(ReserveLineCommand("historical-variant",2,"historical-price"))))).thenReturn(response)
+            DurableSaleCommandFlow(store,inventory).runNext()
+            org.mockito.Mockito.verify(store).reconcileClaimEvidence(claim,response,if(state==StoreCoreOperationState.EXPIRED) RecoveryReason.EXPIRED else RecoveryReason.TERMINAL_CONTRADICTION)
+        }
+    }
     private val identity = OperationQuadruple(UUID.randomUUID().toString(), "register", "sale", UUID.randomUUID().toString())
     private val contract = StoreCoreContractRef(StoreCoreCanonicalContract.CANONICAL_PATH, StoreCoreCanonicalContract.VERSION, StoreCoreCanonicalContract.SHA256)
     private fun receipt(state: StoreCoreOperationState, kind: StoreCoreOperationKind = StoreCoreOperationKind.RESERVE) =
