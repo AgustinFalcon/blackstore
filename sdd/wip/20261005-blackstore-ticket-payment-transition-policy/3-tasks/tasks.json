@@ -1,6 +1,6 @@
 {
   "feature": "blackstore-ticket-payment-transition-policy",
-  "status": "implemented_awaiting_ci_review",
+  "status": "validated_awaiting_merge",
   "base_commit": "a92ec07868638e312e568f3dc36837ea78cdde44",
   "execution_strategy": "sol_go_before_implementation",
   "stats": { "total": 7, "done": 7 },
