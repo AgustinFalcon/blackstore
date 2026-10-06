@@ -1,0 +1,18 @@
+{
+  "feature": "blackstore-staff-identity",
+  "status": "draft_awaiting_review",
+  "base_commit": "b9211764f525d723d020c780d4eb62564ffaadf6",
+  "stats": { "total": 10, "done": 1 },
+  "tasks": [
+    { "id": "SID-T01", "title": "Definir SDD, contrato, matriz RBAC/ownership y amenazas", "status": "done", "depends_on": [] },
+    { "id": "SID-T02", "title": "Tipos cerrados y política pura", "status": "pending", "depends_on": ["SID-T01"] },
+    { "id": "SID-T03", "title": "Migración, repositorios y adaptadores criptográficos", "status": "pending", "depends_on": ["SID-T02"] },
+    { "id": "SID-T04", "title": "Provisionamiento local y retiro del seed ficticio", "status": "pending", "depends_on": ["SID-T03"] },
+    { "id": "SID-T05", "title": "Login, sesión, logout, expiración y auditoría", "status": "pending", "depends_on": ["SID-T03", "SID-T04"] },
+    { "id": "SID-T06", "title": "Cookie, CSRF, errores y same-origin", "status": "pending", "depends_on": ["SID-T05"] },
+    { "id": "SID-T07", "title": "Autorización y ownership en controllers/casos de uso", "status": "pending", "depends_on": ["SID-T05", "SID-T06"] },
+    { "id": "SID-T08", "title": "Ruta /sesion, store, guards, shell y logout", "status": "pending", "depends_on": ["SID-T06", "SID-T07"] },
+    { "id": "SID-T09", "title": "Pruebas PostgreSQL, browser real y regresión", "status": "pending", "depends_on": ["SID-T07", "SID-T08"] },
+    { "id": "SID-T10", "title": "CI y reviews finales exactas", "status": "pending", "depends_on": ["SID-T09"] }
+  ]
+}
