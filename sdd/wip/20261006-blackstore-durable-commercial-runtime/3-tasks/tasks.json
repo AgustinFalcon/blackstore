@@ -1,10 +1,10 @@
 {
   "feature": "blackstore-durable-commercial-runtime",
-  "status": "draft_awaiting_review",
+  "status": "approved_for_implementation",
   "base_commit": "4055b281d15ad1d7aee6a9624349c41ca15a3638",
-  "stats": { "total": 9, "done": 0 },
+  "stats": { "total": 9, "done": 1 },
   "tasks": [
-    { "id": "DCR-T01", "title": "Aprobar SDD, invariantes, transacciones y amenazas", "status": "in_progress", "depends_on": [] },
+    { "id": "DCR-T01", "title": "Aprobar SDD, invariantes, transacciones y amenazas", "status": "done", "depends_on": [] },
     { "id": "DCR-T02", "title": "V6, tipos cerrados, mappers y legacy incompleto", "status": "pending", "depends_on": ["DCR-T01"] },
     { "id": "DCR-T03", "title": "Repositorio durable de lectura y rehidratación", "status": "pending", "depends_on": ["DCR-T02"] },
     { "id": "DCR-T04", "title": "Lock/CAS por venta y admisión transaccional completa", "status": "pending", "depends_on": ["DCR-T02", "DCR-T03"] },
