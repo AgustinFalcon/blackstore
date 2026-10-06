@@ -33,6 +33,7 @@ class JdbcCounterEntryStore(
             MoneyPolicy.normalize(payment.amount)
             MoneyPolicy.normalize(payment.feeAmount)
             val projectionId = findProjection(connection, identity)
+            val trustedActor = payment.actorId ?: error("trusted payment actor is required")
             if (payment.originalPaymentId != null) {
                 connection.prepareStatement("SELECT sale_id, status FROM payments WHERE id = ?").use { statement ->
                     statement.setLong(1, payment.originalPaymentId)
@@ -53,12 +54,15 @@ class JdbcCounterEntryStore(
             if (payment.status == PaymentStatus.REFUNDED) {
                 writer.insertAudit(
                     connection,
-                    payment.actorId ?: error("reversal requires an actor"),
+                    trustedActor,
                     "PAYMENT_REVERSED",
                     "payment",
                     id,
                     detail = "original=${payment.originalPaymentId};reason=${payment.reason};evidence=${payment.evidenceRef}",
                 )
+            }
+            if (payment.status == PaymentStatus.CAPTURED) {
+                writer.insertAudit(connection, trustedActor, com.blackstore.domain.identity.SecurityAuditEvent.PAYMENT_CAPTURED.name, "payment", id)
             }
             payment.copy(id = id)
         }
@@ -170,7 +174,12 @@ class JdbcCounterEntryStore(
 
     private fun <T> asRole(role: String, block: (java.sql.Connection) -> T): T =
         dataSource.connection.use { connection ->
-            connection.createStatement().execute("SET ROLE $role")
-            block(connection)
+            connection.autoCommit = false
+            try {
+                connection.createStatement().execute("SET LOCAL ROLE $role")
+                val result = block(connection)
+                connection.commit()
+                result
+            } catch (e: Exception) { connection.rollback(); throw e }
         }
 }

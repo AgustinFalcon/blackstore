@@ -1,8 +1,8 @@
 # Estado canónico del SDD — BlackStore
 
-**Validado:** 2026-10-02
-**Madurez:** evidencia local en `master`. Companion live no aprobado.
-**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `8fedbeb` (PR #17, issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16)); PR #15 es el stamp intermedio `929d5e0`. Sin tag ni publicación.
+**Validado:** 2026-10-06
+**Madurez:** simulador local parcial; identidad, recovery durable, caja contable y E2E real pendientes. Companion live no aprobado.
+**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `b9211764f525d723d020c780d4eb62564ffaadf6` (PR #23). CI post-merge `37398297188` verde. Sin tag ni publicación.
 
 ## Precedencia
 
@@ -19,7 +19,9 @@
 
 En `origin/master`, PRs #1–#8, #11, #13, #15 y #17 mergearon con sus pares Grok `APPROVED`. PR #9 mergeó a `integration/blackstore` (`531731f`) y no está en este `master`; no hay par Grok para #9. #10, #12 y #16 son issues. El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`delay`), no `Thread.sleep`. Issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12): el hilo IO llega por `DispatcherProvider` (como GoodLife Android); no se inyecta en dominio ni en workers `@Scheduled`. Issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16): reutilizar el mismo provider si aparece otro HTTP bloqueante; sin código ahora. No es un dispatcher remoto de Mercado Libre.
 
-PR #19 combina el corte issue #18 de vocabularios wire cerrados para las cinco rutas existentes y el workflow Verify de issue #20. La evidencia local registra build/TypeScript verdes; el runner Angular local no alcanzó assertions y el backend local terminó por un fallo del archivo binario de resultados de Gradle, no por una aserción. El CI hospedado final del HEAD `46fdba0` quedó verde en run `37095274517` (frontend/backend). Siguen pendientes las dos reviews Grok genuinas del HEAD final y el merge. No hay cambio de contrato, ruta, backend, perfil, secreto ni activación. Un arranque normal de StoreCore sigue con el módulo `DISABLED`. Release disabled. Fiscal, companion live, MP-LIVE-05 y `/sdd.finish` NO-GO. WIP abierto.
+PR #19 cerró los vocabularios wire de las cinco rutas existentes. PR #22 agregó fixtures de catálogo seguros. PR #23 incorporó política local fail-closed de ticket/pago, dinero exacto, correlación y coordinación en una instancia; sus reviews de bugs, seguridad y SDD aprobaron el HEAD exacto y el CI post-merge `37398297188` quedó verde.
+
+Ese CI no acredita producto completo. La auditoría funcional posterior confirmó que el runtime normal sigue con memoria/fixture, la saga consultable no se rehidrata tras reinicio, reportes no separan correctamente turno/día y no existe E2E browser→backends→PostgreSQL. El bloqueo inmediato es identidad: varios endpoints confían en `X-Actor-Id`/`X-Role` y otros no exigen actor. El WIP activo `20261006-blackstore-staff-identity` reemplaza esa frontera; no habilita companion live, fiscal, MP-LIVE-05 ni `/sdd.finish`.
 
 ## Estrategia de ramas para homologación
 

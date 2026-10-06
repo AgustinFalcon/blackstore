@@ -1,0 +1,17 @@
+# Staff identity: local administration
+
+Before applying V4 to an existing database, take a PostgreSQL backup and verify restoration in a separate disposable database. Record its digest and a successful `flyway validate`. V4 runs transactionally; a failure leaves V3 intact. If the engine or operator applies any portion nontransactionally, restore the verified V3 backup before retrying. Do not edit V1–V3 or run a destructive downgrade.
+
+Set `blackstore.persistence.staff-identity-backup-ref` to the retained backup digest and restoration evidence reference before starting against an existing V1–V3 installation. Startup refuses the migration without this reference. A new empty database needs no backup reference. The operator verifies the restore; the application checks the presence of its recorded evidence.
+
+Identity needs PostgreSQL. Without a configured identity repository, private HTTP routes deny access. The historical `cashier` ID remains for foreign keys, but its fictitious hash is disabled only once by V4; startup never resets an existing account.
+
+Run `com.blackstore.infrastructure.identity.LocalStaffProvisionTool` as a separate JVM process using the backend runtime classpath. Grant the dedicated local DB login membership in `blackstore_staff_provisioner` only. Never grant that role to the runtime DB login. Supply its connection URL and user in `BLACKSTORE_PROVISION_DB_URL` and `BLACKSTORE_PROVISION_DB_USER`. These identify the database, not the staff password. The tool asks for the database password separately using masked input.
+
+Creation arguments: `--create --identifier <login> --display-name <name> --role <CASHIER|SUPERVISOR|OWNER|AUDITOR>`. Reset arguments: `--reset --identifier <numeric ID> --display-name <name> --role <role>`. Confirm the exact target when prompted, then enter the staff secret in the masked console. Never put a password in arguments, environment variables or a plain file. A noninteractive protected pipe/descriptor is permitted only with `--protected-stdin`: supply confirmation, staff password and dedicated DB password as three lines. The caller must protect the descriptor and its producer; redirected plain files are prohibited. The tool prints the resulting ID only. Create/reset and the success audit are one transaction; failure rolls back and records a separate redacted failure event.
+
+After provisioning, validate Flyway and perform a controlled csrf→login→session→logout round trip. Check that logout and account inactivation deny future requests. A password reset must be followed by controlled login; sessions are resolved against the current account on every request.
+
+Production cookies use `__Host-blackstore-session`, HttpOnly, Secure, SameSite=Lax, Path=/, without Domain. HTTP development is opt-in (`blackstore.identity.loopback-http=true`) and requires `server.address=127.0.0.1` or `::1`; its cookie has a different name. Use a same-origin frontend proxy. Direct remote addresses are the rate-limit origin; forwarded headers grant no authority and are ignored. Live integrations remain disabled.
+
+An enabled production identity repository requires server TLS, or a backend bound only to loopback with an explicit HTTPS `blackstore.identity.allowed-origin` for the TLS frontend edge. An exposed plain HTTP backend fails startup. A fixture runtime without an identity repository serves its sanitized health endpoint and denies staff operations.

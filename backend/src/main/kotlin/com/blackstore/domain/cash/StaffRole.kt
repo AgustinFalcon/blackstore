@@ -5,4 +5,9 @@ enum class StaffRole {
     SUPERVISOR,
     OWNER,
     AUDITOR,
+    UNKNOWN;
+
+    companion object {
+        fun fromWire(raw: String?): StaffRole = entries.firstOrNull { it.name == raw } ?: UNKNOWN
+    }
 }

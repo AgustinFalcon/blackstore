@@ -75,7 +75,7 @@ class AutonomousCoreTest {
         }
         val (closed, audit) = cash.close(open, declared = BigDecimal("150.00"), closedAt = now.plusSeconds(60), actorId = 7, reason = "shift end")
         assertEquals(com.blackstore.domain.cash.CashSessionStatus.CLOSED, closed.status)
-        assertEquals("CASH_SESSION_CLOSED", audit.eventType)
+        assertEquals(com.blackstore.domain.cash.CashAuditEventType.CASH_SESSION_CLOSED, audit.eventType)
         assertEquals(open.openingCash, closed.openingCash)
     }
 

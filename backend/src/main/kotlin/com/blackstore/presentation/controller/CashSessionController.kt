@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.math.BigDecimal
+import com.blackstore.infrastructure.identity.staffSession
 
 @RestController
 @RequestMapping("/api/v1/cash-sessions")
@@ -28,7 +29,7 @@ class CashSessionController(
     fun list(request: HttpServletRequest): ResponseEntity<BaseResponse<List<CashSessionResponse>>> =
         ResponseEntity.ok(
             BaseResponse.success(
-                cashSessionApplicationService.list().map { it.toResponse() },
+                cashSessionApplicationService.list(request.staffSession().staff).map { it.toResponse() },
                 traceId(request),
             ),
         )
@@ -36,14 +37,12 @@ class CashSessionController(
     @PostMapping
     fun open(
         request: HttpServletRequest,
-        @RequestHeader("X-Actor-Id") actorId: Long,
-        @RequestHeader("X-Role") role: StaffRole,
         @Valid @RequestBody body: OpenCashSessionRequest,
     ): ResponseEntity<BaseResponse<CashSessionResponse>> =
         ResponseEntity.ok(
             BaseResponse.success(
                 cashSessionApplicationService
-                    .open(actorId, role, body.terminalId, body.cashierId, body.openingCash)
+                    .open(request.staffSession().staff, body.terminalId, body.cashierId, body.openingCash, body.reason)
                     .toResponse(),
                 traceId(request),
             ),
@@ -53,13 +52,11 @@ class CashSessionController(
     fun close(
         request: HttpServletRequest,
         @PathVariable sessionId: Long,
-        @RequestHeader("X-Actor-Id") actorId: Long,
-        @RequestHeader("X-Role") role: StaffRole,
         @Valid @RequestBody body: CloseCashSessionRequest,
     ): ResponseEntity<BaseResponse<CashSessionResponse>> =
         ResponseEntity.ok(
             BaseResponse.success(
-                cashSessionApplicationService.close(actorId, role, sessionId, body.declared, body.reason).toResponse(),
+                cashSessionApplicationService.close(request.staffSession().staff, sessionId, body.declared, body.reason).toResponse(),
                 traceId(request),
             ),
         )
@@ -73,11 +70,12 @@ data class OpenCashSessionRequest(
     @field:NotNull val terminalId: Long,
     @field:NotNull val cashierId: Long,
     @field:NotNull @field:PositiveOrZero val openingCash: BigDecimal,
+    val reason: String? = null,
 )
 
 data class CloseCashSessionRequest(
     @field:NotNull @field:PositiveOrZero val declared: BigDecimal,
-    @field:NotNull val reason: String,
+    val reason: String = "",
 )
 
 data class CashSessionResponse(

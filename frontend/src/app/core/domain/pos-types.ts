@@ -98,6 +98,7 @@ export class PaymentMethod {
 }
 
 export class StaffRole {
+  get canAssignCashier(): boolean { return this === StaffRole.Supervisor || this === StaffRole.Owner; }
   static readonly Cashier = new StaffRole('CASHIER', 'cajero');
   static readonly Supervisor = new StaffRole('SUPERVISOR', 'supervisor');
   static readonly Owner = new StaffRole('OWNER', 'titular');

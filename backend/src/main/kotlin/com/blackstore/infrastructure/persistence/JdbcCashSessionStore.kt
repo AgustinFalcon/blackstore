@@ -64,7 +64,7 @@ class JdbcCashSessionStore(
             writer.insertAudit(
                 connection,
                 event.actorId,
-                event.eventType,
+                event.eventType.name,
                 "cash_session",
                 event.sessionId,
                 detail = event.reason,
@@ -85,7 +85,7 @@ class JdbcCashSessionStore(
             cashierId = getLong("cashier_id"),
             openedAt = getTimestamp("opened_at").toInstant(),
             openingCash = getBigDecimal("opening_cash"),
-            status = CashSessionStatus.valueOf(getString("status")),
+            status = CashSessionStatus.fromWire(getString("status")),
             closedAt = getTimestamp("closed_at")?.toInstant(),
             closingCashDeclared = getBigDecimal("closing_cash_declared"),
         )

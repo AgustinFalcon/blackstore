@@ -2,6 +2,7 @@ package com.blackstore.infrastructure.persistence
 
 import org.flywaydb.core.Flyway
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -15,10 +16,11 @@ import javax.sql.DataSource
 
 @Configuration
 @ConditionalOnProperty(name = ["blackstore.persistence.enabled"], havingValue = "true")
-class BlackStorePersistenceConfig(
+class BlackStorePersistenceConfig @Autowired constructor(
     @Value("\${blackstore.persistence.url}") private val url: String,
     @Value("\${blackstore.persistence.username}") private val username: String,
     @Value("\${blackstore.persistence.password}") private val password: String,
+    @Value("\${blackstore.persistence.staff-identity-backup-ref:}") private val identityBackupRef: String = "",
 ) {
     @Bean
     fun blackStoreDataSource(): DataSource = SimpleConnectionDataSource(url, username, password)
@@ -30,7 +32,13 @@ class BlackStorePersistenceConfig(
     fun migrateAndSeed(dataSource: DataSource, seed: LocalDatabaseSeed): ApplicationRunner =
         ApplicationRunner {
             Class.forName("org.postgresql.Driver")
-            Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate()
+            val flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load()
+            val existingVersion = flyway.info().current()?.version?.version?.toIntOrNull()
+            require(existingVersion == null || existingVersion >= 4 || identityBackupRef.isNotBlank()) {
+                "V4 requires a verified backup/restore evidence reference: blackstore.persistence.staff-identity-backup-ref"
+            }
+            flyway.migrate()
+            flyway.validate()
             dataSource.connection.use { connection ->
                 connection.createStatement().execute(
                     """
@@ -47,8 +55,8 @@ class BlackStorePersistenceConfig(
                 )
                 connection.createStatement().execute(
                     """
-                    INSERT INTO staff_users (login, password_hash, role_code)
-                    VALUES ('cashier', '${'$'}2a${'$'}10${'$'}012345678901234567890u', 'CASHIER')
+                    INSERT INTO staff_users (login, display_name, password_hash, role_code, active)
+                    VALUES ('cashier', 'Historical cashier', '${'$'}2a${'$'}10${'$'}012345678901234567890u', 'CASHIER', FALSE)
                     ON CONFLICT (login) DO NOTHING
                     """.trimIndent(),
                 )

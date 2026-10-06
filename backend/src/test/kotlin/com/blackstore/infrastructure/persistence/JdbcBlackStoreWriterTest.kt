@@ -75,7 +75,7 @@ class JdbcBlackStoreWriterTest {
             }
             val dataSource = PGSimpleDataSource().apply { setURL(postgres.jdbcUrl); user = postgres.username; password = postgres.password }
             val ledger = JdbcCounterEntryStore(dataSource)
-            val original = ledger.savePayment(PaymentBook().capture(1, PaymentMethod.CASH, BigDecimal("18.000"), BigDecimal.ZERO), identity)
+            val original = ledger.savePayment(PaymentBook().capture(1, PaymentMethod.CASH, BigDecimal("18.000"), BigDecimal.ZERO).copy(actorId = cashierId), identity)
             assertEquals(1, (ledger.paymentLedger(identity) as OperationLedger.Known).entries.size)
             assertEquals(0, (ledger.paymentLedger(other) as OperationLedger.Known).entries.size)
             assertThrows<IllegalStateException> { ledger.savePayment(PaymentBook().capture(2, PaymentMethod.CASH, BigDecimal.ONE, BigDecimal.ZERO), operationId.toString()) }

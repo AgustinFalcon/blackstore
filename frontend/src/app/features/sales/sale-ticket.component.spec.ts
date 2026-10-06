@@ -7,6 +7,8 @@ import { PaymentStatus, SaleAction, SaleStatus } from '../../core/domain/pos-typ
 import { PaymentCoverage, TicketIdentity } from '../../core/domain/ticket-transition';
 import { CounterContextService } from '../../core/services/counter-context.service';
 import { SaleTicketComponent } from './sale-ticket.component';
+import { SessionStore } from '../../core/services/session.store';
+import { authenticateTestSession } from '../../core/services/session-test-helper';
 
 describe('SaleTicketComponent guarded writes (T05/T11)', () => {
   let component: SaleTicketComponent;
@@ -26,6 +28,7 @@ describe('SaleTicketComponent guarded writes (T05/T11)', () => {
         useValue: { load: () => {}, catalog: signal(null), openSession: signal({ id: 1 }), cashierId: signal(7), blockReason: () => null },
       }],
     });
+    authenticateTestSession(TestBed.inject(SessionStore));
     component = TestBed.createComponent(SaleTicketComponent).componentInstance;
     http = TestBed.inject(HttpTestingController);
   });

@@ -23,19 +23,25 @@ import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.math.BigDecimal
+import com.blackstore.application.identity.AuthorizeStaffAction
+import com.blackstore.domain.identity.StaffPermission
+import com.blackstore.infrastructure.identity.staffSession
 
 @RestController
 @RequestMapping("/api/v1")
 class CounterController(
     private val counterApplicationService: CounterApplicationService,
     private val workspaceQuery: WorkspaceQuery,
+    private val authorization: AuthorizeStaffAction,
 ) {
     @GetMapping("/workspace")
     fun workspace(request: HttpServletRequest): ResponseEntity<BaseResponse<WorkspaceResponse>> {
+        val staff = request.staffSession().staff
+        authorization.permission(staff, StaffPermission.WorkspaceRead)
         val current = workspaceQuery.current()
         return ResponseEntity.ok(
             BaseResponse.success(
-                WorkspaceResponse(current.terminalId, current.cashierId, current.persistence),
+                WorkspaceResponse(current.terminalId, staff.id.value, current.persistence),
                 traceId(request),
             ),
         )
@@ -48,10 +54,12 @@ class CounterController(
     ): ResponseEntity<BaseResponse<PaymentResponse>> {
         val payment =
             counterApplicationService.capture(
+                request.staffSession().staff,
                 body.identity(),
                 PaymentMethod.fromWire(body.method?.takeIf { it.isTextual }?.textValue()),
                 body.amount,
                 body.feeAmount,
+                body.reason,
             )
         return ResponseEntity.ok(
             BaseResponse.success(
@@ -65,16 +73,13 @@ class CounterController(
     fun reverse(
         request: HttpServletRequest,
         @PathVariable paymentId: Long,
-        @RequestHeader("X-Actor-Id") actorId: Long,
-        @RequestHeader("X-Role") role: StaffRole,
         @Valid @RequestBody body: ReversalRequest,
     ): ResponseEntity<BaseResponse<PaymentResponse>> {
         val payment =
             counterApplicationService.reverse(
                 identity = body.identity(),
                 paymentId = paymentId,
-                actorId = actorId,
-                role = role,
+                staff = request.staffSession().staff,
                 reason = body.reason,
                 evidenceRef = body.evidenceRef,
             )
@@ -89,14 +94,11 @@ class CounterController(
     @PostMapping("/expenses")
     fun expense(
         request: HttpServletRequest,
-        @RequestHeader("X-Actor-Id") actorId: Long,
-        @RequestHeader("X-Role") role: StaffRole,
         @Valid @RequestBody body: ExpenseRequest,
     ): ResponseEntity<BaseResponse<ExpenseResponse>> {
         val expense =
             counterApplicationService.addExpense(
-                actorId = actorId,
-                role = role,
+                staff = request.staffSession().staff,
                 cashSessionId = body.cashSessionId,
                 category = body.category,
                 amount = body.amount,
@@ -110,11 +112,11 @@ class CounterController(
 
     @GetMapping("/reports/shift")
     fun shift(request: HttpServletRequest): ResponseEntity<BaseResponse<ShiftReportResponse>> =
-        report(request, counterApplicationService.shiftReport())
+        report(request, counterApplicationService.shiftReport(request.staffSession().staff))
 
     @GetMapping("/reports/daily")
     fun daily(request: HttpServletRequest): ResponseEntity<BaseResponse<ShiftReportResponse>> =
-        report(request, counterApplicationService.dailyReport())
+        report(request, counterApplicationService.dailyReport(request.staffSession().staff))
 
     private fun report(
         request: HttpServletRequest,
@@ -142,6 +144,7 @@ data class CapturePaymentRequest(
     val method: JsonNode? = null,
     @field:NotNull @field:Positive val amount: BigDecimal,
     @field:NotNull val feeAmount: BigDecimal,
+    val reason: String? = null,
 ) { fun identity() = OperationQuadruple(clientInstanceId, deviceId, saleId, operationId) }
 
 data class PaymentResponse(val clientInstanceId: String, val deviceId: String, val saleId: String, val operationId: String, val paymentId: Long, val status: String, val amount: BigDecimal, val feeAmount: BigDecimal)
