@@ -12,6 +12,7 @@ Base `b9211764f525d723d020c780d4eb62564ffaadf6`.
 - [x] Las suites PostgreSQL/Testcontainers pasaron en CI Linux. El host no expone Docker, por lo que la aceptación local usó PostgreSQL 18 efímero en loopback.
 - [x] Browser real Angular → proxy same-origin → backend → PostgreSQL: owner login, apertura de caja ajena con motivo, logout/revocación, deep-link anónimo, login cashier, caja propia y denegación de reportes. La cookie autenticada no fue visible en `document.cookie`; la mutación CSRF persistió y quedó auditada con actor owner. Evidencia: `evidence/SID-T09-browser-real.md`.
 - [x] Durante la aceptación se corrigió el entry point ambiguo de `bootRun` causado por la herramienta de provisión y se ocultó el acceso rápido de reportes a roles sin permiso.
-- [ ] CI y reviews exactas sobre el commit final que incorpora esas dos correcciones y esta evidencia.
+- [x] CI alojado final `37409625979` verde en backend (2m40s) y frontend (38s) sobre `dbb32035fe32abf67dc571d2608d99ade5872476`.
+- [x] Reviews finales Bug, Security y conformidad SDD aprobaron `dbb32035fe32abf67dc571d2608d99ade5872476` sin P0–P3. Este último commit sólo cierra la trazabilidad de T10.
 
 No se afirma homologación, recovery durable de ventas, reportes correctos por período, integración StoreCore live, fiscal ni `/sdd.finish`.
