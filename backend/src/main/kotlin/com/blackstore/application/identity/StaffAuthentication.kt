@@ -29,7 +29,7 @@ class IssueStaffSession(private val sessions: StaffSessionRepository, private va
         val now = clock.instant()
         val token = tokens.generate()
         val session = StaffSession(tokens.digest(token), credential.user.id, tokens.generate(), now, now, now.plusSeconds(43200), null)
-        sessions.create(session)
+        if (!sessions.createIfCredentialCurrent(session,credential.user)) throw StaffSecurityException(StaffSecurityFailure.INVALID_CREDENTIALS)
         return IssuedStaffSession(token, ResolvedStaffSession(credential.user.toPrincipal(), session))
     }
 }

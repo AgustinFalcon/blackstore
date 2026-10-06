@@ -20,10 +20,15 @@ describe('SessionStore with own API interceptor', () => {
     spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
   });
   afterEach(() => http.verify());
+  // fetchCsrf and its caller both resume asynchronously. The next event-loop
+  // turn runs after the entire microtask queue, rather than after just one await.
+  async function settleAuthContinuations(): Promise<void> {
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+  }
   async function login(): Promise<void> {
     const pending = session.login('staff', 'secret');
     http.expectOne(`${API_BASE}/auth/csrf`).flush(envelope({ csrfToken: 'pre-context' }));
-    await Promise.resolve();
+    await settleAuthContinuations();
     const request = http.expectOne(`${API_BASE}/auth/login`);
     expect(request.request.withCredentials).toBeTrue();
     expect(request.request.headers.get('X-CSRF-Token')).toBe('pre-context');
@@ -35,7 +40,7 @@ describe('SessionStore with own API interceptor', () => {
     expect(session.state()).toBe(SessionState.Loading);
     const request = http.expectOne(`${API_BASE}/auth/session`);
     expect(request.request.withCredentials).toBeTrue(); request.flush(envelope({ staff }));
-    await Promise.resolve();
+    await settleAuthContinuations();
     expect(session.state()).toBe(SessionState.Loading);
     http.expectOne(`${API_BASE}/auth/csrf`).flush(envelope({ csrfToken: 'session-context' }));
     await pending;

@@ -21,6 +21,11 @@ class AuthenticatedCommercialRegressionTest {
     @org.springframework.boot.test.mock.mockito.MockBean private lateinit var authorizer: com.blackstore.application.identity.AuthorizeStaffAction
     @org.junit.jupiter.api.BeforeEach fun trustedTestSession() {
         val now=java.time.Instant.now()
+        val staff=com.blackstore.domain.identity.AuthenticatedStaff(com.blackstore.domain.identity.StaffUserId(7),"Regression Operator",com.blackstore.domain.cash.StaffRole.CASHIER)
+        val identity=com.blackstore.domain.model.OperationQuadruple("11111111-1111-1111-1111-111111111111","terminal-1","sale-http-policy","op-http-policy")
+        for(permission in listOf(com.blackstore.domain.identity.StaffPermission.SaleCommit,com.blackstore.domain.identity.StaffPermission.SaleRelease)) {
+            org.mockito.Mockito.`when`(authorizer.sale(staff,permission,identity,null)).thenReturn(com.blackstore.domain.identity.OwnedCashSession(1,staff.id,com.blackstore.domain.cash.CashSessionStatus.OPEN))
+        }
         org.mockito.Mockito.`when`(resolver.execute(org.mockito.ArgumentMatchers.anyString())).thenAnswer { invocation ->
             val token=invocation.getArgument<String>(0)
             val role=when(token) {

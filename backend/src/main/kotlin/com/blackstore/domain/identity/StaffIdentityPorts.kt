@@ -6,6 +6,7 @@ import java.time.Instant
 interface StaffUserRepository { fun findByLogin(login: String): StaffUser?; fun findById(id: StaffUserId): StaffUser? }
 interface StaffSessionRepository {
     fun create(session: StaffSession)
+    fun createIfCredentialCurrent(session: StaffSession, verified: StaffUser): Boolean
     fun find(digest: String): StaffSession?
     fun touchIfActive(digest: String, now: Instant): Boolean
     fun revoke(digest: String, now: Instant)

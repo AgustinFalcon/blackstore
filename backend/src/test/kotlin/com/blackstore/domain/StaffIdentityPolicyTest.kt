@@ -79,6 +79,10 @@ class StaffIdentityPolicyTest {
         override fun findByLogin(login: String)=current
         override fun findById(id: StaffUserId)=current
         override fun create(session: StaffSession) { this.session=session }
+        override fun createIfCredentialCurrent(session: StaffSession,verified: StaffUser): Boolean {
+            if(current != verified) return false
+            create(session); return true
+        }
         override fun find(digest: String)=session
         override fun touchIfActive(digest: String,now: Instant)=session?.state(now)==StaffSessionState.ACTIVE
         override fun revoke(digest: String,now: Instant) { session=session?.copy(revokedAt=now) }

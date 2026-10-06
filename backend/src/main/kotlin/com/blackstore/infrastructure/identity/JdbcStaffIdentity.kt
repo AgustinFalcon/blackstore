@@ -16,14 +16,24 @@ class JdbcStaffIdentity(private val source: DataSource, private val tokens: Sess
         try { c.createStatement().use { it.execute("SET LOCAL ROLE blackstore_app") }; val result = block(c); c.commit(); result }
         catch (e: Exception) { c.rollback(); throw e }
     }
-    private fun user(rows: ResultSet) = StaffUser(StaffUserId(rows.getLong("id")), rows.getString("login"), rows.getString("display_name"), StaffRole.fromWire(rows.getString("role_code")), if (rows.getBoolean("active")) StaffAccountState.ACTIVE else StaffAccountState.INACTIVE, rows.getString("password_hash"))
+    private fun user(rows: ResultSet) = StaffUser(StaffUserId(rows.getLong("id")), rows.getString("login"), rows.getString("display_name"), StaffRole.fromWire(rows.getString("role_code")), if (rows.getBoolean("active")) StaffAccountState.ACTIVE else StaffAccountState.INACTIVE, rows.getString("password_hash"), rows.getLong("credential_version"))
     override fun findByLogin(login: String): StaffUser? = transaction { c -> c.prepareStatement("SELECT * FROM staff_users WHERE lower(login)=?").use { s -> s.setString(1, login); s.executeQuery().use { r -> if (!r.next()) null else user(r).takeUnless { r.next() } } } }
     override fun findById(id: StaffUserId): StaffUser? = transaction { c -> c.prepareStatement("SELECT * FROM staff_users WHERE id=?").use { s -> s.setLong(1, id.value); s.executeQuery().use { r -> if (r.next()) user(r) else null } } }
-    override fun create(session: StaffSession) { transaction { c -> c.prepareStatement("INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES (?,?,?,?,?,?)").use { s ->
+    override fun create(session: StaffSession) { transaction { c -> insertSession(c,session) } }
+    override fun createIfCredentialCurrent(session: StaffSession, verified: StaffUser): Boolean = transaction { c ->
+        c.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?,0))").use { s -> s.setString(1,"staff-credential:${verified.id.value}"); s.execute() }
+        c.prepareStatement("SELECT * FROM staff_users WHERE id=?").use { s ->
+            s.setLong(1,verified.id.value)
+            val current=s.executeQuery().use { rows -> if(rows.next()) user(rows) else null }
+            if(current == null || current.credentialVersion != verified.credentialVersion || current.passwordHash != verified.passwordHash || current.role != verified.role || current.state != StaffAccountState.ACTIVE || current.role == StaffRole.UNKNOWN) false
+            else { insertSession(c,session); true }
+        }
+    }
+    private fun insertSession(c: Connection,session: StaffSession) { c.prepareStatement("INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES (?,?,?,?,?,?)").use { s ->
         s.setString(1, session.digest); s.setLong(2, session.userId.value); s.setString(3, session.csrfToken); s.setTimestamp(4, Timestamp.from(session.createdAt)); s.setTimestamp(5, Timestamp.from(session.lastUsedAt)); s.setTimestamp(6, Timestamp.from(session.expiresAt)); s.executeUpdate()
-    } } }
+    } }
     override fun find(digest: String): StaffSession? = transaction { c -> c.prepareStatement("SELECT * FROM staff_sessions WHERE token_digest=?").use { s -> s.setString(1, digest); s.executeQuery().use { r -> if (!r.next()) null else StaffSession(digest, StaffUserId(r.getLong("user_id")), r.getString("csrf_token"), r.getTimestamp("created_at").toInstant(), r.getTimestamp("last_used_at").toInstant(), r.getTimestamp("expires_at").toInstant(), r.getTimestamp("revoked_at")?.toInstant()) } } }
-    override fun touchIfActive(digest: String, now: Instant): Boolean = transaction { c -> c.prepareStatement("UPDATE staff_sessions SET last_used_at=GREATEST(last_used_at,?) WHERE token_digest=? AND revoked_at IS NULL AND expires_at>? AND last_used_at>? - interval '30 minutes'").use { s -> s.setTimestamp(1, Timestamp.from(now)); s.setString(2,digest); s.setTimestamp(3,Timestamp.from(now)); s.setTimestamp(4,Timestamp.from(now)); s.executeUpdate() == 1 } }
+    override fun touchIfActive(digest: String, now: Instant): Boolean = transaction { c -> c.prepareStatement("UPDATE staff_sessions SET last_used_at=GREATEST(last_used_at,?) WHERE token_digest=? AND revoked_at IS NULL AND expires_at>? AND last_used_at>CAST(? AS timestamptz) - interval '30 minutes'").use { s -> s.setTimestamp(1, Timestamp.from(now)); s.setString(2,digest); s.setTimestamp(3,Timestamp.from(now)); s.setTimestamp(4,Timestamp.from(now)); s.executeUpdate() == 1 } }
     override fun revoke(digest: String, now: Instant) { transaction { c -> c.prepareStatement("UPDATE staff_sessions SET revoked_at=COALESCE(revoked_at,?) WHERE token_digest=?").use { s -> s.setTimestamp(1,Timestamp.from(now)); s.setString(2,digest); s.executeUpdate() } } }
     override fun record(event: SecurityAuditEvent, actor: StaffUserId?, target: StaffUserId?) { transaction { c -> c.prepareStatement("INSERT INTO audit_events(actor_id,event_type,aggregate_type,aggregate_id,payload_redacted) VALUES (?,?,'staff',?,'{}'::jsonb)").use { s -> s.setObject(1, actor?.value); s.setString(2,event.name); s.setObject(3,target?.value); s.executeUpdate() } } }
     private fun buckets(login: String, origin: String) = listOf(tokens.digest("login:$login") to 10, tokens.digest("origin:$origin") to 30, tokens.digest("pair:${login.length}:$login:$origin") to 5)

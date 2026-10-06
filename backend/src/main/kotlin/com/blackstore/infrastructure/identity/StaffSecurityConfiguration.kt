@@ -30,6 +30,7 @@ class SecureSessionTokenGenerator : SessionTokenGenerator {
 }
 /** There is no in-memory identity fallback in the runtime. */
 class UnavailableStaffIdentity : StaffIdentityRepository {
+    override fun createIfCredentialCurrent(session: StaffSession,verified: StaffUser)=false
     override fun <T> coordinate(login: String,origin: String,action: () -> T): T = throw StaffSecurityException(StaffSecurityFailure.IDENTITY_UNAVAILABLE)
     override fun findByLogin(login: String): StaffUser? = null
     override fun findById(id: StaffUserId): StaffUser? = null

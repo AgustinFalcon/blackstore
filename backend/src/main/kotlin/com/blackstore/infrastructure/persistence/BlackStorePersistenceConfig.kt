@@ -2,6 +2,7 @@ package com.blackstore.infrastructure.persistence
 
 import org.flywaydb.core.Flyway
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -15,7 +16,7 @@ import javax.sql.DataSource
 
 @Configuration
 @ConditionalOnProperty(name = ["blackstore.persistence.enabled"], havingValue = "true")
-class BlackStorePersistenceConfig(
+class BlackStorePersistenceConfig @Autowired constructor(
     @Value("\${blackstore.persistence.url}") private val url: String,
     @Value("\${blackstore.persistence.username}") private val username: String,
     @Value("\${blackstore.persistence.password}") private val password: String,

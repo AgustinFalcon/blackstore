@@ -158,6 +158,13 @@ class JdbcSaleRecordStore(
 
     private fun persistCommand(saga: SaleSaga, kind: StoreCoreOperationKind) {
         val command = saga.outbox.first { it.kind == kind }
+        val audit = saga.staffCommandAudit ?: error("trusted command actor is required")
+        val expected = when(kind) {
+            StoreCoreOperationKind.COMMIT -> com.blackstore.domain.sales.SaleStaffCommandEvent.COMMIT_REQUESTED
+            StoreCoreOperationKind.RELEASE -> com.blackstore.domain.sales.SaleStaffCommandEvent.RELEASE_REQUESTED
+            else -> error("unsupported staff command")
+        }
+        require(audit.event == expected)
         asRole("blackstore_app") { connection ->
             writer.insertOutbox(
                 connection,
@@ -170,6 +177,7 @@ class JdbcSaleRecordStore(
                 command.openapiDigest.padEnd(64, '0').take(64),
                 command.requestHash.padEnd(64, '0').take(64),
             )
+            writer.insertAudit(connection,audit.actor.value,audit.event.name,"sale",findProjection(connection,saga),audit.reason ?: "")
         }
     }
 

@@ -5,6 +5,14 @@ import com.blackstore.domain.model.OperationQuadruple
 
 class AuthorizeStaffAction(private val ownership: StaffOwnershipQuery, private val audit: SecurityAuditPort) {
     private val policy=StaffAuthorizationPolicy()
+    fun reserve(staff: AuthenticatedStaff, identity: OperationQuadruple, submittedCashId: Long, existingCashId: Long?, reason: String?) {
+        cash(staff,StaffPermission.SaleReserve,submittedCashId,reason)
+        val persisted = ownership.sale(identity)
+        if (persisted != null) {
+            check(staff,StaffPermission.SaleReserve,persisted,reason)
+            if (persisted.id != submittedCashId || (existingCashId != null && existingCashId != persisted.id)) deny(staff,StaffSecurityFailure.NOT_FOUND)
+        } else if (existingCashId != null) deny(staff,StaffSecurityFailure.NOT_FOUND)
+    }
     fun permission(staff: AuthenticatedStaff, permission: StaffPermission) {
         if(!policy.permits(staff.role,permission)) deny(staff,StaffSecurityFailure.FORBIDDEN)
     }

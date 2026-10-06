@@ -69,6 +69,7 @@ data class SaleSaga(
     val sameBodyRetries: Int = 0,
     val lines: List<TicketLine> = emptyList(),
     val createdBy: Long? = null,
+    val staffCommandAudit: SaleStaffCommandAudit? = null,
 ) {
     val netSales: BigDecimal get() = grossSales.subtract(discounts)
 

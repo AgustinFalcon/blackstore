@@ -19,7 +19,7 @@ enum class StaffPermission {
 }
 enum class AuthorizationDecision { ALLOW, FORBIDDEN, NOT_FOUND, REASON_REQUIRED, UNKNOWN }
 enum class SecurityAuditEvent { LOGIN_SUCCEEDED, LOGIN_FAILED, LOGIN_RATE_LIMITED, LOGOUT, AUTHORIZATION_DENIED, STAFF_CREATED, STAFF_RESET, PROVISION_FAILED, PAYMENT_CAPTURED }
-data class StaffUser(val id: StaffUserId, val login: String, val displayName: String, val role: StaffRole, val state: StaffAccountState, val passwordHash: String)
+data class StaffUser(val id: StaffUserId, val login: String, val displayName: String, val role: StaffRole, val state: StaffAccountState, val passwordHash: String, val credentialVersion: Long = 0)
 data class AuthenticatedStaff(val id: StaffUserId, val displayName: String, val role: StaffRole)
 data class StaffSession(val digest: String, val userId: StaffUserId, val csrfToken: String, val createdAt: Instant, val lastUsedAt: Instant, val expiresAt: Instant, val revokedAt: Instant?) {
     fun state(now: Instant): StaffSessionState = when {
