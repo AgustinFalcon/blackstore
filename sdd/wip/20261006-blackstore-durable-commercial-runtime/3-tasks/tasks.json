@@ -1,0 +1,16 @@
+{
+  "feature": "blackstore-durable-commercial-runtime",
+  "status": "draft_awaiting_review",
+  "base_commit": "4055b281d15ad1d7aee6a9624349c41ca15a3638",
+  "stats": { "total": 8, "done": 0 },
+  "tasks": [
+    { "id": "DCR-T01", "title": "Aprobar SDD, invariantes, transacciones y amenazas", "status": "in_progress", "depends_on": [] },
+    { "id": "DCR-T02", "title": "V6, tipos cerrados, mappers y legacy incompleto", "status": "pending", "depends_on": ["DCR-T01"] },
+    { "id": "DCR-T03", "title": "Repositorio durable de lectura y rehidratación", "status": "pending", "depends_on": ["DCR-T02"] },
+    { "id": "DCR-T04", "title": "Admisión transaccional, replay y mismatch", "status": "pending", "depends_on": ["DCR-T02", "DCR-T03"] },
+    { "id": "DCR-T05", "title": "Aplicación atómica de evidencia y proyección", "status": "pending", "depends_on": ["DCR-T04"] },
+    { "id": "DCR-T06", "title": "Worker por pasos, leases, backoff y recovery GET", "status": "pending", "depends_on": ["DCR-T05"] },
+    { "id": "DCR-T07", "title": "API durable y reapertura UI con RBAC", "status": "pending", "depends_on": ["DCR-T03", "DCR-T06"] },
+    { "id": "DCR-T08", "title": "Reinicio, browser, CI y reviews finales", "status": "pending", "depends_on": ["DCR-T07"] }
+  ]
+}
