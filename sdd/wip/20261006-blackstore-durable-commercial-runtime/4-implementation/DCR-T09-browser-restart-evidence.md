@@ -35,6 +35,7 @@ Una operación de prueba deliberadamente interrumpida durante la validación de 
 - Navegador y reinicio: escenario completo aprobado según la evidencia anterior.
 - Review de bugs GPT-6.1 Sol: `APPROVED`, sin P0–P3.
 - Review de seguridad GPT-6.1 Sol: `APPROVED`, sin P0–P3.
-- Review SDD/arquitectura GPT-6.1 Sol: `APPROVED`, sin P0–P3; DCR-T09 continúa pendiente hasta que GitHub CI ejecute Karma y las verificaciones del backend.
+- Review SDD/arquitectura GPT-6.1 Sol: `APPROVED`, sin P0–P3.
+- GitHub Actions run `37421338441` sobre `f05344f7ff4d681adc1adb8966211bcc648e70a7`: frontend/Karma `PASS` y backend `PASS`.
 
-La evidencia de CI de GitHub y la revisión SDD final se agregan al progreso antes de cerrar DCR-T09.
+DCR-T09 queda cerrado con evidencia local, navegador/reinicio, tres revisiones finales y CI alojado sobre el SHA exacto.
