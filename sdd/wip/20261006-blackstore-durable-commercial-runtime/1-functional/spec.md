@@ -14,6 +14,8 @@ PostgreSQL es la única autoridad comercial cuando `blackstore.persistence.enabl
 
 Reservar crea, en una transacción local, la intención, proyección inicial, líneas canónicas, auditoría y comando RESERVE completo. Sólo después del commit local puede despacharse HTTP. La misma cuádruple y el mismo comando son idempotentes; la misma identidad con contenido distinto falla cerrado.
 
+COMMIT, RELEASE y captura/reversa de pago comparten un lock durable por venta. Bajo ese lock se revalidan sesión autorizada, ownership, estado y ledger. Admitir COMMIT/RELEASE persiste en una sola transacción el comando inmutable, la transición a estado pendiente y la auditoría. Ningún worker reclama un comando cuya transición local no quedó admitida. La exclusión mutua no depende de un lock del proceso.
+
 ### DCR-002 — Comando replayable
 
 Cada comando conserva kind, cuádruple, path, versión/digest, actor autorizado, caja, motivo y payload canónico exacto. Nunca se reconstruye con el catálogo actual. Un registro histórico incompleto queda visible como `LegacyIncomplete` y no se reenvía.
@@ -22,9 +24,13 @@ Cada comando conserva kind, cuádruple, path, versión/digest, actor autorizado,
 
 Inbox completo, proyección, intento y auditoría se aplican atómicamente. Una caída antes del commit reintenta sin duplicar; una caída después del commit devuelve el resultado durable. Receipt, reservationRef, versiones aceptadas, expiración y error tipado forman parte de la evidencia.
 
+Cada claim obtiene un `claimToken`/epoch único. Aplicar o finalizar exige compare-and-set del command ID, token y estado esperado. Una respuesta tardía cuyo lease ya fue reemplazado se conserva como evidencia tardía redacted, pero no cambia proyección ni estado de delivery.
+
 ### DCR-004 — Recovery por pasos
 
 El recovery se compone de objetos con una responsabilidad: admitir, reclamar, resolver entrega incierta, despachar y aplicar evidencia. Un claim usa lease acotado y backoff. Un lease vencido después de posible HTTP se resuelve con GET de la misma cuádruple antes de cualquier reenvío.
+
+La disposición de recovery es cerrada: `ApplyEvidence`, `RetrySameCommand`, `WaitAndGet`, `ReconciliationRequired` o `Unknown`. No existe una decisión genérica “segura”. RESERVE sólo se reenvía ante NOT_FOUND autoritativo; COMMIT sólo ante estado remoto `RESERVED`; RELEASE sólo ante `RESERVED`. `PENDING`, timeout o indisponibilidad esperan y repiten GET. Estado terminal compatible se aplica; terminal contradictorio, `EXPIRED`, mismatch, NOT_FOUND terminal o Unknown requieren reconciliación.
 
 ### DCR-005 — Estados cerrados
 
@@ -33,6 +39,8 @@ El recovery se compone de objetos con una responsabilidad: admitir, reclamar, re
 ### DCR-006 — Consulta y reapertura
 
 La API expone lista paginada y detalle durable de operaciones visibles. Cashier sólo ve ventas de sus cajas; Supervisor/Owner ven todas las cajas locales; Auditor sólo recibe endpoints expresamente habilitados. Reabrir usa identidad existente y nunca genera cuádruple nueva.
+
+El detalle incluye identidad/cuádruple, caja y actor, líneas y totales canónicos, estado cerrado, evidencia redacted, historial de pagos/reversas, comando pendiente y `allowedActions` calculadas por dominio. La UI tiene una entrada separada “reabrir”; hidrata un contexto existente y emite cero POST por el solo hecho de abrir. Pago parcial, pago completo, terminal, legacy y Unknown tienen vistas y acciones explícitas.
 
 ### DCR-007 — Pago y decisión terminal
 
@@ -63,3 +71,5 @@ La autoridad proviene exclusivamente de la sesión staff y asociaciones persisti
 6. Browser nuevo lista y reabre sólo operaciones autorizadas y conserva su identidad original.
 7. Histórico incompleto y valores desconocidos quedan visibles pero no replayables.
 8. Todos los gates live permanecen cerrados; fixture/loopback no se presenta como homologación.
+9. Claims vencidos y respuestas tardías no pueden sobreescribir una decisión aplicada por un claim posterior.
+10. COMMIT, RELEASE y pago compiten mediante lock/CAS PostgreSQL; no admiten decisiones incompatibles.
