@@ -2,9 +2,9 @@
   "feature": "blackstore-staff-identity",
   "status": "draft_awaiting_review",
   "base_commit": "b9211764f525d723d020c780d4eb62564ffaadf6",
-  "stats": { "total": 10, "done": 1 },
+  "stats": { "total": 10, "done": 0 },
   "tasks": [
-    { "id": "SID-T01", "title": "Definir SDD, contrato, matriz RBAC/ownership y amenazas", "status": "done", "depends_on": [] },
+    { "id": "SID-T01", "title": "Definir y aprobar SDD, contrato, matriz RBAC/ownership y amenazas", "status": "in_review", "depends_on": [] },
     { "id": "SID-T02", "title": "Tipos cerrados y política pura", "status": "pending", "depends_on": ["SID-T01"] },
     { "id": "SID-T03", "title": "Migración, repositorios y adaptadores criptográficos", "status": "pending", "depends_on": ["SID-T02"] },
     { "id": "SID-T04", "title": "Provisionamiento local y retiro del seed ficticio", "status": "pending", "depends_on": ["SID-T03"] },

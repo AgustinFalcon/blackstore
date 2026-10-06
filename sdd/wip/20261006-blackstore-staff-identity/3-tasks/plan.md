@@ -16,11 +16,12 @@
 - Rol × acción × propio/ajeno, Unknown, cuenta inactiva y asociación ambigua.
 - Password correcta/incorrecta/inexistente/hash inválido con respuesta uniforme.
 - Sesión alterada, vencida, revocada, reinicio, cambio de rol y carrera touch/logout.
-- CSRF ausente, incorrecto, cruzado y origen ajeno: cero efecto/outbox.
+- CSRF ausente, incorrecto, cruzado, replay preauth, token anterior a login/logout, sesión preexistente y origen ajeno: cero efecto/outbox.
+- Rate limit: umbrales, backoff, reset, reinicio y ataques distribuidos por login/origen.
 - Todos los endpoints: `401` sin sesión, `403` sin permiso; headers falsos no elevan.
 - Ownership caja→venta→pago y GET por operationId sin filtración.
 - Atribución real en caja, reserva, reversa y egreso.
-- Migración desde V3 con datos/FK intactos, digest único y seed idempotente sin reset.
+- Migración desde V3 con datos/FK intactos, digest único, fallo/restore documentado y seed idempotente sin reset.
 - UI deep link, loading, recarga, logout, expiración, red y respuestas tardías.
 - Regresión TP-001..006 y ausencia de tráfico live.
 - Browser real: cookie + CSRF + proxy/origen, sin `route.fulfill` como evidencia principal.
