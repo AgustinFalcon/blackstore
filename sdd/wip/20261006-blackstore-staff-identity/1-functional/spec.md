@@ -56,6 +56,8 @@ Errores: sin sesión válida=`401`; rol sin permiso=`403`; recurso inexistente o
 
 La allowlist pública contiene exactamente health y los dos endpoints preauth (`csrf`, `login`). Todo endpoint nuevo es privado y sin permiso hasta agregar un caso cerrado, matriz y tests. `AUDITOR` no recibe catálogo, workspace, ventas ni mutaciones por inferencia.
 
+En esta instalación de una sola tienda, `Supervisor` y `Owner` ven todas las cajas, ventas y pagos de la PostgreSQL BlackStore local; no existe `store_id`. `Cashier` sólo ve recursos cuyo `cashier_id` persistido coincide con su `StaffUserId`. Un usuario es elegible para asignación cuando existe en esa misma DB, está `ACTIVE`, tiene rol `CASHIER` y no tiene otra caja abierta; cero o más de un candidato ante un identificador ambiguo deniega. Una caja/venta/pago “visible” significa exactamente satisfacer esas reglas y las asociaciones persistidas únicas.
+
 ### SID-005 — Navegación
 
 `/sesion` ofrece login. Guards esperan el bootstrap de sesión antes de abrir rutas. El shell muestra identidad real y logout. `401` pasa a sesión anónima; `403` conserva sesión e informa permiso insuficiente. Respuestas tardías de otra generación de sesión se descartan y no se reintentan pagos automáticamente.

@@ -24,9 +24,9 @@ Contrato local:
 - `GET /api/v1/auth/session`
 - `POST /api/v1/auth/logout`
 
-`GET /auth/csrf` responde `200 { csrfToken, expiresAt }`. En anónimo establece `blackstore-csrf-pre`, cookie opaca HttpOnly, Secure en producción, SameSite=Strict, Path=`/api/v1/auth`, sin Domain y máximo 5 minutos. El token viaja sólo en body y luego `X-CSRF-Token`; servidor guarda su digest ligado al precontexto. `POST /auth/login` acepta `{ login, password }`, exige cookie+header concordantes, consume el precontexto una sola vez y responde `200 { staff: { id, displayName, role }, csrfToken }` mientras establece la cookie de sesión. Una cookie de sesión ya presente jamás se reutiliza: sesión válida produce `409 ALREADY_AUTHENTICATED`; inválida se limpia y produce `401 SESSION_INVALID`, obligando a repetir bootstrap.
+`GET /auth/csrf` responde `200 BaseResponse.success({ csrfToken, expiresAt }, traceId)`. En anónimo establece `blackstore-csrf-pre`, cookie opaca HttpOnly, Secure en producción, SameSite=Strict, Path=`/api/v1/auth`, sin Domain y máximo 5 minutos. El token viaja sólo en body y luego `X-CSRF-Token`; servidor guarda su digest ligado al precontexto. `POST /auth/login` acepta `{ login, password }`, exige cookie+header concordantes, consume el precontexto una sola vez y responde `200 BaseResponse.success({ staff: { id, displayName, role }, csrfToken }, traceId)` mientras establece la cookie de sesión. Una cookie de sesión ya presente jamás se reutiliza: sesión válida produce `409 ALREADY_AUTHENTICATED`; inválida se limpia y produce `401 SESSION_INVALID`, obligando a repetir bootstrap.
 
-`GET /auth/session` responde `200 { staff: { id, displayName, role } }` o `401`; no devuelve token de sesión. `GET /auth/csrf` con sesión devuelve el token sincronizador de esa sesión. `POST /auth/logout` exige `X-CSRF-Token`, responde `204`, revoca sesión y expira cookies. Token preauth no sirve después de login; token de sesión no sirve después de logout/revocación ni en otra sesión. Todos los errores usan `{ code, message, correlationId }`, mensaje genérico para autenticación y `Cache-Control: no-store`.
+`GET /auth/session` responde `BaseResponse.success({ staff: { id, displayName, role } }, traceId)` o `401`; no devuelve token de sesión. `GET /auth/csrf` con sesión devuelve el token sincronizador de esa sesión. `POST /auth/logout` exige `X-CSRF-Token`, responde `204`, revoca sesión y expira cookies. Token preauth no sirve después de login; token de sesión no sirve después de logout/revocación ni en otra sesión. Éxitos con body y errores usan el `BaseResponse` canónico (`code` numérico, `traceId`, `data`, `message`, `errorCode`, `retryable`); autenticación usa mensaje genérico y `Cache-Control: no-store`. El `204` de logout no lleva body.
 
 Producción usa `__Host-blackstore-session` con `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` y sin `Domain`. Desarrollo HTTP loopback usa perfil explícito y nombre distinto. Configuración insegura fuera de loopback falla al arrancar. Respuestas privadas llevan `Cache-Control: no-store`.
 
@@ -34,7 +34,7 @@ El token CSRF sincronizador está ligado a un precontexto para login y luego a l
 
 Spring Security resuelve el principal en controllers privados/comerciales; health, csrf preauth y login son la única allowlist pública cerrada. Los casos de uso repiten autorización de negocio y ownership. Logout impide nuevas solicitudes después de revocar; no se promete cancelar una mutación ya admitida.
 
-El rate limit se persiste en PostgreSQL para sobrevivir reinicios: login normalizado + origen confiable, 5 fallos/15 min con backoff exponencial y máximo 15 min; origen, 30 fallos/15 min. Éxito resetea el bucket de login. La dirección remota directa es la fuente; `Forwarded`/`X-Forwarded-For` sólo se acepta desde proxies configurados por allowlist. Los identificadores se guardan como digest. No hay bloqueo permanente ni mensaje que revele qué bucket actuó. Tests cubren límite, reset, reinicio, múltiples logins por origen y mismo login desde múltiples orígenes.
+El rate limit se persiste en PostgreSQL para sobrevivir reinicios y evalúa tres buckets independientes: login normalizado global, 10 fallos/15 min; origen confiable global, 30 fallos/15 min; pareja login+origen, 5 fallos/15 min. Cada bucket aplica backoff exponencial con máximo 15 min; alcanzar cualquiera responde igual. Un éxito resetea los buckets de login y pareja, no el global de origen. La dirección remota directa es la fuente; `Forwarded`/`X-Forwarded-For` sólo se acepta desde proxies configurados por allowlist. Los identificadores se guardan como digest. No hay bloqueo permanente ni mensaje que revele qué bucket actuó. Tests cubren cada umbral, reset, reinicio, múltiples logins por origen y mismo login desde múltiples orígenes.
 
 ## Provisionamiento y recuperación
 
@@ -42,7 +42,7 @@ La herramienta administrativa se ejecuta con perfil separado y permisos DB míni
 
 ## Aplicación y atribución
 
-Todos los controllers y comandos reciben `AuthenticatedStaff` confiable. Se eliminan headers de autoridad y defaults `cashierId`. `JdbcSaleRecordStore.createdBy`, audit, caja, egreso y reversa usan actor confiable y ownership persistido. La cuádruple StoreCore no cambia.
+Todos los controllers privados/comerciales y sus comandos reciben `AuthenticatedStaff` confiable; la allowlist pública conserva su contexto anónimo tipado. Se eliminan headers de autoridad y defaults `cashierId`. `JdbcSaleRecordStore.createdBy`, audit, caja, egreso y reversa usan actor confiable y ownership persistido. La cuádruple StoreCore no cambia.
 
 ## Frontend
 
