@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.math.BigDecimal
+import com.blackstore.infrastructure.identity.staffSession
 
 @RestController
 @RequestMapping("/api/v1/sales")
@@ -35,6 +36,7 @@ class SaleController(
     ): ResponseEntity<BaseResponse<ReserveSaleResponse>> {
         val saga =
             localSaleSagaService.beginReserve(
+                staff = request.staffSession().staff,
                 quadruple =
                     OperationQuadruple(
                         clientInstanceId = body.clientInstanceId,
@@ -46,6 +48,7 @@ class SaleController(
                 lines = listOf(ReserveLineCommand(body.variantId, body.quantity, body.expectedPriceVersion)),
                 ticketLines = body.ticketLines(),
                 now = java.time.Instant.now(),
+                reason = body.reason,
             )
         val traceId =
             request.getHeader(GlobalExceptionHandler.TRACE_HEADER)?.takeIf { it.isNotBlank() }
@@ -63,7 +66,7 @@ class SaleController(
         request: HttpServletRequest,
         @PathVariable operationId: String,
     ): ResponseEntity<BaseResponse<ReserveSaleResponse>> {
-        val saga = localSaleSagaService.stored(operationId)
+        val saga = localSaleSagaService.stored(request.staffSession().staff, operationId)
         val traceId =
             request.getHeader(GlobalExceptionHandler.TRACE_HEADER)?.takeIf { it.isNotBlank() }
                 ?: java.util.UUID.randomUUID().toString()
@@ -85,13 +88,15 @@ class SaleController(
     fun commit(
         request: HttpServletRequest,
         @PathVariable operationId: String,
-    ): ResponseEntity<BaseResponse<ReserveSaleResponse>> = sagaResponse(request, localSaleSagaService.commit(operationId))
+        @RequestBody(required = false) body: SaleActionRequest? = null,
+    ): ResponseEntity<BaseResponse<ReserveSaleResponse>> = sagaResponse(request, localSaleSagaService.commit(request.staffSession().staff, operationId, body?.reason))
 
     @PostMapping("/{operationId}/release")
     fun release(
         request: HttpServletRequest,
         @PathVariable operationId: String,
-    ): ResponseEntity<BaseResponse<ReserveSaleResponse>> = sagaResponse(request, localSaleSagaService.release(operationId))
+        @RequestBody(required = false) body: SaleActionRequest? = null,
+    ): ResponseEntity<BaseResponse<ReserveSaleResponse>> = sagaResponse(request, localSaleSagaService.release(request.staffSession().staff, operationId, body?.reason))
 
     private fun sagaResponse(
         request: HttpServletRequest,
@@ -130,6 +135,7 @@ data class ReserveSaleRequest(
     val productName: String? = null,
     val originalUnitPrice: BigDecimal? = null,
     val discountAmount: BigDecimal? = null,
+    val reason: String? = null,
 ) {
     fun ticketLines(): List<TicketLine> {
         val price = originalUnitPrice ?: return emptyList()
@@ -161,6 +167,8 @@ data class ReserveSaleResponse(
     val blocked: Boolean,
     val retired: Boolean,
 )
+
+data class SaleActionRequest(val reason: String? = null)
 
 private object PaymentCoverageWire {
     fun toWire(value: PaymentCoverage): String = when (value) {

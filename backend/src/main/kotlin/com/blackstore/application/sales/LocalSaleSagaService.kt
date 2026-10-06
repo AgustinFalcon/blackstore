@@ -37,6 +37,8 @@ import com.blackstore.domain.sales.PaymentSnapshot
 import com.blackstore.domain.sales.PaymentTransitionPolicy
 import com.blackstore.domain.sales.TransitionDecision
 import java.util.concurrent.ConcurrentHashMap
+import com.blackstore.application.identity.AuthorizeStaffAction
+import com.blackstore.domain.identity.*
 
 @Service
 class LocalSaleSagaService(
@@ -50,6 +52,7 @@ class LocalSaleSagaService(
     @Value("\${blackstore.storecore.contract.sha256}") private val openapiDigest: String = StoreCoreCanonicalContract.SHA256,
     private val counterEntryStore: CounterEntryStore? = null,
     private val coordinator: LocalSaleCoordinator = LocalSaleCoordinator.local,
+    private val authorization: AuthorizeStaffAction? = null,
 ) : SaleOperationQuery {
     private val catalogPolicy = CatalogSalePolicy()
     private val reserveLinePolicy = CatalogReserveLinePolicy()
@@ -58,8 +61,17 @@ class LocalSaleSagaService(
     private val sales = ConcurrentHashMap<OperationQuadruple, SaleSaga>()
     private val reserveLinesByOperation = ConcurrentHashMap<OperationQuadruple, List<ReserveLineCommand>>()
 
-    fun beginReserve(quadruple: OperationQuadruple, cashSessionId: Long, lines: List<ReserveLineCommand>, ticketLines: List<TicketLine> = emptyList(), now: Instant): SaleSaga =
-        coordinator.coordinate(quadruple) { beginReserveCoordinated(quadruple, cashSessionId, lines, ticketLines, now) }
+    fun beginReserve(staff: AuthenticatedStaff, quadruple: OperationQuadruple, cashSessionId: Long, lines: List<ReserveLineCommand>, ticketLines: List<TicketLine>, now: Instant, reason: String?): SaleSaga {
+        authority().cash(staff,StaffPermission.SaleReserve,cashSessionId,reason)
+        return beginReserve(quadruple,cashSessionId,lines,ticketLines,now,staff.id.value)
+    }
+    fun stored(staff: AuthenticatedStaff, operationId: String): SaleSaga? { authority().sale(staff,StaffPermission.SaleRead,operationId); return stored(operationId) }
+    fun commit(staff: AuthenticatedStaff, operationId: String, reason: String?): SaleSaga { authority().sale(staff,StaffPermission.SaleCommit,operationId,reason); return commit(operationId) }
+    fun release(staff: AuthenticatedStaff, operationId: String, reason: String?): SaleSaga { authority().sale(staff,StaffPermission.SaleRelease,operationId,reason); return release(operationId) }
+    private fun authority()=authorization ?: throw StaffSecurityException(StaffSecurityFailure.IDENTITY_UNAVAILABLE)
+
+    fun beginReserve(quadruple: OperationQuadruple, cashSessionId: Long, lines: List<ReserveLineCommand>, ticketLines: List<TicketLine> = emptyList(), now: Instant, createdBy: Long? = null): SaleSaga =
+        coordinator.coordinate(quadruple) { beginReserveCoordinated(quadruple, cashSessionId, lines, ticketLines, now, createdBy) }
 
     private fun beginReserveCoordinated(
         quadruple: OperationQuadruple,
@@ -67,6 +79,7 @@ class LocalSaleSagaService(
         lines: List<ReserveLineCommand>,
         ticketLines: List<TicketLine> = emptyList(),
         now: Instant,
+        createdBy: Long? = null,
     ): SaleSaga {
         com.blackstore.domain.sales.MoneyPolicy.normalize(ticketLines.fold(java.math.BigDecimal.ZERO) { sum, line -> sum + line.effectiveUnitPrice.multiply(java.math.BigDecimal(line.quantity)) })
         val resolved =
@@ -84,7 +97,7 @@ class LocalSaleSagaService(
         val already = sales[quadruple]
         val pending =
             already
-                ?: SaleSaga(quadruple = quadruple, cashSessionId = cashSessionId, lines = ticketLines)
+                ?: SaleSaga(quadruple = quadruple, cashSessionId = cashSessionId, lines = ticketLines, createdBy = createdBy)
                     .withReserveCommand(
                         OutboxCommand(
                             quadruple = quadruple,

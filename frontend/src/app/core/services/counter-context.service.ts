@@ -1,5 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { SessionStore } from './session.store';
+import { StaffPermission } from '../domain/session-types';
 import { API_BASE } from '../api';
 import { PersistenceMode } from '../domain/pos-types';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
@@ -25,12 +27,20 @@ export interface CatalogSnapshot {
 @Injectable({ providedIn: 'root' })
 export class CounterContextService {
   private readonly http = inject(HttpClient);
+  private readonly identity = inject(SessionStore);
+
+  constructor() {
+    this.identity.changed.subscribe(() => {
+      this.catalog.set(null); this.openSession.set(null); this.persistence.set(PersistenceMode.Unknown);
+      this.catalogError.set(null); this.loading.set(false);
+    });
+  }
 
   readonly loading = signal(true);
   readonly catalog = signal<CatalogSnapshot | null>(null);
   readonly catalogError = signal<string | null>(null);
   readonly openSession = signal<CashSessionData | null>(null);
-  readonly cashierId = signal(1);
+  readonly cashierId = computed(() => this.identity.staff()?.id ?? null);
   readonly persistence = signal(PersistenceMode.Unknown);
 
   readonly blockReason = computed(() => {
@@ -45,6 +55,7 @@ export class CounterContextService {
   });
 
   load(): void {
+    if (!this.identity.can(StaffPermission.WorkspaceRead)) { this.loading.set(false); return; }
     this.loading.set(true);
     this.catalogError.set(null);
     let pending = 3;
@@ -57,7 +68,6 @@ export class CounterContextService {
       next: (response) => {
         if (response.data) {
           const workspace = PosWireMapper.workspace(response.data);
-          this.cashierId.set(workspace.cashierId);
           this.persistence.set(workspace.persistence);
         }
         finish();
@@ -67,7 +77,9 @@ export class CounterContextService {
 
     this.http.get<BaseResponse<CashSessionWire[]>>(`${API_BASE}/cash-sessions`).subscribe({
       next: (response) => {
-        this.openSession.set(PosWireMapper.cashSessions(response.data).find((item) => item.status.isOpen) ?? null);
+        const sessions = PosWireMapper.cashSessions(response.data);
+        this.openSession.set(sessions.find(item => item.status.isOpen && item.cashierId === this.cashierId())
+          ?? (this.identity.staff()?.role.canAssignCashier ? sessions.find(item => item.status.isOpen) : null) ?? null);
         finish();
       },
       error: () => {

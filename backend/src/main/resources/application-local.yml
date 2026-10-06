@@ -1,6 +1,11 @@
 blackstore:
+  identity:
+    loopback-http: true
+    allowed-origin: http://localhost:4201
   persistence:
     enabled: true
     url: jdbc:postgresql://localhost:5433/blackstore
     username: blackstore
     password: blackstore
+server:
+  address: 127.0.0.1

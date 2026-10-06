@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { API_BASE } from '../../core/api';
 import { CashSessionComponent } from './cash-session.component';
+import { SessionStore } from '../../core/services/session.store';
+import { authenticateTestSession } from '../../core/services/session-test-helper';
 
 describe('CashSessionComponent', () => {
   it('fails closed when the backend returns an unknown session status', async () => {
@@ -11,6 +13,7 @@ describe('CashSessionComponent', () => {
       providers: [provideHttpClient(), provideHttpClientTesting()],
     }).compileComponents();
 
+    authenticateTestSession(TestBed.inject(SessionStore));
     const fixture = TestBed.createComponent(CashSessionComponent);
     const http = TestBed.inject(HttpTestingController);
     const unknownSession = {
@@ -55,6 +58,7 @@ describe('CashSessionComponent', () => {
       providers: [provideHttpClient(), provideHttpClientTesting()],
     }).compileComponents();
 
+    authenticateTestSession(TestBed.inject(SessionStore));
     const fixture = TestBed.createComponent(CashSessionComponent);
     const http = TestBed.inject(HttpTestingController);
     flushInitialRequests(http, 'RECONCILIATION_REQUIRED');

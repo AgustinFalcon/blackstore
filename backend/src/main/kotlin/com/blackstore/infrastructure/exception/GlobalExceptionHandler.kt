@@ -13,6 +13,22 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
+    @ExceptionHandler(com.blackstore.domain.identity.StaffSecurityException::class)
+    fun handleStaffSecurity(ex: com.blackstore.domain.identity.StaffSecurityException, request: HttpServletRequest): ResponseEntity<BaseResponse<Nothing>> =
+        ResponseEntity.status(ex.status).header("Cache-Control", "no-store").body(BaseResponse.error(HttpCode.entries.first { it.code == ex.status }, traceId(request), ex.errorCode, "Staff operation denied", false))
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException::class, org.springframework.web.bind.MethodArgumentNotValidException::class, org.springframework.web.method.annotation.MethodArgumentTypeMismatchException::class)
+    fun handleInvalidBody(request: HttpServletRequest): ResponseEntity<BaseResponse<Nothing>> =
+        ResponseEntity.badRequest().header("Cache-Control", "no-store").body(BaseResponse.error(HttpCode.BAD_REQUEST, traceId(request), "VALIDATION", "Invalid request", false))
+
+    @ExceptionHandler(java.sql.SQLException::class)
+    fun handlePersistenceUnavailable(request: HttpServletRequest): ResponseEntity<BaseResponse<Nothing>> =
+        ResponseEntity.status(503).header("Cache-Control", "no-store").body(BaseResponse.error(HttpCode.SERVICE_UNAVAILABLE, traceId(request), "PERSISTENCE_UNAVAILABLE", "Service unavailable", false))
+
+    @ExceptionHandler(Exception::class)
+    fun handleUnexpected(request: HttpServletRequest): ResponseEntity<BaseResponse<Nothing>> =
+        ResponseEntity.status(500).header("Cache-Control", "no-store").body(BaseResponse.error(HttpCode.INTERNAL_SERVER_ERROR, traceId(request), "INTERNAL_ERROR", "Operation failed", false))
+
     private val log = LoggerFactory.getLogger(javaClass)
 
     @ExceptionHandler(BlockedStoreCoreIntegrationException::class)

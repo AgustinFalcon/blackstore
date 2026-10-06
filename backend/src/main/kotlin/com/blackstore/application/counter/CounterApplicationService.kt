@@ -19,16 +19,36 @@ import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
+import com.blackstore.application.identity.AuthorizeStaffAction
+import com.blackstore.domain.identity.*
 
 @Service
 class CounterApplicationService(
     private val store: CounterEntryStore,
     private val saleQuery: SaleOperationQuery,
     private val coordinator: LocalSaleCoordinator,
+    private val authorization: AuthorizeStaffAction? = null,
 ) {
     private val payments = PaymentBook()
     private val roles = RoleAuthorizationPolicy()
     private val ids = AtomicLong(1)
+
+    fun capture(staff: AuthenticatedStaff, identity: OperationQuadruple, method: PaymentMethod, amount: BigDecimal, feeAmount: BigDecimal, reason: String?): PaymentRecord {
+        authority().sale(staff,StaffPermission.PaymentCapture,identity,reason)
+        return capture(identity,method,amount,feeAmount,staff.id.value)
+    }
+    fun reverse(staff: AuthenticatedStaff, identity: OperationQuadruple, paymentId: Long, reason: String, evidenceRef: String): PaymentRecord {
+        authority().payment(staff,paymentId,identity,reason)
+        require(evidenceRef.isNotBlank()) { "reversal evidence is required" }
+        return reverse(identity,paymentId,staff.id.value,staff.role,reason,evidenceRef)
+    }
+    fun addExpense(staff: AuthenticatedStaff, cashSessionId: Long, category: String, amount: BigDecimal, reason: String, method: PaymentMethod): ExpenseRecord {
+        authority().cash(staff,StaffPermission.ExpenseRecord,cashSessionId,reason)
+        return addExpense(staff.id.value,staff.role,cashSessionId,category,amount,reason,method)
+    }
+    fun shiftReport(staff: AuthenticatedStaff): ShiftReport { authority().permission(staff,StaffPermission.ShiftReportRead); return shiftReport() }
+    fun dailyReport(staff: AuthenticatedStaff): ShiftReport { authority().permission(staff,StaffPermission.DailyReportRead); return dailyReport() }
+    private fun authority()=authorization ?: throw StaffSecurityException(StaffSecurityFailure.IDENTITY_UNAVAILABLE)
 
     fun capture(
         operationId: String,
@@ -40,11 +60,11 @@ class CounterApplicationService(
         return capture(sale.quadruple, method, amount, feeAmount)
     }
 
-    fun capture(identity: OperationQuadruple, method: PaymentMethod, amount: BigDecimal, feeAmount: BigDecimal): PaymentRecord =
+    fun capture(identity: OperationQuadruple, method: PaymentMethod, amount: BigDecimal, feeAmount: BigDecimal, actorId: Long? = null): PaymentRecord =
         coordinator.coordinate(identity) {
             val sale = saleQuery.findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
             PaymentTransitionPolicy().capture(sale, store.paymentLedger(identity), method, amount, feeAmount).assertAllowed()
-            store.savePayment(payments.capture(ids.getAndIncrement(), method, MoneyPolicy.normalize(amount), MoneyPolicy.normalize(feeAmount)), identity)
+            store.savePayment(payments.capture(ids.getAndIncrement(), method, MoneyPolicy.normalize(amount), MoneyPolicy.normalize(feeAmount)).copy(actorId = actorId), identity)
         }
 
     fun reverse(

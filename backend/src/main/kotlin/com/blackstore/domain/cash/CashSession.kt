@@ -8,6 +8,8 @@ enum class CashSessionStatus {
     OPEN,
     CLOSED,
     RECONCILIATION_REQUIRED,
+    UNKNOWN;
+    companion object { fun fromWire(value: String?): CashSessionStatus = entries.firstOrNull { it.name == value } ?: UNKNOWN }
 }
 
 data class CashSession(
@@ -24,7 +26,7 @@ data class CashSession(
         require(openingCash.signum() >= 0) { "opening cash cannot be negative" }
         if (status == CashSessionStatus.OPEN) {
             require(closedAt == null && closingCashDeclared == null) { "open session has no closure" }
-        } else {
+        } else if (status != CashSessionStatus.UNKNOWN) {
             require(closedAt != null && closingCashDeclared != null && !closedAt.isBefore(openedAt)) {
                 "closed session requires closure timestamp and declared cash"
             }
@@ -32,10 +34,12 @@ data class CashSession(
     }
 }
 
+enum class CashAuditEventType { CASH_SESSION_OPENED, CASH_SESSION_CLOSED, UNKNOWN }
+
 data class CashAuditEvent(
     val sessionId: Long,
     val actorId: Long,
-    val eventType: String,
+    val eventType: CashAuditEventType,
     val reason: String,
 )
 
@@ -80,7 +84,7 @@ class CashSessionBook {
             CashAuditEvent(
                 sessionId = session.id,
                 actorId = actorId,
-                eventType = "CASH_SESSION_CLOSED",
+                eventType = CashAuditEventType.CASH_SESSION_CLOSED,
                 reason = reason,
             )
     }

@@ -2,7 +2,8 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { HealthApiService } from './core/services/health-api.service';
 import { isSuccessResponse } from './core/models/base-response';
-import { StaffRole } from './core/domain/pos-types';
+import { SessionStore } from './core/services/session.store';
+import { StaffPermission } from './core/domain/session-types';
 
 @Component({
   selector: 'bs-root',
@@ -13,17 +14,21 @@ import { StaffRole } from './core/domain/pos-types';
       <aside class="rail">
         <p class="brand">BlackStore</p>
         <nav>
-          <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a>
-          <a routerLink="/caja" routerLinkActive="active">Caja</a>
-          <a routerLink="/catalogo" routerLinkActive="active">Catálogo</a>
-          <a routerLink="/ticket" routerLinkActive="active">Ticket</a>
-          <a routerLink="/reportes" routerLinkActive="active">Reportes</a>
+          @if (session.can(permissions.WorkspaceRead)) { <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a> }
+          @if (session.can(permissions.CashSessionList)) { <a routerLink="/caja" routerLinkActive="active">Caja</a> }
+          @if (session.can(permissions.CatalogRead)) { <a routerLink="/catalogo" routerLinkActive="active">Catálogo</a> }
+          @if (session.can(permissions.SaleReserve)) { <a routerLink="/ticket" routerLinkActive="active">Ticket</a> }
+          @if (session.can(permissions.ShiftReportRead)) { <a routerLink="/reportes" routerLinkActive="active">Reportes</a> }
+          <a routerLink="/sesion">Sesión</a>
         </nav>
       </aside>
       <div class="main">
         <header>
           <h1>BlackStore POS</h1>
-          <p class="role">{{ currentRole.label }} · simulador local</p>
+          @if (session.staff(); as staff) {
+            <p class="role">{{ staff.displayName }} · {{ staff.role.label }}</p>
+            <button type="button" (click)="session.logout()">Cerrar sesión</button>
+          } @else { <p class="role">{{ session.state().label }}</p> }
         </header>
         @if (healthLoading()) {
           <p class="banner info" role="status">Comprobando salud del backend…</p>
@@ -34,6 +39,7 @@ import { StaffRole } from './core/domain/pos-types';
         @if (backendDown()) {
           <p class="banner warn" role="alert">Backend no disponible en :8081</p>
         }
+        @if (session.notice()) { <p class="banner warn" role="alert">{{ session.notice() }}</p> }
         <router-outlet />
       </div>
     </div>
@@ -110,7 +116,8 @@ import { StaffRole } from './core/domain/pos-types';
   ],
 })
 export class AppComponent implements OnInit {
-  readonly currentRole = StaffRole.Cashier;
+  readonly session = inject(SessionStore);
+  readonly permissions = StaffPermission;
   private readonly healthApi = inject(HealthApiService);
   readonly blocked = signal(true);
   readonly backendDown = signal(false);

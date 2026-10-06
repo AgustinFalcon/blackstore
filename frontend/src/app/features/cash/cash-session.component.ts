@@ -1,8 +1,11 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { API_BASE } from '../../core/api';
-import { PaymentMethod, PersistenceMode, StaffRole } from '../../core/domain/pos-types';
+import { PaymentMethod, PersistenceMode } from '../../core/domain/pos-types';
+import { StaffPermission } from '../../core/domain/session-types';
+import { SessionStore } from '../../core/services/session.store';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
 import { CashSessionData, CashSessionWire, WorkspaceWire } from '../../core/models/pos-models';
@@ -22,12 +25,13 @@ import { CounterContextService } from '../../core/services/counter-context.servi
           <p class="skeleton" aria-hidden="true"></p>
           <p>Cargando puesto de trabajo…</p>
         }
-        <form (ngSubmit)="open()">
+        @if (identity.can(permissions.CashSessionOpen)) { <form (ngSubmit)="open()">
           <label>Terminal <input name="terminalId" type="number" [(ngModel)]="terminalId" required /></label>
-          <label>Cajero <input name="cashierId" type="number" [(ngModel)]="cashierId" required /></label>
+          <label>Cajero <input name="cashierId" type="number" [(ngModel)]="cashierId" [readOnly]="!canAssignOther()" required /></label>
+          <label>Motivo de asignación <input name="assignmentReason" [(ngModel)]="assignmentReason" /></label>
           <label>Apertura <input name="openingCash" type="number" [(ngModel)]="openingCash" min="0" required /></label>
           <button type="submit" [disabled]="session() !== null && !session()?.status?.canStartNewSession">Abrir sesión</button>
-        </form>
+        </form> }
       </div>
       @if (session(); as opened) {
         <div class="card">
@@ -35,7 +39,7 @@ import { CounterContextService } from '../../core/services/counter-context.servi
             Sesión {{ opened.id }} en terminal {{ opened.terminalId }}
             <span class="badge" [class.ok]="opened.status.isOpen" [class.info]="opened.status.isClosed">{{ opened.status.label }}</span>
           </p>
-          @if (opened.status.isOpen) {
+          @if (opened.status.isOpen && identity.can(permissions.CashSessionClose)) {
             <form (ngSubmit)="close()">
               <label>Declarado <input name="declared" type="number" [(ngModel)]="declared" min="0" required /></label>
               <label>Motivo de cierre <input name="closeReason" [(ngModel)]="closeReason" required /></label>
@@ -67,9 +71,12 @@ import { CounterContextService } from '../../core/services/counter-context.servi
 export class CashSessionComponent {
   private readonly http = inject(HttpClient);
   private readonly counter = inject(CounterContextService);
+  readonly identity = inject(SessionStore);
+  readonly permissions = StaffPermission;
 
   terminalId = 10;
-  cashierId = 7;
+  cashierId: number | null = this.identity.staff()?.id ?? null;
+  assignmentReason = '';
   openingCash = 0;
   readonly persistence = signal(PersistenceMode.Unknown);
   readonly loading = signal(true);
@@ -83,6 +90,9 @@ export class CashSessionComponent {
   readonly notice = signal<string | null>(null);
 
   constructor() {
+    this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.session.set(null); this.cashierId = null; this.notice.set(null); this.error.set(null);
+    });
     this.reload();
   }
 
@@ -90,12 +100,11 @@ export class CashSessionComponent {
     this.error.set(null);
     this.loading.set(true);
     this.counter.load();
-    this.http.get<BaseResponse<WorkspaceWire>>(`${API_BASE}/workspace`).subscribe({
+    if (this.identity.can(StaffPermission.WorkspaceRead)) this.http.get<BaseResponse<WorkspaceWire>>(`${API_BASE}/workspace`).subscribe({
       next: (response) => {
         if (!response.data) return;
         const workspace = PosWireMapper.workspace(response.data);
         this.terminalId = workspace.terminalId;
-        this.cashierId = workspace.cashierId;
         this.persistence.set(workspace.persistence);
       },
       error: () => {
@@ -116,6 +125,8 @@ export class CashSessionComponent {
   }
 
   open(): void {
+    if (!this.identity.can(StaffPermission.CashSessionOpen) || this.cashierId === null) return;
+    if (this.cashierId !== this.identity.staff()?.id && (!this.canAssignOther() || !this.assignmentReason.trim())) return;
     const current = this.session();
     if (current && !current.status.canStartNewSession) return;
     this.error.set(null);
@@ -124,10 +135,9 @@ export class CashSessionComponent {
         terminalId: Number(this.terminalId),
         cashierId: Number(this.cashierId),
         openingCash: Number(this.openingCash),
+        reason: this.assignmentReason,
       }, {
         headers: {
-          'X-Actor-Id': String(this.cashierId),
-          'X-Role': StaffRole.Cashier.wire,
           'X-Trace-Id': crypto.randomUUID(),
         },
       })
@@ -146,6 +156,7 @@ export class CashSessionComponent {
   }
 
   close(): void {
+    if (!this.identity.can(StaffPermission.CashSessionClose)) return;
     const opened = this.session();
     if (!opened?.status.isOpen) return;
     this.error.set(null);
@@ -155,8 +166,6 @@ export class CashSessionComponent {
         reason: this.closeReason,
       }, {
         headers: {
-          'X-Actor-Id': String(this.cashierId),
-          'X-Role': StaffRole.Cashier.wire,
           'X-Trace-Id': crypto.randomUUID(),
         },
       })
@@ -177,6 +186,7 @@ export class CashSessionComponent {
   }
 
   addExpense(): void {
+    if (!this.identity.can(StaffPermission.ExpenseRecord)) return;
     const opened = this.session();
     if (!opened?.status.isOpen) return;
     this.error.set(null);
@@ -189,8 +199,6 @@ export class CashSessionComponent {
         method: PaymentMethod.Cash.wire,
       }, {
         headers: {
-          'X-Actor-Id': String(this.cashierId),
-          'X-Role': StaffRole.Cashier.wire,
           'X-Trace-Id': crypto.randomUUID(),
         },
       })
@@ -204,4 +212,5 @@ export class CashSessionComponent {
         },
       });
   }
+  canAssignOther(): boolean { return this.identity.staff()?.role.canAssignCashier ?? false; }
 }

@@ -12,7 +12,6 @@ import javax.sql.DataSource
 @ConditionalOnProperty(name = ["blackstore.persistence.enabled"], havingValue = "true")
 class JdbcSaleRecordStore(
     private val dataSource: DataSource,
-    private val seed: LocalDatabaseSeed,
 ) : SaleRecordStore {
     private val writer = JdbcBlackStoreWriter()
 
@@ -30,7 +29,7 @@ class JdbcSaleRecordStore(
                     saleId = saga.quadruple.saleId,
                     operationId = operationId,
                     cashSessionId = saga.cashSessionId,
-                    createdBy = seed.cashierId,
+                    createdBy = saga.createdBy ?: error("trusted actor is required for durable sale intent"),
                     contractVersion = command.contractVersion,
                     openapiDigest = digest,
                 )
@@ -44,7 +43,7 @@ class JdbcSaleRecordStore(
                 digest,
                 command.requestHash.padEnd(64, '0').take(64),
             )
-            writer.insertAudit(connection, seed.cashierId, "INTENT_CREATED", "sale", id)
+            writer.insertAudit(connection, saga.createdBy, "INTENT_CREATED", "sale", id)
             saga.lines.forEach { line ->
                 writer.insertSaleLine(
                     connection,
@@ -192,7 +191,12 @@ class JdbcSaleRecordStore(
 
     private fun <T> asRole(role: String, block: (java.sql.Connection) -> T): T =
         dataSource.connection.use { connection ->
-            connection.createStatement().execute("SET ROLE $role")
-            block(connection)
+            connection.autoCommit = false
+            try {
+                connection.createStatement().execute("SET LOCAL ROLE $role")
+                val result = block(connection)
+                connection.commit()
+                result
+            } catch (e: Exception) { connection.rollback(); throw e }
         }
 }

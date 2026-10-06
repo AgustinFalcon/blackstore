@@ -18,7 +18,7 @@ class RoleAuthorizationPolicy {
         val allowed =
             when (action) {
                 SessionAction.OPERATE ->
-                    role != StaffRole.AUDITOR && (ownsSession || role == StaffRole.SUPERVISOR || role == StaffRole.OWNER)
+                    (role == StaffRole.CASHIER && ownsSession) || role == StaffRole.SUPERVISOR || role == StaffRole.OWNER
                 SessionAction.OVERRIDE -> role == StaffRole.SUPERVISOR || role == StaffRole.OWNER
                 SessionAction.VIEW_REPORTS -> role == StaffRole.SUPERVISOR || role == StaffRole.OWNER || role == StaffRole.AUDITOR
                 SessionAction.CONFIGURE -> role == StaffRole.OWNER

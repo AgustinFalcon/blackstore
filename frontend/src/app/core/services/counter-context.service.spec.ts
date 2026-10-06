@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { API_BASE } from '../api';
 import { CounterContextService } from './counter-context.service';
+import { SessionStore } from './session.store';
+import { authenticateTestSession } from './session-test-helper';
 
 describe('CounterContextService', () => {
   let service: CounterContextService;
@@ -11,6 +13,7 @@ describe('CounterContextService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
     service = TestBed.inject(CounterContextService);
+    authenticateTestSession(TestBed.inject(SessionStore));
     http = TestBed.inject(HttpTestingController);
   });
 

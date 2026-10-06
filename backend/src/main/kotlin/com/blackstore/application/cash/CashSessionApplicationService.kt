@@ -9,15 +9,34 @@ import com.blackstore.domain.port.out.cash.CashSessionStore
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.Instant
+import com.blackstore.application.identity.AuthorizeStaffAction
+import com.blackstore.domain.identity.*
 
 @Service
 class CashSessionApplicationService(
     private val store: CashSessionStore,
+    private val authorization: AuthorizeStaffAction? = null,
 ) {
     private val roles = RoleAuthorizationPolicy()
     private val book = CashSessionBook()
 
     fun list(): List<CashSession> = store.list()
+
+    fun list(staff: AuthenticatedStaff): List<CashSession> {
+        authority().permission(staff, StaffPermission.CashSessionList)
+        return store.list().filter { staff.role != StaffRole.CASHIER || it.cashierId == staff.id.value }
+    }
+    fun open(staff: AuthenticatedStaff, terminalId: Long, cashierId: Long, openingCash: BigDecimal, reason: String?): CashSession {
+        authority().open(staff,cashierId,reason)
+        return open(staff.id.value,staff.role,terminalId,cashierId,openingCash).also {
+            store.appendClosureAudit(com.blackstore.domain.cash.CashAuditEvent(it.id,staff.id.value,com.blackstore.domain.cash.CashAuditEventType.CASH_SESSION_OPENED,reason ?: "own cash session"))
+        }
+    }
+    fun close(staff: AuthenticatedStaff, sessionId: Long, declared: BigDecimal, reason: String): CashSession {
+        authority().cash(staff,StaffPermission.CashSessionClose,sessionId,reason)
+        return close(staff.id.value,staff.role,sessionId,declared,reason.takeIf { it.isNotBlank() } ?: "own cash session closure")
+    }
+    private fun authority()=authorization ?: throw StaffSecurityException(StaffSecurityFailure.IDENTITY_UNAVAILABLE)
 
     fun open(
         actorId: Long,

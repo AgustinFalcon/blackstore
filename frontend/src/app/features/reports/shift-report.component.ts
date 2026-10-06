@@ -1,5 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { SessionStore } from '../../core/services/session.store';
 import { API_BASE } from '../../core/api';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
@@ -86,6 +88,12 @@ export class ShiftReportComponent implements OnInit {
   readonly error = signal<string | null>(null);
   readonly loading = signal(false);
 
+  constructor() {
+    inject(SessionStore).changed.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.report.set(null); this.daily.set(null); this.error.set(null); this.loading.set(false);
+    });
+  }
+
   ngOnInit(): void {
     this.load();
   }
@@ -109,6 +117,7 @@ export class ShiftReportComponent implements OnInit {
     });
     this.http.get<BaseResponse<ShiftReportWire>>(`${API_BASE}/reports/daily`).subscribe({
       next: (response) => this.daily.set(response.data ? PosWireMapper.report(response.data) : null),
+      error: () => this.daily.set(null),
     });
   }
 }

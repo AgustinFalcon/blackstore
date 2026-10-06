@@ -1,5 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { SessionStore } from '../../core/services/session.store';
 import { API_BASE } from '../../core/api';
 import { BaseResponse } from '../../core/models/base-response';
 
@@ -84,6 +86,12 @@ export class CatalogPanelComponent implements OnInit {
   readonly catalog = signal<CatalogData | null>(null);
   readonly error = signal<string | null>(null);
   readonly loading = signal(false);
+
+  constructor() {
+    inject(SessionStore).changed.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.catalog.set(null); this.error.set(null); this.loading.set(false);
+    });
+  }
 
   ngOnInit(): void {
     this.load();
