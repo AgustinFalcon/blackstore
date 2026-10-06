@@ -127,13 +127,15 @@ class StaffIdentityPostgresTest {
     @Test fun staffCommandAndAuditShareOneTransactionAndRetainActorAndReason() {
         val actor=createStaff(StaffRole.SUPERVISOR); val writer=JdbcBlackStoreWriter(); val store=JdbcSaleRecordStore(source())
         fun fixture(kind: StoreCoreOperationKind, auditActor: StaffUserId): Pair<SaleSaga,Long> {
+            // Each fixture owns a distinct cashier's open cash session; audit actor remains independent.
+            val cashier=createStaff()
             val identity=OperationQuadruple(UUID.randomUUID().toString(),"audit-device","audit-sale",UUID.randomUUID().toString())
             var cash=0L; var sale=0L
             val evidence=RemoteEvidence(UUID.randomUUID().toString(),"receipt","1.0.0-draft","a".repeat(64),listOf("price-v1"),now.plusSeconds(900))
             source().connection.use { c ->
                 val terminal=c.createStatement().executeQuery("INSERT INTO terminals(terminal_code) VALUES ('T-${UUID.randomUUID()}') RETURNING id").use { r -> r.next(); r.getLong(1) }
-                cash=writer.insertOpenCashSession(c,terminal,actor.value,BigDecimal.ZERO,now)
-                sale=writer.insertPendingSale(c,UUID.fromString(identity.clientInstanceId),identity.deviceId,identity.saleId,UUID.fromString(identity.operationId),cash,actor.value,evidence.contractVersion,evidence.openapiDigest)
+                cash=writer.insertOpenCashSession(c,terminal,cashier.value,BigDecimal.ZERO,now)
+                sale=writer.insertPendingSale(c,UUID.fromString(identity.clientInstanceId),identity.deviceId,identity.saleId,UUID.fromString(identity.operationId),cash,cashier.value,evidence.contractVersion,evidence.openapiDigest)
                 writer.markReserved(c,sale,evidence.reservationRef,evidence.receipt,evidence.contractVersion,evidence.openapiDigest,evidence.expiresAt!!)
             }
             val event=if(kind==StoreCoreOperationKind.COMMIT) SaleStaffCommandEvent.COMMIT_REQUESTED else SaleStaffCommandEvent.RELEASE_REQUESTED
