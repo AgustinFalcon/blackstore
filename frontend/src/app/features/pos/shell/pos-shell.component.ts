@@ -1,6 +1,8 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { StaffPermission } from '../../../core/domain/session-types';
 import { CounterContextService } from '../../../core/services/counter-context.service';
+import { SessionStore } from '../../../core/services/session.store';
 
 @Component({
   selector: 'bs-pos-shell',
@@ -37,7 +39,9 @@ import { CounterContextService } from '../../../core/services/counter-context.se
             <a routerLink="/caja" class="primary">Caja</a>
             <a routerLink="/ticket" class="ghost">Ticket</a>
             <a routerLink="/catalogo" class="ghost">Catálogo</a>
-            <a routerLink="/reportes" class="ghost">Reportes</a>
+            @if (session.can(permissions.ShiftReportRead)) {
+              <a routerLink="/reportes" class="ghost">Reportes</a>
+            }
           </p>
         </div>
       }
@@ -61,6 +65,8 @@ import { CounterContextService } from '../../../core/services/counter-context.se
 })
 export class PosShellComponent implements OnInit {
   readonly counter = inject(CounterContextService);
+  readonly session = inject(SessionStore);
+  readonly permissions = StaffPermission;
 
   ngOnInit(): void {
     this.counter.load();

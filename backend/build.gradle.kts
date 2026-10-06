@@ -14,6 +14,10 @@ java {
     }
 }
 
+springBoot {
+    mainClass = "com.blackstore.BlackStoreApplicationKt"
+}
+
 repositories {
     mavenCentral()
 }
