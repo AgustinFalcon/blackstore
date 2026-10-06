@@ -165,4 +165,56 @@ describe('SaleTicketComponent guarded writes (T05/T11)', () => {
     http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.Committed));
     expect(component.canFinish(SaleAction.Commit)).toBeFalse();
   });
+
+  it('retains the first captured payment when GET fails and waits for recovery before reversal', () => {
+    component.amount = 10;
+    component.secondAmount = 8;
+    component.reserve();
+    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
+    const identity: TicketIdentity = reserve.request.body;
+    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18'));
+    http.expectOne(`${API_BASE}/payments`).flush(envelope({
+      ...identity, paymentId: 41, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50',
+    }));
+    expect(component.paymentId()).toBe(41);
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush('failed', { status: 503, statusText: 'Unavailable' });
+
+    expect(component.paymentId()).toBe(41);
+    expect(component.busy()).toBeFalse();
+    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
+    expect(component.canFinish(SaleAction.Release)).toBeFalse();
+    expect(component.canFinish(SaleAction.Reverse)).toBeFalse();
+    component.reverse(41);
+    http.expectNone(`${API_BASE}/payments/41/reversals`);
+    http.expectNone(`${API_BASE}/payments`);
+
+    component.refresh();
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Partial, '8'));
+    expect(component.paymentId()).toBe(41);
+    expect(component.canFinish(SaleAction.Reverse)).toBeTrue();
+    http.expectNone(`${API_BASE}/payments`);
+  });
+
+  it('invalidates the previous actionable snapshot when the second captured payment awaits a failed GET', () => {
+    component.amount = 10;
+    component.secondAmount = 8;
+    component.reserve();
+    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
+    const identity: TicketIdentity = reserve.request.body;
+    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18'));
+    http.expectOne(`${API_BASE}/payments`).flush(envelope({
+      ...identity, paymentId: 41, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50',
+    }));
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Partial, '8'));
+    http.expectOne(`${API_BASE}/payments`).flush(envelope({
+      ...identity, paymentId: 42, status: PaymentStatus.Captured.wire, amount: '8', feeAmount: '0',
+    }));
+    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush('failed', { status: 503, statusText: 'Unavailable' });
+
+    expect(component.paymentId()).toBe(41);
+    expect(component.canFinish(SaleAction.Reverse)).toBeFalse();
+    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
+    expect(component.canFinish(SaleAction.Release)).toBeFalse();
+    http.expectNone(`${API_BASE}/payments`);
+  });
 });

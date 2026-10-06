@@ -25,6 +25,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class PaymentTransitionPolicyTest {
     private val identity = OperationQuadruple("11111111-1111-1111-1111-111111111111", "terminal-1", "sale-1", "op-1")
@@ -32,7 +33,7 @@ class PaymentTransitionPolicyTest {
     private val now = Instant.parse("2026-09-23T12:00:00Z")
     private val policy = PaymentTransitionPolicy()
 
-    private class Fixture(val sale: LocalSaleSagaService, val counter: CounterApplicationService, val store: InMemoryCounterEntryStore, val inventory: ScriptedStoreCoreInventoryAdapter)
+    private class Fixture(val sale: LocalSaleSagaService, val counter: CounterApplicationService, val store: InMemoryCounterEntryStore, val inventory: ScriptedStoreCoreInventoryAdapter, val coordinator: LocalSaleCoordinator)
     private fun fixture(identity: OperationQuadruple = this.identity, decorate: (CounterEntryStore) -> CounterEntryStore = { it }): Fixture {
         val store = InMemoryCounterEntryStore()
         val decorated = decorate(store)
@@ -41,7 +42,7 @@ class PaymentTransitionPolicyTest {
         val sale = LocalSaleSagaService(FixtureCatalogAdapter(StoreCoreCanonicalContract.CANONICAL_PATH, StoreCoreCanonicalContract.VERSION), inventory, inventory,
             NoOpSaleRecordStore(), StoreCoreCanonicalContract.CANONICAL_PATH, StoreCoreCanonicalContract.VERSION, counterEntryStore = decorated, coordinator = guard)
         sale.beginReserve(identity, 1, listOf(ReserveLineCommand("variant-1", 1, "price-v1")), listOf(line), now)
-        return Fixture(sale, CounterApplicationService(decorated, sale, guard), store, inventory)
+        return Fixture(sale, CounterApplicationService(decorated, sale, guard), store, inventory, guard)
     }
 
     @Test fun t01UnknownBoundaryTranslatorsAndLedgerDoNotAuthorize() {
@@ -182,7 +183,7 @@ class PaymentTransitionPolicyTest {
             return delegate.paymentLedger(identity)
         }
     }
-    private fun race(first: (Fixture) -> Unit, second: (Fixture) -> Unit, prepare: (Fixture) -> Unit = {}): Fixture {
+    private fun race(first: (Fixture) -> Unit, second: (Fixture) -> Unit, prepare: (Fixture) -> Unit = {}, secondDenied: Boolean = true): Fixture {
         lateinit var barrier: BarrierLedger
         val f = fixture(decorate = { BarrierLedger(it).also { barrier = it } })
         prepare(f)
@@ -192,8 +193,21 @@ class PaymentTransitionPolicyTest {
             val a = pool.submit<Boolean> { first(f); true }
             assertTrue(barrier.entered.await(10, TimeUnit.SECONDS))
             val contender = CountDownLatch(1)
-            val b = pool.submit<Boolean> { contender.countDown(); try { second(f); false } catch (expected: IllegalArgumentException) { true } }
+            val contenderThread = AtomicReference<Thread>()
+            val b = pool.submit<Boolean> {
+                contenderThread.set(Thread.currentThread())
+                contender.countDown()
+                try { second(f); !secondDenied } catch (expected: IllegalArgumentException) { secondDenied }
+            }
             assertTrue(contender.await(10, TimeUnit.SECONDS))
+            // The owner stays paused inside its ledger read until the other worker has
+            // actually attempted this same sale lock. Starting a worker is not contention.
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (!f.coordinator.isWaiting(identity, contenderThread.get()) && !b.isDone && System.nanoTime() < deadline) {
+                Thread.yield()
+            }
+            assertTrue(f.coordinator.isWaiting(identity, contenderThread.get()), "The contender must queue on the shared sale guard before the first operation continues")
+            assertFalse(b.isDone, "The competing operation cannot complete while the sale guard is held")
             barrier.proceed.countDown()
             assertTrue(a.get(10, TimeUnit.SECONDS))
             assertTrue(b.get(10, TimeUnit.SECONDS))
@@ -218,9 +232,12 @@ class PaymentTransitionPolicyTest {
         assertTrue(reversed.inventory.commitAttempts.isEmpty())
         val committed = race({ it.sale.commit(identity.operationId, now) }, { it.counter.reverse(identity, 1, 7, StaffRole.CASHIER, "return", "ev") }, prepare)
         assertEquals(1, (committed.store.paymentLedger(identity) as OperationLedger.Known).entries.size)
-        val f = fixture()
-        assertThrows<IllegalArgumentException> { f.counter.capture(identity, PaymentMethod.CASH, BigDecimal("19"), BigDecimal.ZERO) }
-        f.counter.capture(identity, PaymentMethod.CASH, BigDecimal("18"), BigDecimal.ZERO)
+        val f = race(
+            { current -> assertThrows<IllegalArgumentException> { current.counter.capture(identity, PaymentMethod.CASH, BigDecimal("19"), BigDecimal.ZERO) } },
+            { it.counter.capture(identity, PaymentMethod.CASH, BigDecimal("18"), BigDecimal.ZERO) },
+            secondDenied = false,
+        )
+        assertEquals(1, (f.store.paymentLedger(identity) as OperationLedger.Known).entries.size)
         assertEquals(SaleStatus.COMMITTED, f.sale.commit(identity.operationId, now).status)
     }
 }

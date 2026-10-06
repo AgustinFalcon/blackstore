@@ -132,8 +132,8 @@ class LocalSaleSagaService(
                 SaleStatus.COMMIT_PENDING -> current
                 else -> throw IllegalArgumentException("sale ${current.status} cannot commit")
             }
-        sales[identity] = pending
         saleRecordStore.recordCommitPending(pending)
+        sales[identity] = pending
         return callCommit(pending)
     }
 
@@ -162,8 +162,8 @@ class LocalSaleSagaService(
                 SaleStatus.RELEASE_PENDING -> current
                 else -> throw IllegalArgumentException("sale ${current.status} cannot release")
             }
-        sales[identity] = pending
         saleRecordStore.recordReleasePending(pending)
+        sales[identity] = pending
         return callRelease(pending)
     }
 

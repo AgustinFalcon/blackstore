@@ -64,6 +64,7 @@ export class TicketPaymentJourney {
     private readonly capture: CapturePaymentStep,
     private readonly refresh: RefreshTicketStep,
     private readonly onProgress: (result: TicketFlowResult) => void = () => undefined,
+    private readonly onCaptured: (payment: CapturedPayment) => void = () => undefined,
   ) {}
 
   execute(context: TicketAttemptContext): Observable<TicketFlowResult> {
@@ -71,19 +72,24 @@ export class TicketPaymentJourney {
       let flow: Observable<TicketFlowResult> = of({ snapshot, payments: [] });
       for (const attempt of context.payments) {
         flow = flow.pipe(concatMap((previous) => this.capture.execute(previous.snapshot, attempt).pipe(
-          concatMap((payment) => this.refresh.execute(context.identity).pipe(map((next) => {
+          concatMap((payment) => {
             if (previous.payments.some((existing) => existing.paymentId === payment.paymentId)) {
-              throw new Error('El pago recibido ya pertenece a otro paso del intento.');
+              return throwError(() => new Error('El pago recibido ya pertenece a otro paso del intento.'));
             }
-            // A stale GET cannot authorize a second capture of money already collected.
-            if (!previous.snapshot.pending || !next.pending ||
-                next.pending.cents !== previous.snapshot.pending.cents - payment.amount.cents) {
-              throw new Error('El saldo consultado no confirma el pago.');
-            }
-            const result = { snapshot: next, payments: [...previous.payments, payment] };
-            this.onProgress(result);
-            return result;
-          }))),
+            // Retain correlated capture evidence even if the subsequent read fails.
+            // Only the validated refresh below may advance the journey.
+            this.onCaptured(payment);
+            return this.refresh.execute(context.identity).pipe(map((next) => {
+              // A stale GET cannot authorize a second capture of money already collected.
+              if (!previous.snapshot.pending || !next.pending ||
+                  next.pending.cents !== previous.snapshot.pending.cents - payment.amount.cents) {
+                throw new Error('El saldo consultado no confirma el pago.');
+              }
+              const result = { snapshot: next, payments: [...previous.payments, payment] };
+              this.onProgress(result);
+              return result;
+            }));
+          }),
         )));
       }
       return flow;

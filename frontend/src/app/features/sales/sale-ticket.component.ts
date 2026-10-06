@@ -166,6 +166,10 @@ export class SaleTicketComponent implements OnInit {
     new CapturePaymentStep(this.port),
     this.refreshStep,
     (result) => this.recordJourneyProgress(result),
+    (payment) => {
+      this.paymentId.set(this.paymentId() ?? payment.paymentId);
+      this.snapshot.set(null);
+    },
   );
   private readonly syncCatalogLine = effect(() => {
     const items = this.counter.catalog()?.items ?? [];

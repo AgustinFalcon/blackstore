@@ -93,4 +93,36 @@ describe('TicketPaymentJourney (T02/T05)', () => {
 
     expect(progress).toEqual([{ pending: '8.00', paymentId: 1 }]);
   });
+
+  it('retains correlated capture evidence before refresh but never advances on a failed or invalid read', async () => {
+    for (const response of [
+      throwError(() => new Error('GET unavailable')),
+      of(snapshot('18', PaymentCoverage.Unpaid)),
+      of(envelope({ ...identity, operationId: identity.saleId })),
+    ]) {
+      const captured: number[] = [];
+      const progress = jasmine.createSpy('progress');
+      const refresh = new Subject<unknown>();
+      port.capture.calls.reset();
+      port.capture.and.returnValue(of(envelope({
+        ...identity, paymentId: 41, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50',
+      })));
+      port.refresh.and.returnValue(refresh);
+      journey = new TicketPaymentJourney(
+        new ReserveTicketStep(port), new CapturePaymentStep(port), new RefreshTicketStep(port),
+        progress, (payment) => captured.push(payment.paymentId),
+      );
+      const result = firstValueFrom(journey.execute(context));
+      expect(captured).toEqual([41]);
+      expect(progress).not.toHaveBeenCalled();
+      expect(port.capture.calls.count()).toBe(1);
+
+      response.subscribe(refresh);
+      await expectAsync(result).toBeRejected();
+
+      expect(captured).toEqual([41]);
+      expect(progress).not.toHaveBeenCalled();
+      expect(port.capture.calls.count()).toBe(1);
+    }
+  });
 });

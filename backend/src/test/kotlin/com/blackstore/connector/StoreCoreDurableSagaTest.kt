@@ -11,6 +11,8 @@ import com.blackstore.application.storecore.StoreCoreRecoveryPolicy
 import com.blackstore.domain.port.out.storecore.ReconcileQuery
 import com.blackstore.domain.port.out.storecore.ReserveLineCommand
 import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
+import com.blackstore.domain.port.out.sales.SaleRecordStore
+import com.blackstore.domain.sales.SaleSaga
 import com.blackstore.domain.sales.SaleStatus
 import com.blackstore.infrastructure.storecore.FixtureCatalogAdapter
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -154,6 +156,55 @@ class StoreCoreDurableSagaTest {
         assertEquals(1, inventory.reserveAttempts.size)
         val projection = inventory.reconcile(ReconcileQuery(listOf("unknown-rcpt"), clientInstanceId = "ci-1"))
         assertFalse(projection.unknownAuthorizesRepost())
+    }
+
+    @Test
+    fun commitPersistenceFailureKeepsReservedAndRetryPersistsNewCommandBeforeHttp() {
+        val q = quadruple("op-commit-persistence-failure")
+        val recorded = InMemorySaleRecordStore()
+        val store = FailOncePendingStore(recorded, StoreCoreOperationKind.COMMIT)
+        val inventory = ScriptedStoreCoreInventoryAdapter(ReserveScript.Receipt(ScriptedStoreCoreInventoryAdapter.durable(q)))
+        val saga = service(inventory, store)
+        reservePaid(saga, q)
+        val reserved = saga.stored(q.operationId)
+
+        assertThrows<IllegalStateException> { saga.commit(q.operationId, now) }
+
+        assertEquals(reserved, saga.stored(q.operationId))
+        assertTrue(inventory.commitAttempts.isEmpty())
+        assertTrue(inventory.getAttempts.isEmpty())
+        assertFalse(recorded.events.contains("COMMIT_PENDING"))
+
+        assertEquals(SaleStatus.COMMITTED, saga.commit(q.operationId, now).status)
+        assertEquals(2, store.pendingAttempts)
+        assertEquals(1, inventory.commitAttempts.size)
+        assertTrue(inventory.getAttempts.isEmpty())
+        assertEquals(1, recorded.events.count { it == "COMMIT_PENDING" })
+        assertEquals(1, saga.stored(q.operationId)?.outbox?.count { it.kind == StoreCoreOperationKind.COMMIT })
+    }
+
+    @Test
+    fun releasePersistenceFailureKeepsReservedAndRetryPersistsNewCommandBeforeHttp() {
+        val q = quadruple("op-release-persistence-failure")
+        val recorded = InMemorySaleRecordStore()
+        val store = FailOncePendingStore(recorded, StoreCoreOperationKind.RELEASE)
+        val inventory = ScriptedStoreCoreInventoryAdapter(ReserveScript.Receipt(ScriptedStoreCoreInventoryAdapter.durable(q)))
+        val saga = service(inventory, store)
+        val reserved = saga.beginReserve(q, 1, listOf(line()), listOf(ticketLine()), now)
+
+        assertThrows<IllegalStateException> { saga.release(q.operationId) }
+
+        assertEquals(reserved, saga.stored(q.operationId))
+        assertTrue(inventory.releaseAttempts.isEmpty())
+        assertTrue(inventory.getAttempts.isEmpty())
+        assertFalse(recorded.events.contains("RELEASE_PENDING"))
+
+        assertEquals(SaleStatus.RELEASED, saga.release(q.operationId).status)
+        assertEquals(2, store.pendingAttempts)
+        assertEquals(1, inventory.releaseAttempts.size)
+        assertTrue(inventory.getAttempts.isEmpty())
+        assertEquals(1, recorded.events.count { it == "RELEASE_PENDING" })
+        assertEquals(1, saga.stored(q.operationId)?.outbox?.count { it.kind == StoreCoreOperationKind.RELEASE })
     }
 
     @Test
@@ -348,7 +399,7 @@ class StoreCoreDurableSagaTest {
     }
     private fun service(
         inventory: ScriptedStoreCoreInventoryAdapter,
-        store: InMemorySaleRecordStore,
+        store: SaleRecordStore,
     ): LocalSaleSagaService {
         val ledger = InMemoryCounterEntryStore()
         return LocalSaleSagaService(
@@ -366,4 +417,28 @@ class StoreCoreDurableSagaTest {
         OperationQuadruple("11111111-1111-1111-1111-111111111111", "terminal-1", "sale-1", operationId)
 
     private fun line() = ReserveLineCommand("variant-1", 1, "price-v1")
+
+    private class FailOncePendingStore(
+        private val delegate: SaleRecordStore,
+        private val failingKind: StoreCoreOperationKind,
+    ) : SaleRecordStore by delegate {
+        var pendingAttempts = 0
+            private set
+
+        override fun recordCommitPending(saga: SaleSaga) {
+            failFirstAttempt(StoreCoreOperationKind.COMMIT)
+            delegate.recordCommitPending(saga)
+        }
+
+        override fun recordReleasePending(saga: SaleSaga) {
+            failFirstAttempt(StoreCoreOperationKind.RELEASE)
+            delegate.recordReleasePending(saga)
+        }
+
+        private fun failFirstAttempt(kind: StoreCoreOperationKind) {
+            if (kind == failingKind && ++pendingAttempts == 1) {
+                throw IllegalStateException("pending persistence unavailable")
+            }
+        }
+    }
 }
