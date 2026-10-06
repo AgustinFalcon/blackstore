@@ -14,23 +14,30 @@ data class TicketLine(
     init {
         require(sku.isNotBlank() && productName.isNotBlank())
         require(quantity > 0)
+        MoneyPolicy.normalize(originalUnitPrice)
+        MoneyPolicy.normalize(discountAmount)
+        MoneyPolicy.normalize(effectiveUnitPrice.multiply(BigDecimal(quantity)))
         require(originalUnitPrice.signum() >= 0)
         require(discountAmount.signum() >= 0 && discountAmount <= originalUnitPrice)
     }
 }
 
-enum class PaymentMethod {
-    CASH,
-    CARD,
-    TRANSFER,
-    OTHER,
+enum class PaymentMethod(val label: String) {
+    CASH("Efectivo"),
+    CARD("Tarjeta"),
+    TRANSFER("Transferencia"),
+    OTHER("Otro"),
+    UNKNOWN("Medio no disponible");
+    companion object { fun fromWire(value: String?): PaymentMethod = entries.firstOrNull { it.name == value && it != UNKNOWN } ?: UNKNOWN }
 }
 
-enum class PaymentStatus {
-    PENDING,
-    CAPTURED,
-    VOIDED,
-    REFUNDED,
+enum class PaymentStatus(val label: String) {
+    PENDING("Pendiente"),
+    CAPTURED("Capturado"),
+    VOIDED("Anulado"),
+    REFUNDED("Reintegrado"),
+    UNKNOWN("Estado no disponible");
+    companion object { fun fromWire(value: String?): PaymentStatus = entries.firstOrNull { it.name == value && it != UNKNOWN } ?: UNKNOWN }
 }
 
 data class PaymentRecord(
@@ -46,6 +53,9 @@ data class PaymentRecord(
 ) {
     init {
         require(amount.signum() > 0)
+        MoneyPolicy.normalize(amount)
+        MoneyPolicy.normalize(feeAmount)
+        require(method != PaymentMethod.UNKNOWN && status != PaymentStatus.UNKNOWN)
         require(feeAmount.signum() >= 0)
         if (status == PaymentStatus.VOIDED || status == PaymentStatus.REFUNDED) {
             require(originalPaymentId != null && !reason.isNullOrBlank() && !evidenceRef.isNullOrBlank())

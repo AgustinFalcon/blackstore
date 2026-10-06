@@ -5,6 +5,9 @@ import com.blackstore.domain.port.out.counter.CounterEntryStore
 import com.blackstore.domain.reports.ShiftFigures
 import com.blackstore.domain.sales.PaymentRecord
 import com.blackstore.domain.sales.PaymentStatus
+import com.blackstore.domain.sales.OperationLedger
+import com.blackstore.domain.sales.PaymentLedgerEntry
+import com.blackstore.domain.model.OperationQuadruple
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
@@ -18,9 +21,26 @@ import java.math.BigDecimal
 class InMemoryCounterEntryStore : CounterEntryStore {
     private val payments = mutableListOf<PaymentRecord>()
     private val expenses = mutableListOf<ExpenseRecord>()
+    private val identities = mutableMapOf<Long, OperationQuadruple>()
+    private val operationIds = mutableMapOf<Long, String>()
+
+    override fun paymentLedger(identity: OperationQuadruple): OperationLedger = synchronized(this) {
+        if (payments.any { operationIds[it.id] == identity.operationId && identities[it.id] == null }) return@synchronized OperationLedger.Unknown
+        OperationLedger.Known(payments.filter { identities[it.id] == identity }.map {
+            PaymentLedgerEntry(identity, it.id, it.method, it.status, it.amount, it.feeAmount, it.originalPaymentId)
+        })
+    }
+
+    override fun savePayment(payment: PaymentRecord, identity: OperationQuadruple): PaymentRecord = synchronized(this) {
+        require(payments.none { it.id == payment.id })
+        if (payment.originalPaymentId != null) require(identities[payment.originalPaymentId] == identity)
+        identities[payment.id] = identity
+        savePayment(payment, identity.operationId)
+    }
 
     override fun savePayment(payment: PaymentRecord, operationId: String): PaymentRecord {
         payments += payment
+        operationIds[payment.id] = operationId
         return payment
     }
 

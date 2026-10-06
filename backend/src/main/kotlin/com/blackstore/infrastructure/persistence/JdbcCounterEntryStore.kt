@@ -11,6 +11,10 @@ import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.util.UUID
 import javax.sql.DataSource
+import com.blackstore.domain.model.OperationQuadruple
+import com.blackstore.domain.sales.OperationLedger
+import com.blackstore.domain.sales.PaymentLedgerEntry
+import com.blackstore.domain.sales.MoneyPolicy
 
 @Component
 @ConditionalOnProperty(name = ["blackstore.persistence.enabled"], havingValue = "true")
@@ -19,9 +23,24 @@ class JdbcCounterEntryStore(
 ) : CounterEntryStore {
     private val writer = JdbcBlackStoreWriter()
 
-    override fun savePayment(payment: PaymentRecord, operationId: String): PaymentRecord =
+    override fun savePayment(payment: PaymentRecord, operationId: String): PaymentRecord {
+        val identity = asRole("blackstore_app") { connection -> resolveIdentity(connection, operationId) }
+        return savePayment(payment, identity)
+    }
+
+    override fun savePayment(payment: PaymentRecord, identity: OperationQuadruple): PaymentRecord =
         asRole("blackstore_app") { connection ->
-            val projectionId = findProjection(connection, operationId)
+            MoneyPolicy.normalize(payment.amount)
+            MoneyPolicy.normalize(payment.feeAmount)
+            val projectionId = findProjection(connection, identity)
+            if (payment.originalPaymentId != null) {
+                connection.prepareStatement("SELECT sale_id, status FROM payments WHERE id = ?").use { statement ->
+                    statement.setLong(1, payment.originalPaymentId)
+                    statement.executeQuery().use { rows ->
+                        require(rows.next() && rows.getLong(1) == projectionId && PaymentStatus.fromWire(rows.getString(2)) == PaymentStatus.CAPTURED) { "original payment identity mismatch" }
+                    }
+                }
+            }
             val id =
                 writer.insertPayment(
                     connection,
@@ -50,16 +69,19 @@ class JdbcCounterEntryStore(
                 "SELECT id, payment_method, amount, fee_amount, status FROM payments WHERE id = ?",
             ).use { statement ->
                 statement.setLong(1, id)
-                statement.executeQuery().use { rows ->
+                statement.executeQuery().use rowsUse@ { rows ->
                     if (!rows.next()) {
                         null
                     } else {
+                        val method = PaymentMethod.fromWire(rows.getString("payment_method"))
+                        val status = PaymentStatus.fromWire(rows.getString("status"))
+                        if (method == PaymentMethod.UNKNOWN || status != PaymentStatus.CAPTURED) return@rowsUse null
                         PaymentRecord(
                             id = rows.getLong("id"),
-                            method = PaymentMethod.valueOf(rows.getString("payment_method")),
+                            method = method,
                             amount = rows.getBigDecimal("amount"),
                             feeAmount = rows.getBigDecimal("fee_amount"),
-                            status = PaymentStatus.valueOf(rows.getString("status")),
+                            status = status,
                         )
                     }
                 }
@@ -92,14 +114,51 @@ class JdbcCounterEntryStore(
             ShiftFigures(gross, discounts, refunds, collected, fees, expenses)
         }
 
-    private fun findProjection(connection: java.sql.Connection, operationId: String): Long =
+    override fun paymentLedger(identity: OperationQuadruple): OperationLedger =
+        asRole("blackstore_app") { connection ->
+            val projectionId = findProjection(connection, identity)
+            connection.prepareStatement("""
+                SELECT p.id, p.payment_method, p.amount, p.fee_amount, p.status,
+                    (SELECT MIN(a.payload_redacted->>'detail') FROM audit_events a
+                     WHERE a.aggregate_type = 'payment' AND a.aggregate_id = p.id AND a.event_type = 'PAYMENT_REVERSED') AS reversal_detail
+                FROM payments p WHERE p.sale_id = ? ORDER BY p.id
+            """.trimIndent()).use { statement ->
+                statement.setLong(1, projectionId)
+                statement.executeQuery().use { rows ->
+                    val entries = mutableListOf<PaymentLedgerEntry>()
+                    while (rows.next()) {
+                        val original = rows.getString("reversal_detail")?.let { Regex("^original=(\\d+);reason=").find(it)?.groupValues?.get(1)?.toLongOrNull() }
+                        entries += PaymentLedgerEntry(identity, rows.getLong("id"), PaymentMethod.fromWire(rows.getString("payment_method")), PaymentStatus.fromWire(rows.getString("status")), rows.getBigDecimal("amount"), rows.getBigDecimal("fee_amount"), original)
+                    }
+                    OperationLedger.Known(entries)
+                }
+            }
+        }
+
+    private fun resolveIdentity(connection: java.sql.Connection, operationId: String): OperationQuadruple =
         connection.prepareStatement(
-            "SELECT id FROM sale_state_projection WHERE operation_id = ?",
+            "SELECT client_instance_id, device_id, sale_id FROM sale_state_projection WHERE operation_id = ?",
         ).use { statement ->
             statement.setObject(1, UUID.fromString(operationId))
             statement.executeQuery().use { rows ->
                 check(rows.next()) { "sale $operationId is not persisted" }
-                rows.getLong(1)
+                val identity = OperationQuadruple(rows.getString(1), rows.getString(2), rows.getString(3), operationId)
+                check(!rows.next()) { "sale operation is ambiguous" }
+                identity
+            }
+        }
+
+    private fun findProjection(connection: java.sql.Connection, identity: OperationQuadruple): Long =
+        connection.prepareStatement("SELECT id, client_instance_id, device_id, sale_id, status FROM sale_state_projection WHERE operation_id = ?").use { statement ->
+            statement.setObject(1, UUID.fromString(identity.operationId))
+            statement.executeQuery().use { rows ->
+                val matches = mutableListOf<Long>()
+                while (rows.next()) if (rows.getString(2) == identity.clientInstanceId && rows.getString(3) == identity.deviceId && rows.getString(4) == identity.saleId) {
+                    require(com.blackstore.domain.sales.SaleStatus.fromWire(rows.getString(5)) != com.blackstore.domain.sales.SaleStatus.UNKNOWN) { "unknown sale projection" }
+                    matches += rows.getLong(1)
+                }
+                require(matches.size == 1) { "sale identity missing or ambiguous" }
+                matches.single()
             }
         }
 

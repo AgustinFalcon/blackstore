@@ -161,6 +161,9 @@ export class PersistenceMode {
 }
 
 export class SaleAction {
+  static readonly Reserve = new SaleAction('reserve', 'Reserva');
+  static readonly Capture = new SaleAction('capture', 'Pago');
+  static readonly Reverse = new SaleAction('reverse', 'Reversa');
   static readonly Commit = new SaleAction('commit', 'Venta');
   static readonly Release = new SaleAction('release', 'Reserva');
   static readonly Unknown = new SaleAction('unknown', 'Operación');
@@ -169,6 +172,9 @@ export class SaleAction {
 
   static fromWire(raw: unknown): SaleAction {
     switch (raw) {
+      case 'reserve': return SaleAction.Reserve;
+      case 'capture': return SaleAction.Capture;
+      case 'reverse': return SaleAction.Reverse;
       case 'commit': return SaleAction.Commit;
       case 'release': return SaleAction.Release;
       default: return SaleAction.Unknown;

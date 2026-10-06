@@ -1,0 +1,16 @@
+{
+  "feature": "blackstore-ticket-payment-transition-policy",
+  "status": "validated_awaiting_merge",
+  "base_commit": "a92ec07868638e312e568f3dc36837ea78cdde44",
+  "execution_strategy": "sol_go_before_implementation",
+  "stats": { "total": 7, "done": 7 },
+  "tasks": [
+    { "id": "TP-GATE", "title": "Revisar SDD y registrar GO Sol del alcance local", "status": "done", "depends_on": [], "acceptance_criteria": ["Revisión funcional/arquitectura y seguridad; no GO live ni finish"] },
+    { "id": "TP-001", "title": "Tipos cerrados, decisiones y traductores fail-closed", "status": "done", "depends_on": ["TP-GATE"], "tests": ["T01", "T11"], "acceptance_criteria": ["Unknown/InvalidUnknown frontend y Kotlin HTTP/JDBC deniega", "NewCommand/RecoverExistingCommand/TerminalReplay cerrados; historial reversas legible"] },
+    { "id": "TP-006", "title": "Identidad inequívoca, ledger y coordinación local compartida", "status": "done", "depends_on": ["TP-001"], "tests": ["T07", "T10", "T11", "T12"], "acceptance_criteria": ["Cuádruple/venta completa; 0 o múltiples asociaciones deniegan", "Memoria conserva identidad; JDBC valida proyección y ledger por venta", "Coordinador compartido lectura-decisión-efecto cubre capture/capture, capture/release y reverse/commit con barreras", "Disabled/fixture/kill switch/canary 0 preservados; sin claim multiinstancia"] },
+    { "id": "TP-002", "title": "Reserva/capture, moneda exacta y respuestas correlacionadas", "status": "done", "depends_on": ["TP-001", "TP-006"], "tests": ["T02", "T03", "T04", "T05", "T11"], "acceptance_criteria": ["0 < importe <= pendiente; fees separados", "NUMERIC(14,2) sin subcentavos/overflow/redondeo en memoria y JDBC", "PaymentResponse operationId/paymentId/status/amount/feeAmount más identidad; snapshot explícito validable"] },
+    { "id": "TP-004", "title": "Commit exacto y recovery del comando existente", "status": "done", "depends_on": ["TP-002"], "tests": ["T06", "T07", "T09", "T11"], "acceptance_criteria": ["Total 18: sólo 18 autoriza; 0/10/19 deniega", "Pending conserva GET/CONFLICT-GET-same-body rePOST del comando original sin duplicar outbox", "TerminalReplay compatible sin efecto nuevo"] },
+    { "id": "TP-005", "title": "Release sin historial y reversa con original de misma identidad", "status": "done", "depends_on": ["TP-002"], "tests": ["T08", "T09", "T10", "T11"], "acceptance_criteria": ["Parcial/completo/pending/unknown/reversa/void deniega aun neto cero", "Reverse valida identidad original antes de insert y usa coordinador compartido"] },
+    { "id": "TP-003", "title": "Pasos UI, correlación exacta y guard previo a UUID", "status": "done", "depends_on": ["TP-002", "TP-004", "TP-005"], "tests": ["T02", "T05", "T11"], "acceptance_criteria": ["ReserveTicketStep/CapturePaymentStep/RefreshTicketStep; siguiente capture sólo tras Captured con identidad/importe/fee exactos", "Doble submit se bloquea antes de nuevo UUID; refresh/contexto inmutables y respuestas tardías aisladas"] }
+  ]
+}

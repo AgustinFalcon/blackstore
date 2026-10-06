@@ -5,6 +5,7 @@ import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
+import com.blackstore.domain.sales.MoneyPolicy
 
 /**
  * Writes BlackStore-owned rows. Historical tables are insert-only for blackstore_app.
@@ -345,6 +346,10 @@ class JdbcBlackStoreWriter {
         originalUnitPrice: BigDecimal,
         discountAmount: BigDecimal,
     ) {
+        MoneyPolicy.normalize(originalUnitPrice)
+        MoneyPolicy.normalize(discountAmount)
+        MoneyPolicy.normalize(originalUnitPrice.subtract(discountAmount).multiply(BigDecimal(quantity)))
+        require(quantity > 0 && originalUnitPrice.signum() >= 0 && discountAmount.signum() >= 0 && discountAmount <= originalUnitPrice)
         connection.prepareStatement(
             """
             INSERT INTO sale_lines (
@@ -370,8 +375,13 @@ class JdbcBlackStoreWriter {
         amount: BigDecimal,
         feeAmount: BigDecimal,
         status: String = "CAPTURED",
-    ): Long =
-        connection.prepareStatement(
+    ): Long {
+        MoneyPolicy.normalize(amount)
+        MoneyPolicy.normalize(feeAmount)
+        require(amount.signum() > 0 && feeAmount.signum() >= 0 &&
+            com.blackstore.domain.sales.PaymentMethod.fromWire(method) != com.blackstore.domain.sales.PaymentMethod.UNKNOWN &&
+            com.blackstore.domain.sales.PaymentStatus.fromWire(status) != com.blackstore.domain.sales.PaymentStatus.UNKNOWN)
+        return connection.prepareStatement(
             """
             INSERT INTO payments (sale_id, payment_method, amount, fee_amount, status)
             VALUES (?, ?, ?, ?, ?)
@@ -388,6 +398,7 @@ class JdbcBlackStoreWriter {
                 rows.getLong(1)
             }
         }
+    }
 
     fun insertExpense(
         connection: Connection,

@@ -7,15 +7,17 @@ import com.blackstore.domain.model.StoreCoreOperationState
 import java.math.BigDecimal
 import java.time.Instant
 
-enum class SaleStatus {
-    PENDING_RESERVATION,
-    RESERVED,
-    PAYMENT_CAPTURED,
-    COMMIT_PENDING,
-    COMMITTED,
-    RELEASE_PENDING,
-    RELEASED,
-    RECONCILIATION_REQUIRED,
+enum class SaleStatus(val label: String) {
+    PENDING_RESERVATION("Reserva pendiente"),
+    RESERVED("Reservado"),
+    PAYMENT_CAPTURED("Pago capturado"),
+    COMMIT_PENDING("Confirmación pendiente"),
+    COMMITTED("Confirmado"),
+    RELEASE_PENDING("Liberación pendiente"),
+    RELEASED("Liberado"),
+    RECONCILIATION_REQUIRED("Requiere conciliación"),
+    UNKNOWN("Estado no disponible");
+    companion object { fun fromWire(value: String?): SaleStatus = entries.firstOrNull { it.name == value && it != UNKNOWN } ?: UNKNOWN }
 }
 
 enum class FiscalStatus {
@@ -32,6 +34,7 @@ data class OutboxCommand(
     val contractVersion: String,
     val openapiDigest: String,
     val requestHash: String,
+    val reservationRef: String? = null,
 )
 
 data class RemoteEvidence(

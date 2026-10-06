@@ -6,6 +6,8 @@ import com.blackstore.domain.cash.StaffRole
 import com.blackstore.domain.port.out.workspace.WorkspaceQuery
 import com.blackstore.domain.reports.ShiftFigures
 import com.blackstore.domain.sales.PaymentMethod
+import com.blackstore.domain.model.OperationQuadruple
+import com.fasterxml.jackson.databind.JsonNode
 import com.blackstore.infrastructure.exception.GlobalExceptionHandler
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
@@ -46,14 +48,14 @@ class CounterController(
     ): ResponseEntity<BaseResponse<PaymentResponse>> {
         val payment =
             counterApplicationService.capture(
-                body.operationId,
-                body.method,
+                body.identity(),
+                PaymentMethod.fromWire(body.method?.takeIf { it.isTextual }?.textValue()),
                 body.amount,
                 body.feeAmount,
             )
         return ResponseEntity.ok(
             BaseResponse.success(
-                PaymentResponse(payment.id, payment.status.name, payment.amount, payment.feeAmount),
+                PaymentResponse(body.clientInstanceId, body.deviceId, body.saleId, body.operationId, payment.id, payment.status.name, payment.amount, payment.feeAmount),
                 traceId(request),
             ),
         )
@@ -69,7 +71,7 @@ class CounterController(
     ): ResponseEntity<BaseResponse<PaymentResponse>> {
         val payment =
             counterApplicationService.reverse(
-                operationId = body.operationId,
+                identity = body.identity(),
                 paymentId = paymentId,
                 actorId = actorId,
                 role = role,
@@ -78,7 +80,7 @@ class CounterController(
             )
         return ResponseEntity.ok(
             BaseResponse.success(
-                PaymentResponse(payment.id, payment.status.name, payment.amount, payment.feeAmount),
+                PaymentResponse(body.clientInstanceId, body.deviceId, body.saleId, body.operationId, payment.id, payment.status.name, payment.amount, payment.feeAmount),
                 traceId(request),
             ),
         )
@@ -133,19 +135,25 @@ class CounterController(
 data class WorkspaceResponse(val terminalId: Long, val cashierId: Long, val persistence: String)
 
 data class CapturePaymentRequest(
+    @field:NotBlank val clientInstanceId: String,
+    @field:NotBlank val deviceId: String,
+    @field:NotBlank val saleId: String,
     @field:NotBlank val operationId: String,
-    @field:NotNull val method: PaymentMethod,
+    val method: JsonNode? = null,
     @field:NotNull @field:Positive val amount: BigDecimal,
     @field:NotNull val feeAmount: BigDecimal,
-)
+) { fun identity() = OperationQuadruple(clientInstanceId, deviceId, saleId, operationId) }
 
-data class PaymentResponse(val id: Long, val status: String, val amount: BigDecimal, val feeAmount: BigDecimal)
+data class PaymentResponse(val clientInstanceId: String, val deviceId: String, val saleId: String, val operationId: String, val paymentId: Long, val status: String, val amount: BigDecimal, val feeAmount: BigDecimal)
 
 data class ReversalRequest(
+    @field:NotBlank val clientInstanceId: String,
+    @field:NotBlank val deviceId: String,
+    @field:NotBlank val saleId: String,
     @field:NotBlank val operationId: String,
     @field:NotBlank val reason: String,
     @field:NotBlank val evidenceRef: String,
-)
+) { fun identity() = OperationQuadruple(clientInstanceId, deviceId, saleId, operationId) }
 
 data class ExpenseRequest(
     val cashSessionId: Long,

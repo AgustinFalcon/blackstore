@@ -176,12 +176,17 @@ class JdbcSaleRecordStore(
 
     private fun findProjection(connection: java.sql.Connection, saga: SaleSaga): Long =
         connection.prepareStatement(
-            "SELECT id FROM sale_state_projection WHERE operation_id = ?",
+            "SELECT id FROM sale_state_projection WHERE operation_id = ? AND client_instance_id = ? AND device_id = ? AND sale_id = ?",
         ).use { statement ->
             statement.setObject(1, UUID.fromString(saga.quadruple.operationId))
+            statement.setObject(2, UUID.fromString(saga.quadruple.clientInstanceId))
+            statement.setString(3, saga.quadruple.deviceId)
+            statement.setString(4, saga.quadruple.saleId)
             statement.executeQuery().use { rows ->
                 check(rows.next()) { "sale ${saga.quadruple.operationId} is not persisted" }
-                rows.getLong(1)
+                val id = rows.getLong(1)
+                check(!rows.next()) { "sale identity is ambiguous" }
+                id
             }
         }
 
