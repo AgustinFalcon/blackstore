@@ -51,7 +51,7 @@ class SaleController(
     private fun trace(request: HttpServletRequest) = request.getHeader(GlobalExceptionHandler.TRACE_HEADER)?.takeIf { it.isNotBlank() }
         ?: java.util.UUID.randomUUID().toString()
 
-    private fun durableResponse(view: com.blackstore.application.sales.DurableSaleView): DurableSaleDetailResponse {
+    internal fun durableResponse(view: com.blackstore.application.sales.DurableSaleView): DurableSaleDetailResponse {
         val sale = view.sale.saga
         val kind = when (sale.status) {
             SaleStatus.PENDING_RESERVATION -> com.blackstore.domain.sales.CommandKind.RESERVE
@@ -60,14 +60,14 @@ class SaleController(
             else -> null
         }
         return DurableSaleDetailResponse(sale.quadruple.operationId, sale.quadruple.clientInstanceId, sale.quadruple.deviceId,
-            sale.quadruple.saleId, sale.cashSessionId, view.cashierId, view.sale.state, sale.evidence?.receipt, sale.evidence?.reservationRef,
+            sale.quadruple.saleId, sale.cashSessionId, view.cashierId, view.createdBy, view.sale.state, sale.evidence?.receipt, sale.evidence?.reservationRef,
             view.snapshot.evidenceValid, view.snapshot.totalAmount, view.snapshot.pendingAmount,
             PaymentCoverageWire.toWire(view.snapshot.paymentCoverage), view.snapshot.hasPaymentHistory,
-            sale.blockSameOperationRepost || view.sale.state in setOf(com.blackstore.domain.sales.DurableSaleState.UNKNOWN,
+            view.createdBy == null || sale.blockSameOperationRepost || view.sale.state in setOf(com.blackstore.domain.sales.DurableSaleState.UNKNOWN,
                 com.blackstore.domain.sales.DurableSaleState.LEGACY_INCOMPLETE, com.blackstore.domain.sales.DurableSaleState.RECONCILIATION_REQUIRED),
             sale.retired, sale.lines.map { DurableSaleLineResponse(it.sku, it.productName, it.quantity, it.effectiveUnitPrice.multiply(it.quantity.toBigDecimal())) },
             view.payments.map { DurableSalePaymentResponse(it.paymentId, it.status, it.method, it.amount, it.feeAmount) },
-            kind?.let(::DurableSalePendingCommandResponse), view.allowedActions)
+            kind?.let(::DurableSalePendingCommandResponse), if (view.createdBy == null) emptySet() else view.allowedActions)
     }
     @PostMapping("/reservations")
     fun reserve(
@@ -216,7 +216,7 @@ data class DurableSalePaymentResponse(val paymentId: Long, val status: com.black
     val method: com.blackstore.domain.sales.PaymentMethod, val amount: BigDecimal?, val feeAmount: BigDecimal?)
 data class DurableSalePendingCommandResponse(val kind: com.blackstore.domain.sales.CommandKind)
 data class DurableSaleDetailResponse(val operationId: String, val clientInstanceId: String, val deviceId: String, val saleId: String,
-    val cashSessionId: Long, val cashierId: Long, val status: com.blackstore.domain.sales.DurableSaleState,
+    val cashSessionId: Long, val cashierId: Long, val createdBy: Long?, val status: com.blackstore.domain.sales.DurableSaleState,
     val receipt: String?, val reservationRef: String?, val evidenceValid: Boolean, val totalAmount: BigDecimal?,
     val pendingAmount: BigDecimal?, val paymentCoverage: String, val hasPaymentHistory: Boolean, val blocked: Boolean, val retired: Boolean,
     val lines: List<DurableSaleLineResponse>, val payments: List<DurableSalePaymentResponse>,

@@ -95,6 +95,40 @@ class DurableSalePostgresTest {
    assertThrows<SQLException> {c.createStatement().execute("UPDATE sale_state_projection SET version=version+1")}
   }
  }
+ @Test fun latePendingDeduplicatesReceivedEvidenceAfterNewClaimReservedSale() {
+  val saga=sale();val store=JdbcSaleRecordStore(source());store.recordIntentAndOutbox(saga)
+  val pending=StoreCoreOperationReceipt(saga.quadruple,StoreCoreOperationKind.RESERVE,StoreCoreOperationState.PENDING,null,null,
+   StoreCoreContractRef("/blackstore-integration/v1","v1","a".repeat(64)),emptyList(),null)
+  val first=store.claimCommand(saga.quadruple.operationId,CommandKind.RESERVE,Duration.ofSeconds(30))!!
+  assertEquals(AttemptOutcome.WAIT_AND_GET,store.applyClaimEvidence(first,saga,"e".repeat(64),"PENDING",pending))
+  source().connection.use { c ->c.createStatement().execute("UPDATE storecore_command_delivery SET next_attempt_at=now()-interval '1 second' WHERE command_id=${first.id}") }
+  val late=store.claimCommand(saga.quadruple.operationId,CommandKind.RESERVE,Duration.ofSeconds(30))!!
+  source().connection.use { c ->c.createStatement().execute("UPDATE storecore_command_delivery SET lease_until=now()-interval '1 second' WHERE command_id=${first.id}") }
+  val winner=store.claimCommand(saga.quadruple.operationId,CommandKind.RESERVE,Duration.ofSeconds(30))!!
+  val reserved=saga.markReserved(RemoteEvidence(UUID.randomUUID().toString(),"reserved-receipt","v1","a".repeat(64),listOf("price"),Instant.now().plusSeconds(600)))
+  assertEquals(AttemptOutcome.APPLIED,store.applyClaimEvidence(winner,reserved,"f".repeat(64),"RESERVED"))
+  val rehydrated=store.findDurable(saga.quadruple.operationId)!!.saga
+  assertEquals(AttemptOutcome.LATE_IGNORED,store.applyClaimEvidence(late,rehydrated,"e".repeat(64),"PENDING",pending))
+  assertEquals(SaleStatus.RESERVED,store.findDurable(saga.quadruple.operationId)!!.saga.status)
+  source().connection.use { c ->c.prepareStatement("SELECT i.evidence_json,a.state FROM storecore_inbox_events i JOIN storecore_inbox_applications a ON a.inbox_id=i.id WHERE a.command_id=? AND a.claim_token=?").use { s ->
+   s.setLong(1,late.id);s.setObject(2,late.claimToken);s.executeQuery().use { r ->assertTrue(r.next());assertEquals("LATE_IGNORED",r.getString(2));val node=com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(r.getString(1));assertTrue(node.path("receipt").isNull);assertTrue(node.path("reservationRef").isNull);assertEquals("PENDING",node.path("state").asText()) }
+  } }
+ }
+ @Test fun unknownRetryableRemoteFailureBlocksFurtherHttpDurably() {
+  val original=sale();val command=original.outbox.single().copy(contractVersion=StoreCoreCanonicalContract.VERSION,openapiDigest=StoreCoreCanonicalContract.SHA256)
+  val saga=original.copy(outbox=listOf(command));val store=JdbcSaleRecordStore(source());store.recordIntentAndOutbox(saga)
+  val inventory=org.mockito.Mockito.mock(com.blackstore.domain.port.out.storecore.StoreCoreInventoryPort::class.java)
+  val payload=command.payload as CanonicalCommandPayload.Reserve
+  val dispatch=com.blackstore.domain.port.out.storecore.ReserveInventoryCommand(saga.quadruple,payload.catalogVersion,payload.lines.map { ReserveLineCommand(it.variantId,it.quantity,it.expectedPriceVersion) })
+  org.mockito.Mockito.`when`(inventory.reserve(dispatch))
+   .thenThrow(com.blackstore.domain.exception.StoreCoreRemoteFault("future-error",true))
+  val flow=com.blackstore.application.sales.DurableSaleCommandFlow(store,inventory)
+  flow.runOperation(saga.quadruple.operationId,CommandKind.RESERVE)
+  assertEquals(DurableSaleState.RECONCILIATION_REQUIRED,store.findDurable(saga.quadruple.operationId)!!.state)
+  flow.runOperation(saga.quadruple.operationId,CommandKind.RESERVE)
+  org.mockito.Mockito.verify(inventory).reserve(dispatch)
+  org.mockito.Mockito.verifyNoMoreInteractions(inventory)
+ }
  @Test fun reconciliationRollsBackInboxDeliveryAndProjectionWhenAuditFails() {
   val saga=sale();val store=JdbcSaleRecordStore(source());store.recordIntentAndOutbox(saga)
   val claim=store.claimCommand(saga.quadruple.operationId,CommandKind.RESERVE,Duration.ofSeconds(30))!!

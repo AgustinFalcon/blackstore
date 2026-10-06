@@ -36,7 +36,7 @@ import { DurableSalesStore } from '../../core/services/durable-sales.store';
         <div class="card">
           <h3>{{ sale.status.label }}</h3>
           <p>{{ sale.coverage.label }} · total {{ sale.total?.decimal ?? 'No comprobado' }} · saldo {{ sale.pending?.decimal ?? 'No comprobado' }}</p>
-          <p>Caja {{ sale.cashSessionId }} · actor histórico {{ sale.cashierId }}</p>
+          <p>Caja {{ sale.cashSessionId }} · responsable de caja {{ sale.cashierId }} · actor histórico {{ sale.createdBy ?? 'No comprobado' }}</p>
           <p>Cliente <span class="sku">{{ sale.identity.clientInstanceId }}</span> · dispositivo {{ sale.identity.deviceId }}</p>
           <p>Venta <span class="sku">{{ sale.identity.saleId }}</span> · operación {{ sale.identity.operationId }}</p>
           <p>Evidencia local · receipt {{ sale.receipt ?? 'No disponible' }} · reserva {{ sale.reservationRef ?? 'No disponible' }}</p>

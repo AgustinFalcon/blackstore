@@ -128,11 +128,14 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
   }
   updated
  }
- override fun applyClaimEvidence(claim: ClaimedSaleCommand,saga: SaleSaga,responseHash: String,remoteState: String): AttemptOutcome = transaction { c ->
+ override fun applyClaimEvidence(claim: ClaimedSaleCommand,saga: SaleSaga,responseHash: String,remoteState: String,receipt: StoreCoreOperationReceipt?): AttemptOutcome = transaction { c ->
   require(saga.quadruple==claim.command.quadruple)
+  require(receipt==null || (receipt.quadruple==claim.command.quadruple && receipt.state.name==remoteState))
+  require(remoteState!="PENDING" || receipt!=null) { "pending evidence requires the received receipt" }
   val stored=lock(c,saga.quadruple.operationId)
   val current=c.prepareStatement("SELECT state,claim_token,claim_epoch,lease_until>now() AS active FROM storecore_command_delivery WHERE command_id=? FOR UPDATE").use { s -> s.setLong(1,claim.id);s.executeQuery().use { r -> check(r.next());r.getString(1)==DeliveryState.IN_FLIGHT.name && r.getObject(2)==claim.claimToken && r.getLong(3)==claim.claimEpoch && r.getBoolean(4) } }
-  val evidence=mapper.evidence(saga,remoteState);val evidenceHash=mapper.hash(evidence);val e=saga.evidence
+  val evidence=receipt?.let(mapper::remoteEvidence) ?: mapper.evidence(saga,remoteState)
+  val evidenceHash=mapper.hash(evidence);val e=saga.evidence
   val inbox=c.prepareStatement("INSERT INTO storecore_inbox_events(client_instance_id,device_id,sale_id,operation_id,operation_kind,state,receipt,reservation_ref,response_hash,contract_version,openapi_digest,payload_redacted,evidence_json,evidence_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,'{}',?::jsonb,?) ON CONFLICT(client_instance_id,device_id,sale_id,operation_id,operation_kind,response_hash) DO NOTHING RETURNING id").use { s ->
    s.setObject(1,UUID.fromString(saga.quadruple.clientInstanceId));s.setString(2,saga.quadruple.deviceId);s.setString(3,saga.quadruple.saleId);s.setObject(4,UUID.fromString(saga.quadruple.operationId));s.setString(5,claim.command.kind.name);s.setString(6,remoteState)
    s.setString(7,if(remoteState=="PENDING") null else e?.receipt);s.setObject(8,if(remoteState=="PENDING") null else e?.reservationRef?.let { ref -> runCatching {UUID.fromString(ref)}.getOrElse { UUID.nameUUIDFromBytes(ref.toByteArray()) } });s.setString(9,responseHash);s.setString(10,claim.command.contractVersion);s.setString(11,claim.command.openapiDigest);s.setString(12,evidence);s.setString(13,evidenceHash)

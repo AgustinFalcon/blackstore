@@ -81,7 +81,7 @@ class ApplyRemoteEvidence(private val store: DurableSaleStore) {
         val material = listOf(receipt.kind.name, receipt.state.name, receipt.receipt, receipt.reservationRef,
             receipt.acceptedPriceVersions.joinToString(","), receipt.expiresAt?.toString()).joinToString("|")
         val hash = MessageDigest.getInstance("SHA-256").digest(material.toByteArray()).joinToString("") { "%02x".format(it) }
-        return store.applyClaimEvidence(claim, saga, hash, receipt.state.name)
+        return store.applyClaimEvidence(claim, saga, hash, receipt.state.name, receipt)
     }
 }
 
@@ -129,6 +129,7 @@ class DurableSaleCommandFlow(private val store: DurableSaleStore, inventory: Sto
                 when (received) {
                     RecoveryDisposition.ApplyEvidence, RecoveryDisposition.WaitAndGet -> apply.execute(claim, receipt)
                     is RecoveryDisposition.ReconciliationRequired -> store.reconcileClaimEvidence(claim, receipt, received.reason)
+                    RecoveryDisposition.RetrySameCommand -> defer(claim, RecoveryReason.REMOTE_PENDING)
                     else -> defer(claim, RecoveryReason.UNKNOWN, true)
                 }
             }
@@ -145,7 +146,8 @@ class DurableSaleCommandFlow(private val store: DurableSaleStore, inventory: Sto
             StoreCoreFailureCode.NOT_FOUND -> if (claim.uncertain && claim.command.kind == StoreCoreOperationKind.RESERVE) defer(claim, RecoveryReason.REMOTE_PENDING)
                 else defer(claim, RecoveryReason.NOT_FOUND_TERMINAL, true)
             StoreCoreFailureCode.INSUFFICIENT_STOCK, StoreCoreFailureCode.CATALOG_VERSION_STALE, StoreCoreFailureCode.VALIDATION -> defer(claim, RecoveryReason.UNKNOWN, true)
-            StoreCoreFailureCode.UNKNOWN -> defer(claim, if (fault.retryable) RecoveryReason.REMOTE_UNAVAILABLE else RecoveryReason.UNKNOWN, !fault.retryable)
+            StoreCoreFailureCode.RATE_LIMITED -> defer(claim, RecoveryReason.REMOTE_UNAVAILABLE)
+            StoreCoreFailureCode.UNKNOWN -> defer(claim, RecoveryReason.UNKNOWN, true)
         }
     }
 }

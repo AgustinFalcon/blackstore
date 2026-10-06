@@ -43,6 +43,7 @@ export interface DurableSaleSummary {
   readonly identity: TicketIdentity;
   readonly cashSessionId: number;
   readonly cashierId: number;
+  readonly createdBy: number | null;
   readonly status: DurableSaleState;
   readonly total: TicketMoney | null;
 }

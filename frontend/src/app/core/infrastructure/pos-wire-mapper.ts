@@ -106,6 +106,7 @@ export class PosWireMapper {
     const identity = PosWireMapper.identity(raw);
     if (!raw || !identity || !PosWireMapper.positiveId(raw['cashSessionId']) || !PosWireMapper.positiveId(raw['cashierId'])) return null;
     return Object.freeze({ identity, cashSessionId: raw['cashSessionId'] as number, cashierId: raw['cashierId'] as number,
+      createdBy: PosWireMapper.positiveId(raw['createdBy']) ? raw['createdBy'] as number : null,
       status: DurableSaleState.fromWire(raw['status']), total: TicketMoney.fromDecimal(raw['totalAmount']) });
   }
 
@@ -135,7 +136,7 @@ export class PosWireMapper {
     const command = raw['pendingCommand'] == null ? null : DurableCommandKind.fromWire(PosWireMapper.record(raw['pendingCommand'])?.['kind']);
     const receipt = PosWireMapper.nonempty(raw['receipt']);
     const reservationRef = PosWireMapper.nonempty(raw['reservationRef']);
-    const valid = !!validCoverage && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
+    const valid = summary.createdBy !== null && !!validCoverage && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
       !allowedActions.includes(AllowedAction.Unknown) && Array.isArray(raw['lines']) && Array.isArray(raw['payments']) &&
       raw['lines'].every(value => { const line = PosWireMapper.record(value); return !!PosWireMapper.nonempty(line?.['sku']) && !!PosWireMapper.nonempty(line?.['productName']); }) &&
       lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents >= 0n) &&

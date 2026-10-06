@@ -14,7 +14,7 @@ const identity = { clientInstanceId: '11111111-1111-1111-1111-111111111111', dev
   saleId: '22222222-2222-2222-2222-222222222222', operationId: '33333333-3333-3333-3333-333333333333' };
 const envelope = (data: unknown) => ({ code: 200, errorCode: null, traceId: 'trace', message: null, retryable: null, data });
 const detail = (status = DurableSaleState.Reserved, coverage = PaymentCoverage.Partial, overrides = {}) => ({ ...identity,
-  cashSessionId: 1, cashierId: 7, status: status.wire, totalAmount: '18.00',
+  cashSessionId: 1, cashierId: 7, createdBy: 9, status: status.wire, totalAmount: '18.00',
   pendingAmount: coverage === PaymentCoverage.Paid ? '0' : coverage === PaymentCoverage.Unpaid ? '18' : '8',
   paymentCoverage: coverage.wire, hasPaymentHistory: coverage !== PaymentCoverage.Unpaid,
   evidenceValid: true, receipt: 'receipt', reservationRef: 'reservation', blocked: false, retired: false,
@@ -23,6 +23,18 @@ const detail = (status = DurableSaleState.Reserved, coverage = PaymentCoverage.P
   pendingCommand: null, allowedActions: AllowedAction.values.map(action => action.wire), ...overrides });
 
 describe('DurableSale closed types and DTO boundary', () => {
+  it('preserves the historical actor separately from the cashier and blocks unverified actors', () => {
+    const sale = PosWireMapper.durableDetail(envelope(detail()), identity.operationId)!;
+    expect(sale.createdBy).toBe(9);
+    expect(sale.cashierId).toBe(7);
+    expect(sale.valid).toBeTrue();
+    for (const createdBy of [undefined, null, 0, -1, 1.5, '9', Number.MAX_SAFE_INTEGER + 1]) {
+      const invalid = PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved, PaymentCoverage.Partial, { createdBy })), identity.operationId)!;
+      expect(invalid.createdBy).toBeNull();
+      expect(invalid.valid).toBeFalse();
+      for (const action of AllowedAction.values) expect(invalid.status.permits(action, invalid)).toBeFalse();
+    }
+  });
   it('round-trips every closed state/action and neutralizes unknown wire', () => {
     for (const state of DurableSaleState.values) expect(DurableSaleState.fromWire(state.wire)).toBe(state);
     for (const action of AllowedAction.values) expect(AllowedAction.fromWire(action.wire)).toBe(action);
@@ -81,6 +93,14 @@ describe('DurableSalesStore existing sale entry', () => {
     open(); expect(store.can(AllowedAction.CapturePayment)).toBeTrue(); expect(store.can(AllowedAction.Commit)).toBeFalse(); expect(store.can(AllowedAction.Release)).toBeFalse();
     open(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid);
     expect(store.can(AllowedAction.CapturePayment)).toBeFalse(); expect(store.can(AllowedAction.Commit)).toBeTrue();
+  });
+  it('keeps an unverified historical actor read-only without inferring the cashier as author', () => {
+    open(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid, { createdBy: null });
+    expect(store.detail()?.createdBy).toBeNull();
+    expect(store.detail()?.cashierId).toBe(7);
+    expect(store.can(AllowedAction.Commit)).toBeFalse();
+    store.execute(AllowedAction.Commit, 'confirmar');
+    http.expectNone(request => request.method === 'POST');
   });
   it('denies Auditor/Unknown role all commercial reads and writes', () => {
     for (const role of [StaffRole.Auditor, StaffRole.Unknown]) {

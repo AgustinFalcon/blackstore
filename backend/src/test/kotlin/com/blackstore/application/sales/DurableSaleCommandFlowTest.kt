@@ -11,7 +11,49 @@ import java.time.Instant
 import java.util.UUID
 
 class DurableSaleCommandFlowTest {
-    @Test fun `remote failures translate once and unknown retryable remains GET only`() {
+    @Test fun `terminal POST recovered as RESERVED waits then GETs before retrying`() {
+        for (kind in listOf(StoreCoreOperationKind.COMMIT,StoreCoreOperationKind.RELEASE)) {
+            val first=claim(kind,false)
+            val second=first.copy(claimToken=UUID.randomUUID(),claimEpoch=first.claimEpoch+1,attempts=2,uncertain=true)
+            val store=org.mockito.Mockito.mock(DurableSaleStore::class.java)
+            val inventory=org.mockito.Mockito.mock(StoreCoreInventoryPort::class.java)
+            val evidence=RemoteEvidence("reference","receipt",contract.contractVersion,requireNotNull(contract.openapiDigestSha256),listOf("price-v1"),Instant.now().plusSeconds(600))
+            val status=if(kind==StoreCoreOperationKind.COMMIT) SaleStatus.COMMIT_PENDING else SaleStatus.RELEASE_PENDING
+            val current=SaleSaga(identity,10,status,evidence,outbox=listOf(first.command))
+            org.mockito.Mockito.`when`(store.claimNext(Duration.ofSeconds(30))).thenReturn(first,second,null)
+            org.mockito.Mockito.`when`(store.findDurable(identity.operationId)).thenReturn(StoredSale(current,1,DurableSaleState.valueOf(status.name),1))
+            org.mockito.Mockito.`when`(inventory.getOperation(identity)).thenReturn(receipt(StoreCoreOperationState.RESERVED))
+            if(kind==StoreCoreOperationKind.COMMIT) org.mockito.Mockito.`when`(inventory.commit(CommitInventoryCommand(identity,"reference")))
+                .thenReturn(receipt(StoreCoreOperationState.RESERVED,kind),receipt(StoreCoreOperationState.COMMITTED,kind))
+            else org.mockito.Mockito.`when`(inventory.release(ReleaseInventoryCommand(identity,"reference")))
+                .thenReturn(receipt(StoreCoreOperationState.RESERVED,kind),receipt(StoreCoreOperationState.RELEASED,kind))
+            val flow=DurableSaleCommandFlow(store,inventory)
+            assertTrue(flow.runNext())
+            org.mockito.Mockito.verify(store).deferClaim(first,RecoveryReason.REMOTE_PENDING,Duration.ofSeconds(1),false)
+            org.mockito.Mockito.verify(inventory,org.mockito.Mockito.never()).getOperation(identity)
+            assertTrue(flow.runNext());assertFalse(flow.runNext())
+            val ordered=org.mockito.Mockito.inOrder(inventory)
+            if(kind==StoreCoreOperationKind.COMMIT) ordered.verify(inventory).commit(CommitInventoryCommand(identity,"reference"))
+            else ordered.verify(inventory).release(ReleaseInventoryCommand(identity,"reference"))
+            ordered.verify(inventory).getOperation(identity)
+            if(kind==StoreCoreOperationKind.COMMIT) ordered.verify(inventory).commit(CommitInventoryCommand(identity,"reference"))
+            else ordered.verify(inventory).release(ReleaseInventoryCommand(identity,"reference"))
+            ordered.verifyNoMoreInteractions()
+        }
+    }
+    @Test fun `known rate limit and native timeout wait for GET recovery`() {
+        for (failure in listOf(com.blackstore.domain.exception.StoreCoreRemoteFault("RATE_LIMITED",true),java.net.http.HttpTimeoutException("timeout"))) {
+            val command=claim(StoreCoreOperationKind.RESERVE,false)
+            val store=org.mockito.Mockito.mock(DurableSaleStore::class.java)
+            val inventory=org.mockito.Mockito.mock(StoreCoreInventoryPort::class.java)
+            org.mockito.Mockito.`when`(store.claimNext(Duration.ofSeconds(30))).thenReturn(command)
+            org.mockito.Mockito.doAnswer { throw failure }.`when`(inventory)
+                .reserve(ReserveInventoryCommand(identity,"historical-catalog",listOf(ReserveLineCommand("historical-variant",2,"historical-price"))))
+            DurableSaleCommandFlow(store,inventory).runNext()
+            org.mockito.Mockito.verify(store).deferClaim(command,RecoveryReason.REMOTE_UNAVAILABLE,Duration.ofSeconds(1),false)
+        }
+    }
+    @Test fun `remote failures translate once and unknown always blocks subsequent HTTP`() {
         for (code in com.blackstore.domain.exception.StoreCoreFailureCode.entries) {
             val wire=if(code==com.blackstore.domain.exception.StoreCoreFailureCode.UNKNOWN) "future-provider-error" else code.name
             assertEquals(code,com.blackstore.domain.exception.StoreCoreRemoteFault(wire).failureCode)
@@ -20,11 +62,12 @@ class DurableSaleCommandFlowTest {
             val claim=claim(StoreCoreOperationKind.RESERVE,false)
             val store=org.mockito.Mockito.mock(DurableSaleStore::class.java)
             val inventory=org.mockito.Mockito.mock(StoreCoreInventoryPort::class.java)
-            org.mockito.Mockito.`when`(store.claimNext(Duration.ofSeconds(30))).thenReturn(claim)
+            org.mockito.Mockito.`when`(store.claimNext(Duration.ofSeconds(30))).thenReturn(claim,null)
             org.mockito.Mockito.`when`(inventory.reserve(ReserveInventoryCommand(identity,"historical-catalog",listOf(ReserveLineCommand("historical-variant",2,"historical-price")))))
                 .thenThrow(com.blackstore.domain.exception.StoreCoreRemoteFault("future-provider-error",retryable))
-            DurableSaleCommandFlow(store,inventory).runNext()
-            org.mockito.Mockito.verify(store).deferClaim(claim,if(retryable) RecoveryReason.REMOTE_UNAVAILABLE else RecoveryReason.UNKNOWN,Duration.ofSeconds(1),!retryable)
+            val flow=DurableSaleCommandFlow(store,inventory)
+            flow.runNext(); assertFalse(flow.runNext())
+            org.mockito.Mockito.verify(store).deferClaim(claim,RecoveryReason.UNKNOWN,Duration.ofSeconds(1),true)
             org.mockito.Mockito.verify(inventory).reserve(ReserveInventoryCommand(identity,"historical-catalog",listOf(ReserveLineCommand("historical-variant",2,"historical-price"))))
             org.mockito.Mockito.verifyNoMoreInteractions(inventory)
         }
