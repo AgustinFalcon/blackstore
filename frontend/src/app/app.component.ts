@@ -18,6 +18,7 @@ import { StaffPermission } from './core/domain/session-types';
           @if (session.can(permissions.CashSessionList)) { <a routerLink="/caja" routerLinkActive="active">Caja</a> }
           @if (session.can(permissions.CatalogRead)) { <a routerLink="/catalogo" routerLinkActive="active">Catálogo</a> }
           @if (session.can(permissions.SaleReserve)) { <a routerLink="/ticket" routerLinkActive="active">Ticket</a> }
+          @if (session.can(permissions.SaleRead)) { <a routerLink="/ventas" routerLinkActive="active">Reabrir venta</a> }
           @if (session.can(permissions.ShiftReportRead)) { <a routerLink="/reportes" routerLinkActive="active">Reportes</a> }
           <a routerLink="/sesion">Sesión</a>
         </nav>

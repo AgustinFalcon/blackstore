@@ -35,6 +35,7 @@ data class OutboxCommand(
     val openapiDigest: String,
     val requestHash: String,
     val reservationRef: String? = null,
+    val payload: CanonicalCommandPayload? = null,
 )
 
 data class RemoteEvidence(

@@ -11,7 +11,7 @@ import { BaseResponse } from '../../core/models/base-response';
 import { CounterContextService } from '../../core/services/counter-context.service';
 import { concatMap, finalize, throwError } from 'rxjs';
 import { PaymentAttempt, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
-import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, TicketPaymentJourney } from './ticket-steps';
+import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, StartNewSale } from './ticket-steps';
 
 @Component({
   selector: 'bs-sale-ticket',
@@ -167,7 +167,7 @@ export class SaleTicketComponent implements OnInit {
   readonly operationRef = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly paymentId = signal<number | null>(null);
-  private readonly journey = new TicketPaymentJourney(
+  private readonly journey = new StartNewSale(
     new ReserveTicketStep(this.port),
     new CapturePaymentStep(this.port),
     this.refreshStep,

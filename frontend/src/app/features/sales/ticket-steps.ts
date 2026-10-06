@@ -58,7 +58,7 @@ export class RefreshTicketStep {
 }
 
 /** Orders independently responsible steps; every capture is followed by a correlated refresh. */
-export class TicketPaymentJourney {
+export class StartNewSale {
   constructor(
     private readonly reserve: ReserveTicketStep,
     private readonly capture: CapturePaymentStep,
@@ -96,3 +96,6 @@ export class TicketPaymentJourney {
     }));
   }
 }
+
+/** Compatibility name for the existing ordered reserve/capture journey. */
+export class TicketPaymentJourney extends StartNewSale {}

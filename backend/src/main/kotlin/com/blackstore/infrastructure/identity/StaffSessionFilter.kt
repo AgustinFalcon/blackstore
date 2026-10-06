@@ -28,7 +28,7 @@ object StaffHttpPermission {
         method=="POST" && path=="/api/v1/cash-sessions" -> StaffPermission.CashSessionOpen
         method=="POST" && Regex("/api/v1/cash-sessions/[^/]+/close").matches(path) -> StaffPermission.CashSessionClose
         method=="POST" && path=="/api/v1/sales/reservations" -> StaffPermission.SaleReserve
-        method=="GET" && Regex("/api/v1/sales/[^/]+").matches(path) -> StaffPermission.SaleRead
+        method=="GET" && (path=="/api/v1/sales" || Regex("/api/v1/sales/operations/[^/]+").matches(path) || Regex("/api/v1/sales/[^/]+").matches(path)) -> StaffPermission.SaleRead
         method=="POST" && Regex("/api/v1/sales/[^/]+/commit").matches(path) -> StaffPermission.SaleCommit
         method=="POST" && Regex("/api/v1/sales/[^/]+/release").matches(path) -> StaffPermission.SaleRelease
         method=="POST" && path=="/api/v1/payments" -> StaffPermission.PaymentCapture

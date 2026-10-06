@@ -15,6 +15,7 @@ import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.sales.OperationLedger
 import com.blackstore.domain.sales.PaymentLedgerEntry
 import com.blackstore.domain.sales.MoneyPolicy
+import com.blackstore.domain.sales.PaymentTransitionPolicy
 
 @Component
 @ConditionalOnProperty(name = ["blackstore.persistence.enabled"], havingValue = "true")
@@ -22,6 +23,8 @@ class JdbcCounterEntryStore(
     private val dataSource: DataSource,
 ) : CounterEntryStore {
     private val writer = JdbcBlackStoreWriter()
+    private val durable = JdbcDurableSaleRepository(dataSource)
+    private val sales = JdbcSaleRecordStore(dataSource)
 
     override fun savePayment(payment: PaymentRecord, operationId: String): PaymentRecord {
         val identity = asRole("blackstore_app") { connection -> resolveIdentity(connection, operationId) }
@@ -32,8 +35,17 @@ class JdbcCounterEntryStore(
         asRole("blackstore_app") { connection ->
             MoneyPolicy.normalize(payment.amount)
             MoneyPolicy.normalize(payment.feeAmount)
+            val stored=durable.lock(connection,identity)
+            require(stored.saga.quadruple==identity)
             val projectionId = findProjection(connection, identity)
             val trustedActor = payment.actorId ?: error("trusted payment actor is required")
+            sales.authorize(connection,stored.saga,trustedActor,payment.reason)
+            val ledger=sales.ledger(connection,stored.saga)
+            when(payment.status) {
+                PaymentStatus.CAPTURED -> PaymentTransitionPolicy().capture(stored.saga,ledger,payment.method,payment.amount,payment.feeAmount).assertAllowed()
+                PaymentStatus.REFUNDED -> PaymentTransitionPolicy().reverse(stored.saga,ledger,requireNotNull(payment.originalPaymentId)).assertAllowed()
+                else -> error("unsupported durable payment mutation")
+            }
             if (payment.originalPaymentId != null) {
                 connection.prepareStatement("SELECT sale_id, status FROM payments WHERE id = ?").use { statement ->
                     statement.setLong(1, payment.originalPaymentId)
@@ -64,6 +76,7 @@ class JdbcCounterEntryStore(
             if (payment.status == PaymentStatus.CAPTURED) {
                 writer.insertAudit(connection, trustedActor, com.blackstore.domain.identity.SecurityAuditEvent.PAYMENT_CAPTURED.name, "payment", id)
             }
+            sales.bumpVersion(connection,projectionId,stored.version)
             payment.copy(id = id)
         }
 
