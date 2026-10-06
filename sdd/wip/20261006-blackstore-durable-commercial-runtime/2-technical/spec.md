@@ -45,11 +45,19 @@ Migración forward-only V6:
 - Amplía los registros históricos inmutables `storecore_outbox_commands` con payload canónico completo, `payload_hash`, actor/caja/motivo; y `storecore_inbox_events` con evidence JSON completo y `evidence_hash`. Identidad, hash y payload siguen sin UPDATE/DELETE.
 - Agrega metadata mutable separada: `storecore_command_delivery(command_id, state, claim_token, claim_epoch, lease_until, next_attempt_at, attempts, last_error_code, updated_at)` y `storecore_inbox_applications(inbox_id, command_id, claim_token, state, applied_at, late_reason)`. No se debilitan los triggers históricos.
 - Agrega `version` a la proyección de venta para CAS y usa `SELECT ... FOR UPDATE` como lock común de request, worker y payment.
+- V6 reemplaza explícitamente `enforce_sale_transition`: conserva la matriz V1 para cambios de estado y permite `OLD.status = NEW.status` sólo cuando no cambian identidad, caja, evidencia remota, importes ni campos fiscales; únicamente `version`/`updated_at` pueden avanzar. Pago parcial, reversa e idempotencia usan ese caso. Cualquier otro update del mismo estado falla cerrado.
 - Índices de claim y unicidad cuádruple+kind.
 - Registra filas V1–V5 no replayables en metadata como `LEGACY_INCOMPLETE`; no modifica ni inventa su payload.
 - Grants mínimos: worker sólo actualiza metadata; projection/runtime escriben únicamente sus tablas permitidas. Tests prueban que payload/hash/identidad históricos siguen inmutables.
 
-No se borra historia. JSON se versiona con un mapper explícito y checksum SHA-256 del canonical form. La allowlist durable contiene sólo SKU, cantidad, precios/versiones, identidad operacional, actor ID, cash ID, motivo de negocio y referencias remotas redacted; excluye passwords, cookies, CSRF, tokens de proveedor y datos de tarjeta no permitidos.
+No se borra historia. JSON se versiona con un mapper explícito y checksum SHA-256 del canonical form. El payload canónico de dispatch se separa del snapshot comercial/audit redacted:
+
+- RESERVE: cuádruple, `catalogVersion` y `lines[{variantId, quantity, expectedPriceVersion}]` exactos, más path/versión/digest de contrato.
+- COMMIT/RELEASE: cuádruple y `reservationRef` exacto, más path/versión/digest de contrato.
+- Metadata local no enviada: actor ID, cash ID y motivo de negocio.
+- Snapshot comercial no usado para reconstruir dispatch: SKU, descripción/product snapshot, precios e importes.
+
+La allowlist excluye passwords, cookies, CSRF, tokens de proveedor y datos de tarjeta no permitidos. El worker deserializa exclusivamente el payload canónico persistido; nunca deriva `variantId`, `catalogVersion`, price version o `reservationRef` desde el snapshot/catálogo actual.
 
 ## Transacciones
 
@@ -111,6 +119,8 @@ V6 arranca sobre V5 sin reset. Filas completas nuevas son replayables; filas pre
 
 - Dominio/mappers: exhaustividad, Unknown, round-trip y hashes.
 - PostgreSQL: rollback admisión, atomicidad aplicación, replay/mismatch, leases, grants.
+- Trigger V6: matriz de transición, pago parcial/reversa con mismo estado+version y rechazo de mutación de evidencia/identidad sin transición.
+- Payload: round-trip exacto de RESERVE/COMMIT/RELEASE y separación respecto del snapshot comercial.
 - Reinicio: cerrar contexto A y abrir B sobre la misma DB para cada estado.
 - Fallos: antes HTTP, después aceptación, después inbox, antes respuesta.
 - Concurrencia: doble claim, worker vs request, payment vs terminal command.
