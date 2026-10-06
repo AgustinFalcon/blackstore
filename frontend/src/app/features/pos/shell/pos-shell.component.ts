@@ -38,6 +38,7 @@ import { SessionStore } from '../../../core/services/session.store';
           <p class="actions">
             <a routerLink="/caja" class="primary">Caja</a>
             <a routerLink="/ticket" class="ghost">Ticket</a>
+            @if (session.can(permissions.SaleRead)) { <a routerLink="/ventas" class="ghost">Reabrir venta</a> }
             <a routerLink="/catalogo" class="ghost">Catálogo</a>
             @if (session.can(permissions.ShiftReportRead)) {
               <a routerLink="/reportes" class="ghost">Reportes</a>

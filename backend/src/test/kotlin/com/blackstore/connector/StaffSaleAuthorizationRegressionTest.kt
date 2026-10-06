@@ -10,6 +10,9 @@ import com.blackstore.domain.sales.*
 import com.blackstore.domain.port.out.sales.SaleRecordStore
 import com.blackstore.infrastructure.storecore.FixtureCatalogAdapter
 import com.blackstore.infrastructure.counter.InMemoryCounterEntryStore
+import com.blackstore.application.counter.CounterApplicationService
+import com.blackstore.application.sales.LocalSaleCoordinator
+import com.blackstore.domain.port.out.counter.CounterEntryStore
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.assertThrows
@@ -67,5 +70,27 @@ class StaffSaleAuthorizationRegressionTest {
         assertEquals(SaleStaffCommandEvent.COMMIT_REQUESTED,SaleStaffCommandEvent.fromWire("COMMIT_REQUESTED"))
         assertEquals(SaleStaffCommandEvent.UNKNOWN,SaleStaffCommandEvent.fromWire("forged event"))
         assertEquals(SaleStaffCommandEvent.UNKNOWN,SaleStaffCommandEvent.fromWire(null))
+    }
+
+    @Test fun supervisorPaymentCarriesOverrideReasonToDurableStore() {
+        val q=OperationQuadruple("11111111-1111-1111-1111-111111111111","device","sale","payment-override")
+        val inventory=ScriptedStoreCoreInventoryAdapter(ReserveScript.Receipt(ScriptedStoreCoreInventoryAdapter.durable(q)))
+        val ownership=Ownership(); val saleStore=InMemorySaleRecordStore(); val ledger=InMemoryCounterEntryStore()
+        val sales=service(inventory,ownership,saleStore,ledger)
+        sales.beginReserve(owner,q,2,listOf(ReserveLineCommand("variant-1",1,"price-v1")),listOf(TicketLine("SKU-1","Cafe",1,BigDecimal("18"),BigDecimal.ZERO)),now,null)
+        ownership.persisted=ownership.cash(2)
+        var persisted: PaymentRecord?=null
+        val recording=object : CounterEntryStore by ledger {
+            override fun savePayment(payment: PaymentRecord, identity: OperationQuadruple): PaymentRecord {
+                persisted=payment
+                return ledger.savePayment(payment,identity)
+            }
+        }
+        val supervisor=attacker.copy(role=StaffRole.SUPERVISOR)
+        CounterApplicationService(recording,sales,LocalSaleCoordinator.local,AuthorizeStaffAction(ownership,audit))
+            .capture(supervisor,q,PaymentMethod.CASH,BigDecimal("18"),BigDecimal.ZERO,"supervisor correction")
+
+        assertEquals(supervisor.id.value,persisted!!.actorId)
+        assertEquals("supervisor correction",persisted!!.reason)
     }
 }

@@ -5,6 +5,7 @@ import com.blackstore.domain.cash.StaffRole
 import com.blackstore.application.identity.*
 import com.blackstore.infrastructure.persistence.JdbcBlackStoreWriter
 import com.blackstore.infrastructure.persistence.JdbcSaleRecordStore
+import com.blackstore.infrastructure.persistence.DurableCommandMapper
 import com.blackstore.domain.sales.*
 import com.blackstore.domain.model.StoreCoreOperationKind
 import com.blackstore.domain.model.OperationQuadruple
@@ -136,11 +137,24 @@ class StaffIdentityPostgresTest {
                 val terminal=c.createStatement().executeQuery("INSERT INTO terminals(terminal_code) VALUES ('T-${UUID.randomUUID()}') RETURNING id").use { r -> r.next(); r.getLong(1) }
                 cash=writer.insertOpenCashSession(c,terminal,cashier.value,BigDecimal.ZERO,now)
                 sale=writer.insertPendingSale(c,UUID.fromString(identity.clientInstanceId),identity.deviceId,identity.saleId,UUID.fromString(identity.operationId),cash,cashier.value,evidence.contractVersion,evidence.openapiDigest)
+                writer.insertSaleLine(c,sale,"audit-sku","Audit product",1,BigDecimal.TEN,BigDecimal.ZERO)
+                if(kind==StoreCoreOperationKind.COMMIT) writer.insertPayment(c,sale,"CASH",BigDecimal.TEN,BigDecimal.ZERO)
+                val mapper=DurableCommandMapper()
+                val reserve=OutboxCommand(identity,StoreCoreOperationKind.RESERVE,"/command",evidence.contractVersion,evidence.openapiDigest,"c".repeat(64),
+                    payload=CanonicalCommandPayload.Reserve("catalog-v1",listOf(CanonicalReserveLine("variant-v1",1,"price-v1"))))
+                val payload=mapper.encode(reserve)
+                val commandId=c.prepareStatement("""INSERT INTO storecore_outbox_commands(client_instance_id,device_id,sale_id,operation_id,operation_kind,canonical_path,contract_version,openapi_digest,request_hash,payload_redacted,canonical_payload,payload_hash,actor_id,cash_session_id) VALUES(?,?,?,?,?,?,?,?,?,'{}',?::jsonb,?,?,?) RETURNING id""").use { s ->
+                    s.setObject(1,UUID.fromString(identity.clientInstanceId)); s.setString(2,identity.deviceId); s.setString(3,identity.saleId); s.setObject(4,UUID.fromString(identity.operationId));
+                    s.setString(5,StoreCoreOperationKind.RESERVE.name); s.setString(6,reserve.canonicalPath); s.setString(7,reserve.contractVersion); s.setString(8,reserve.openapiDigest); s.setString(9,reserve.requestHash);
+                    s.setString(10,payload); s.setString(11,mapper.hash(payload)); s.setLong(12,cashier.value); s.setLong(13,cash); s.executeQuery().use { r -> r.next(); r.getLong(1) }
+                }
+                c.prepareStatement("INSERT INTO storecore_command_delivery(command_id,state) VALUES(?,'APPLIED')").use { s -> s.setLong(1,commandId); s.executeUpdate() }
                 writer.markReserved(c,sale,evidence.reservationRef,evidence.receipt,evidence.contractVersion,evidence.openapiDigest,evidence.expiresAt!!)
             }
             val event=if(kind==StoreCoreOperationKind.COMMIT) SaleStaffCommandEvent.COMMIT_REQUESTED else SaleStaffCommandEvent.RELEASE_REQUESTED
             return SaleSaga(identity,cash,if(kind==StoreCoreOperationKind.COMMIT) SaleStatus.COMMIT_PENDING else SaleStatus.RELEASE_PENDING,evidence,
-                outbox=listOf(OutboxCommand(identity,kind,"/command",evidence.contractVersion,evidence.openapiDigest,"b".repeat(64))),
+                outbox=listOf(OutboxCommand(identity,kind,"/command",evidence.contractVersion,evidence.openapiDigest,"b".repeat(64),
+                    reservationRef=evidence.reservationRef,payload=CanonicalCommandPayload.Terminal(evidence.reservationRef))),
                 staffCommandAudit=SaleStaffCommandAudit(event,auditActor,"supervisor controlled reason")) to sale
         }
         for(kind in listOf(StoreCoreOperationKind.COMMIT,StoreCoreOperationKind.RELEASE)) {
@@ -149,12 +163,12 @@ class StaffIdentityPostgresTest {
             source().connection.use { c -> c.prepareStatement("SELECT actor_id,event_type,payload_redacted->>'detail' FROM audit_events WHERE aggregate_type='sale' AND aggregate_id=?").use { s ->
                 s.setLong(1,sale); s.executeQuery().use { r -> assertTrue(r.next()); assertEquals(actor.value,r.getLong(1)); assertEquals(saga.staffCommandAudit!!.event.name,r.getString(2)); assertEquals(saga.staffCommandAudit!!.reason,r.getString(3)); assertFalse(r.next()) }
             }
-                c.prepareStatement("SELECT operation_kind FROM storecore_outbox_commands WHERE operation_id=?").use { s -> s.setObject(1,UUID.fromString(saga.quadruple.operationId)); s.executeQuery().use { r -> assertTrue(r.next()); assertEquals(kind.name,r.getString(1)); assertFalse(r.next()) } }
+                c.prepareStatement("SELECT operation_kind FROM storecore_outbox_commands WHERE operation_id=? AND operation_kind=?").use { s -> s.setObject(1,UUID.fromString(saga.quadruple.operationId)); s.setString(2,kind.name); s.executeQuery().use { r -> assertTrue(r.next()); assertEquals(kind.name,r.getString(1)); assertFalse(r.next()) } }
             }
             val (bad,badSale)=fixture(kind,StaffUserId(Long.MAX_VALUE))
-            assertThrows<java.sql.SQLException> { if(kind==StoreCoreOperationKind.COMMIT) store.recordCommitPending(bad) else store.recordReleasePending(bad) }
+            assertThrows<IllegalArgumentException> { if(kind==StoreCoreOperationKind.COMMIT) store.recordCommitPending(bad) else store.recordReleasePending(bad) }
             source().connection.use { c ->
-                c.prepareStatement("SELECT count(*) FROM storecore_outbox_commands WHERE operation_id=?").use { s -> s.setObject(1,UUID.fromString(bad.quadruple.operationId)); s.executeQuery().use { r -> r.next(); assertEquals(0,r.getInt(1)) } }
+                c.prepareStatement("SELECT count(*) FROM storecore_outbox_commands WHERE operation_id=?").use { s -> s.setObject(1,UUID.fromString(bad.quadruple.operationId)); s.executeQuery().use { r -> r.next(); assertEquals(1,r.getInt(1)) } }
                 c.prepareStatement("SELECT count(*) FROM audit_events WHERE aggregate_id=? AND aggregate_type='sale'").use { s -> s.setLong(1,badSale); s.executeQuery().use { r -> r.next(); assertEquals(0,r.getInt(1)) } }
             }
         }

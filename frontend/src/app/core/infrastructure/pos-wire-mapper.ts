@@ -15,6 +15,8 @@ import {
 import { ReportFormula, ReportPeriod } from '../domain/pos-types';
 import { BaseResponse } from '../models/base-response';
 import { CapturedPayment, PaymentAttempt, PaymentCoverage, TicketIdentity, TicketMoney, TicketSnapshot, sameTicketIdentity } from '../domain/ticket-transition';
+import { PaymentMethod } from '../domain/pos-types';
+import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary } from '../domain/durable-sale';
 
 export class PosWireMapper {
   private constructor() {}
@@ -90,6 +92,65 @@ export class PosWireMapper {
         !amount || amount.cents !== expected.amount.cents || !fee || fee.cents !== expected.fee.cents) return null;
     return Object.freeze({ paymentId, status, amount, fee });
   }
+
+  static durablePage(response: unknown): DurableSalePage | null {
+    const raw = PosWireMapper.payload(response);
+    if (!raw || !Array.isArray(raw['items']) || (raw['nextCursor'] !== null && typeof raw['nextCursor'] !== 'string')) return null;
+    const items = raw['items'].map(item => PosWireMapper.durableSummary(item));
+    if (items.some(item => !item)) return null;
+    return Object.freeze({ items: Object.freeze(items as DurableSaleSummary[]), nextCursor: raw['nextCursor'] as string | null });
+  }
+
+  private static durableSummary(value: unknown): DurableSaleSummary | null {
+    const raw = PosWireMapper.record(value);
+    const identity = PosWireMapper.identity(raw);
+    if (!raw || !identity || !PosWireMapper.positiveId(raw['cashSessionId']) || !PosWireMapper.positiveId(raw['cashierId'])) return null;
+    return Object.freeze({ identity, cashSessionId: raw['cashSessionId'] as number, cashierId: raw['cashierId'] as number,
+      createdBy: PosWireMapper.positiveId(raw['createdBy']) ? raw['createdBy'] as number : null,
+      status: DurableSaleState.fromWire(raw['status']), total: TicketMoney.fromDecimal(raw['totalAmount']) });
+  }
+
+  static durableDetail(response: unknown, operationId: string): DurableSaleDetail | null {
+    const raw = PosWireMapper.payload(response);
+    const summary = PosWireMapper.durableSummary(raw);
+    if (!raw || !summary || summary.identity.operationId !== operationId) return null;
+    const pending = TicketMoney.fromDecimal(raw['pendingAmount']);
+    const coverage = PaymentCoverage.fromWire(raw['paymentCoverage']);
+    const history = typeof raw['hasPaymentHistory'] === 'boolean' ? raw['hasPaymentHistory'] : null;
+    const balance = !!summary.total && summary.total.cents > 0n && !!pending && pending.cents >= 0n && pending.cents <= summary.total.cents;
+    const validCoverage = balance && ((coverage === PaymentCoverage.Unpaid && pending!.cents === summary.total!.cents && history === false) ||
+      (coverage === PaymentCoverage.Partial && pending!.cents > 0n && pending!.cents < summary.total!.cents && history === true) ||
+      (coverage === PaymentCoverage.Paid && pending!.cents === 0n && history === true));
+    const lines = Array.isArray(raw['lines']) ? raw['lines'].map(value => {
+      const line = PosWireMapper.record(value);
+      return Object.freeze({ sku: PosWireMapper.nonempty(line?.['sku']) ?? '—', productName: PosWireMapper.nonempty(line?.['productName']) ?? 'Sin descripción',
+        quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0, total: TicketMoney.fromDecimal(line?.['totalAmount']) });
+    }) : [];
+    const payments = Array.isArray(raw['payments']) ? raw['payments'].map(value => {
+      const payment = PosWireMapper.record(value);
+      return Object.freeze({ paymentId: PosWireMapper.positiveId(payment?.['paymentId']) ? payment!['paymentId'] as number : 0,
+        status: PaymentStatus.fromWire(payment?.['status']), method: PaymentMethod.fromWire(payment?.['method']),
+        amount: TicketMoney.fromDecimal(payment?.['amount']), fee: TicketMoney.fromDecimal(payment?.['feeAmount']) });
+    }) : [];
+    const allowedActions = Array.isArray(raw['allowedActions']) ? raw['allowedActions'].map(AllowedAction.fromWire) : [AllowedAction.Unknown];
+    const command = raw['pendingCommand'] == null ? null : DurableCommandKind.fromWire(PosWireMapper.record(raw['pendingCommand'])?.['kind']);
+    const receipt = PosWireMapper.nonempty(raw['receipt']);
+    const reservationRef = PosWireMapper.nonempty(raw['reservationRef']);
+    const valid = summary.createdBy !== null && !!validCoverage && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
+      !allowedActions.includes(AllowedAction.Unknown) && Array.isArray(raw['lines']) && Array.isArray(raw['payments']) &&
+      raw['lines'].every(value => { const line = PosWireMapper.record(value); return !!PosWireMapper.nonempty(line?.['sku']) && !!PosWireMapper.nonempty(line?.['productName']); }) &&
+      lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents >= 0n) &&
+      payments.every(payment => payment.paymentId > 0 && payment.status !== PaymentStatus.Unknown && payment.method !== PaymentMethod.Unknown &&
+        !!payment.amount && payment.amount.cents > 0n && !!payment.fee && payment.fee.cents >= 0n) &&
+      new Set(payments.map(payment => payment.paymentId)).size === payments.length && command !== DurableCommandKind.Unknown && !!receipt && !!reservationRef;
+    return Object.freeze({ ...summary, pending, coverage: validCoverage ? coverage : PaymentCoverage.InvalidUnknown, hasPaymentHistory: history,
+      lines: Object.freeze(lines), payments: Object.freeze(payments), allowedActions: Object.freeze(allowedActions), valid, receipt, reservationRef, pendingCommand: command });
+  }
+
+  private static record(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  }
+  private static positiveId(value: unknown): boolean { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0; }
 
   private static payload(response: unknown): Record<string, unknown> | null {
     if (!response || typeof response !== 'object') return null;

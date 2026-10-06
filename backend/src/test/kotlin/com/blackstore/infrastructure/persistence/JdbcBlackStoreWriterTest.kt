@@ -51,7 +51,11 @@ class JdbcBlackStoreWriterTest {
                             contractVersion = "1.0.0-draft",
                             openapiDigest = digest,
                         )
-                    writer.insertReserveOutbox(connection, clientId, "terminal-1", "sale-1", operationId, "1.0.0-draft", digest, "b".repeat(64))
+                    val dataSource = PGSimpleDataSource().apply { setURL(postgres.jdbcUrl); user = postgres.username; password = postgres.password }
+                    val identity=OperationQuadruple(clientId.toString(),"terminal-1","sale-1",operationId.toString())
+                    val command=OutboxCommand(identity,com.blackstore.domain.model.StoreCoreOperationKind.RESERVE,"/blackstore-integration/v1","1.0.0-draft",digest,"b".repeat(64),payload=CanonicalCommandPayload.Reserve("catalog",listOf(CanonicalReserveLine("variant",1,"price-v1"))))
+                    JdbcSaleRecordStore(dataSource).insertCanonicalCommand(connection,SaleSaga(identity,sessionId,createdBy=cashierId),command,cashierId,null)
+                    writer.insertSaleLine(connection,id,"SKU","Cafe",1,BigDecimal("18.00"),BigDecimal.ZERO)
                     writer.insertAudit(connection, cashierId, "INTENT_CREATED", "sale", id)
                     val inserted = writer.insertInbox(connection, clientId, "terminal-1", "sale-1", operationId, "c".repeat(64), "1.0.0-draft", digest)
                     val duplicate = writer.insertInbox(connection, clientId, "terminal-1", "sale-1", operationId, "c".repeat(64), "1.0.0-draft", digest)
@@ -61,7 +65,6 @@ class JdbcBlackStoreWriterTest {
                 }
             asRole(connection, "blackstore_projection_worker") {
                 writer.markReserved(connection, projectionId, "res-1", "rcpt-1", "1.0.0-draft", digest, now.plusSeconds(900))
-                writer.closeCashSession(connection, sessionId, BigDecimal("20.00"), now.plusSeconds(60))
             }
             val identity = OperationQuadruple(clientId.toString(), "terminal-1", "sale-1", operationId.toString())
             val other = identity.copy(deviceId = "terminal-2", saleId = "sale-2")
@@ -75,7 +78,28 @@ class JdbcBlackStoreWriterTest {
             }
             val dataSource = PGSimpleDataSource().apply { setURL(postgres.jdbcUrl); user = postgres.username; password = postgres.password }
             val ledger = JdbcCounterEntryStore(dataSource)
-            val original = ledger.savePayment(PaymentBook().capture(1, PaymentMethod.CASH, BigDecimal("18.000"), BigDecimal.ZERO).copy(actorId = cashierId), identity)
+            connection.createStatement().execute("INSERT INTO roles(code) VALUES('SUPERVISOR') ON CONFLICT DO NOTHING")
+            val supervisorId = connection.createStatement().executeQuery(
+                "INSERT INTO staff_users(login,password_hash,role_code) VALUES('${UUID.randomUUID()}','${'$'}2test','SUPERVISOR') RETURNING id",
+            ).use { rows -> rows.next(); rows.getLong(1) }
+            val original = ledger.savePayment(
+                PaymentBook().capture(1, PaymentMethod.CASH, BigDecimal("18.000"), BigDecimal.ZERO)
+                    .copy(actorId = supervisorId, reason = "supervisor cross-cash authorization"),
+                identity,
+            )
+            dataSource.connection.use { restarted ->
+                restarted.prepareStatement(
+                    "SELECT actor_id,payload_redacted->>'detail' FROM audit_events WHERE aggregate_type='payment' AND aggregate_id=? AND event_type='PAYMENT_CAPTURED'",
+                ).use { statement ->
+                    statement.setLong(1, original.id)
+                    statement.executeQuery().use { rows ->
+                        assertEquals(true, rows.next())
+                        assertEquals(supervisorId, rows.getLong(1))
+                        assertEquals("supervisor cross-cash authorization", rows.getString(2))
+                        assertEquals(false, rows.next())
+                    }
+                }
+            }
             assertEquals(1, (ledger.paymentLedger(identity) as OperationLedger.Known).entries.size)
             assertEquals(0, (ledger.paymentLedger(other) as OperationLedger.Known).entries.size)
             assertThrows<IllegalStateException> { ledger.savePayment(PaymentBook().capture(2, PaymentMethod.CASH, BigDecimal.ONE, BigDecimal.ZERO), operationId.toString()) }
@@ -105,6 +129,9 @@ class JdbcBlackStoreWriterTest {
                 }
             }
 
+            asRole(connection,"blackstore_projection_worker") {
+                writer.closeCashSession(connection,sessionId,BigDecimal("20.00"),now.plusSeconds(60))
+            }
             connection.createStatement().execute("RESET ROLE")
             connection.createStatement().use { statement ->
                 val status = statement.executeQuery("SELECT status FROM sale_state_projection WHERE id = $projectionId")

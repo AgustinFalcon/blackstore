@@ -1,7 +1,7 @@
 import { firstValueFrom, of, Subject, throwError } from 'rxjs';
 import { PaymentMethod, PaymentStatus, SaleStatus } from '../../core/domain/pos-types';
 import { PaymentCoverage, TicketMoney } from '../../core/domain/ticket-transition';
-import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketPaymentJourney } from './ticket-steps';
+import { AwaitReservationStep, CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketPaymentJourney } from './ticket-steps';
 
 describe('TicketPaymentJourney (T02/T05)', () => {
   const identity = {
@@ -14,8 +14,8 @@ describe('TicketPaymentJourney (T02/T05)', () => {
     { identity, method: PaymentMethod.Card, amount: money('8'), fee: money('0') },
   ]) });
   const envelope = (data: unknown) => ({ code: 200, errorCode: null, traceId: 'trace', message: null, retryable: null, data });
-  const snapshot = (pending: string, coverage: PaymentCoverage, status = SaleStatus.Reserved) => envelope({
-    ...identity, status: status.wire, receipt: 'receipt', reservationRef: 'ref', evidenceValid: true,
+  const snapshot = (pending: string, coverage: PaymentCoverage, status = SaleStatus.Reserved, evidenceValid = true) => envelope({
+    ...identity, status: status.wire, receipt: evidenceValid ? 'receipt' : null, reservationRef: evidenceValid ? 'ref' : null, evidenceValid,
     totalAmount: '18', pendingAmount: pending, paymentCoverage: coverage.wire, hasPaymentHistory: coverage !== PaymentCoverage.Unpaid,
     blocked: false, retired: false,
   });
@@ -48,13 +48,45 @@ describe('TicketPaymentJourney (T02/T05)', () => {
   });
 
   it('stops on pending, reconciliation, Unknown and missing reservation payload', async () => {
-    for (const status of [SaleStatus.PendingReservation, SaleStatus.ReconciliationRequired, SaleStatus.Unknown]) {
+    port.reserve.and.returnValue(of(snapshot('18', PaymentCoverage.Unpaid, SaleStatus.PendingReservation)));
+    port.refresh.and.returnValue(of(snapshot('18', PaymentCoverage.Unpaid, SaleStatus.ReconciliationRequired)));
+    journey = new TicketPaymentJourney(
+      new ReserveTicketStep(port, new AwaitReservationStep(port, 1, 0)),
+      new CapturePaymentStep(port), new RefreshTicketStep(port),
+    );
+    await expectAsync(firstValueFrom(journey.execute(context))).toBeRejected();
+
+    for (const status of [SaleStatus.ReconciliationRequired, SaleStatus.Unknown]) {
       port.reserve.and.returnValue(of(snapshot('18', PaymentCoverage.Unpaid, status)));
       await expectAsync(firstValueFrom(journey.execute(context))).toBeRejected();
     }
     port.reserve.and.returnValue(of(envelope(null)));
     await expectAsync(firstValueFrom(journey.execute(context))).toBeRejected();
     expect(port.capture).not.toHaveBeenCalled();
+  });
+
+  it('resolves an asynchronous reservation by bounded GET before capturing money', async () => {
+    port.reserve.and.returnValue(of(snapshot('18', PaymentCoverage.Unpaid, SaleStatus.PendingReservation, false)));
+    port.refresh.and.returnValues(
+      of(snapshot('18', PaymentCoverage.Unpaid, SaleStatus.PendingReservation, false)),
+      of(snapshot('18', PaymentCoverage.Unpaid, SaleStatus.Reserved)),
+      of(snapshot('8', PaymentCoverage.Partial)),
+      of(snapshot('0', PaymentCoverage.Paid)),
+    );
+    port.capture.and.returnValues(
+      of(envelope({ ...identity, paymentId: 1, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50' })),
+      of(envelope({ ...identity, paymentId: 2, status: PaymentStatus.Captured.wire, amount: '8', feeAmount: '0' })),
+    );
+    journey = new TicketPaymentJourney(
+      new ReserveTicketStep(port, new AwaitReservationStep(port, 3, 0)),
+      new CapturePaymentStep(port), new RefreshTicketStep(port),
+    );
+
+    const result = await firstValueFrom(journey.execute(context));
+
+    expect(result.snapshot.coverage).toBe(PaymentCoverage.Paid);
+    expect(port.refresh.calls.count()).toBe(4);
+    expect(port.capture.calls.count()).toBe(2);
   });
 
   it('does not split after unknown or mismatched capture response', async () => {

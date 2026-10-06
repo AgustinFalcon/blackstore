@@ -56,6 +56,10 @@ class BlackStoreSchemaMigrationTest {
             }
 
             connection.createStatement().execute("SET ROLE blackstore_app")
+            connection.createStatement().executeQuery("SELECT COUNT(*) FROM fiscal_production_authorizations").use { rows ->
+                assertTrue(rows.next())
+                assertEquals(0, rows.getInt(1))
+            }
             connection.createStatement().execute(
                 """
                 INSERT INTO audit_events (event_type, aggregate_type, payload_redacted)

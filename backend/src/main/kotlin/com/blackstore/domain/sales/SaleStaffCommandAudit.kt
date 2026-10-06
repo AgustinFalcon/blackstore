@@ -3,7 +3,7 @@ package com.blackstore.domain.sales
 import com.blackstore.domain.identity.StaffUserId
 
 enum class SaleStaffCommandEvent {
-    COMMIT_REQUESTED, RELEASE_REQUESTED, UNKNOWN;
+    RESERVE_REQUESTED, COMMIT_REQUESTED, RELEASE_REQUESTED, UNKNOWN;
     companion object {
         fun fromWire(value: String?): SaleStaffCommandEvent = entries.firstOrNull { it != UNKNOWN && it.name == value } ?: UNKNOWN
     }

@@ -35,7 +35,7 @@ class CounterApplicationService(
 
     fun capture(staff: AuthenticatedStaff, identity: OperationQuadruple, method: PaymentMethod, amount: BigDecimal, feeAmount: BigDecimal, reason: String?): PaymentRecord {
         authority().sale(staff,StaffPermission.PaymentCapture,identity,reason)
-        return capture(identity,method,amount,feeAmount,staff.id.value)
+        return capture(identity,method,amount,feeAmount,staff.id.value,reason)
     }
     fun reverse(staff: AuthenticatedStaff, identity: OperationQuadruple, paymentId: Long, reason: String, evidenceRef: String): PaymentRecord {
         authority().payment(staff,paymentId,identity,reason)
@@ -60,11 +60,11 @@ class CounterApplicationService(
         return capture(sale.quadruple, method, amount, feeAmount)
     }
 
-    fun capture(identity: OperationQuadruple, method: PaymentMethod, amount: BigDecimal, feeAmount: BigDecimal, actorId: Long? = null): PaymentRecord =
+    fun capture(identity: OperationQuadruple, method: PaymentMethod, amount: BigDecimal, feeAmount: BigDecimal, actorId: Long? = null, reason: String? = null): PaymentRecord =
         coordinator.coordinate(identity) {
             val sale = saleQuery.findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
             PaymentTransitionPolicy().capture(sale, store.paymentLedger(identity), method, amount, feeAmount).assertAllowed()
-            store.savePayment(payments.capture(ids.getAndIncrement(), method, MoneyPolicy.normalize(amount), MoneyPolicy.normalize(feeAmount)).copy(actorId = actorId), identity)
+            store.savePayment(payments.capture(ids.getAndIncrement(), method, MoneyPolicy.normalize(amount), MoneyPolicy.normalize(feeAmount)).copy(actorId = actorId, reason = reason), identity)
         }
 
     fun reverse(

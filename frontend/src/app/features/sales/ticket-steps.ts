@@ -1,4 +1,4 @@
-import { Observable, concatMap, map, of, throwError } from 'rxjs';
+import { Observable, concatMap, map, of, throwError, timer } from 'rxjs';
 import { SaleAction, SaleStatus } from '../../core/domain/pos-types';
 import { CapturedPayment, PaymentAttempt, TicketIdentity, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
@@ -20,12 +20,45 @@ export interface TicketFlowResult {
   readonly payments: readonly CapturedPayment[];
 }
 
+/** Resolves the durable asynchronous RESERVE exclusively through correlated GETs. */
+export class AwaitReservationStep {
+  constructor(
+    private readonly port: TicketFlowPort,
+    private readonly maxReads = 20,
+    private readonly delayMs = 100,
+  ) {}
+
+  execute(identity: TicketIdentity, snapshot: TicketSnapshot, read = 0): Observable<TicketSnapshot> {
+    if (snapshot.status === SaleStatus.Reserved) {
+      return snapshot.evidenceValid
+        ? of(snapshot)
+        : throwError(() => new Error('No se pudo comprobar la identidad o evidencia de la reserva.'));
+    }
+    if (snapshot.status !== SaleStatus.PendingReservation) {
+      return throwError(() => new Error('La reserva no habilita el cobro. Consultá el estado de la operación.'));
+    }
+    if (read >= this.maxReads) {
+      return throwError(() => new Error('La reserva sigue pendiente. Consultá el estado antes de cobrar.'));
+    }
+    return timer(this.delayMs).pipe(
+      concatMap(() => this.port.refresh(identity)),
+      map((response) => PosWireMapper.ticket(response, identity)),
+      concatMap((next) => this.execute(identity, next, read + 1)),
+    );
+  }
+}
+
 export class ReserveTicketStep {
-  constructor(private readonly port: TicketFlowPort) {}
+  constructor(
+    private readonly port: TicketFlowPort,
+    private readonly awaitReservation = new AwaitReservationStep(port),
+  ) {}
   execute(context: TicketAttemptContext): Observable<TicketSnapshot> {
     return this.port.reserve(context.reservation).pipe(map((response) => {
       const snapshot = PosWireMapper.ticket(response, context.identity);
-      if (snapshot.status !== SaleStatus.Reserved || !TicketTransitionPolicy.decide(snapshot, SaleAction.Capture, context.payments[0]).permitsWrite) {
+      return snapshot;
+    }), concatMap((snapshot) => this.awaitReservation.execute(context.identity, snapshot)), map((snapshot) => {
+      if (!TicketTransitionPolicy.decide(snapshot, SaleAction.Capture, context.payments[0]).permitsWrite) {
         throw new Error('La reserva no habilita el cobro. Consultá el estado de la operación.');
       }
       return snapshot;
@@ -58,7 +91,7 @@ export class RefreshTicketStep {
 }
 
 /** Orders independently responsible steps; every capture is followed by a correlated refresh. */
-export class TicketPaymentJourney {
+export class StartNewSale {
   constructor(
     private readonly reserve: ReserveTicketStep,
     private readonly capture: CapturePaymentStep,
@@ -96,3 +129,6 @@ export class TicketPaymentJourney {
     }));
   }
 }
+
+/** Compatibility name for the existing ordered reserve/capture journey. */
+export class TicketPaymentJourney extends StartNewSale {}

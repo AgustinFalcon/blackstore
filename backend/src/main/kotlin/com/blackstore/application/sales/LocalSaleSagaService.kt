@@ -53,7 +53,17 @@ class LocalSaleSagaService(
     private val counterEntryStore: CounterEntryStore? = null,
     private val coordinator: LocalSaleCoordinator = LocalSaleCoordinator.local,
     private val authorization: AuthorizeStaffAction? = null,
+    @Value("\${blackstore.persistence.enabled:false}") private val persistenceEnabled: Boolean = false,
 ) : SaleOperationQuery {
+    private fun durable(): com.blackstore.domain.port.out.sales.DurableSaleStore? =
+        (saleRecordStore as? com.blackstore.domain.port.out.sales.DurableSaleStore).also {
+            check(!persistenceEnabled || it != null) { "durable persistence unavailable" }
+        }
+    private fun dispatchDurable(saga: SaleSaga, kind: com.blackstore.domain.sales.CommandKind): SaleSaga {
+        val store = requireNotNull(durable())
+        DurableSaleCommandFlow(store, inventoryPort).runOperation(saga.quadruple.operationId, kind)
+        return requireNotNull(store.findDurable(saga.quadruple.operationId)).saga
+    }
     private val catalogPolicy = CatalogSalePolicy()
     private val reserveLinePolicy = CatalogReserveLinePolicy()
     private val retiredPolicy = RetiredOperationPolicy()
@@ -63,8 +73,9 @@ class LocalSaleSagaService(
 
     fun beginReserve(staff: AuthenticatedStaff, quadruple: OperationQuadruple, cashSessionId: Long, lines: List<ReserveLineCommand>, ticketLines: List<TicketLine>, now: Instant, reason: String?): SaleSaga {
         return coordinator.coordinate(quadruple) {
-            authority().reserve(staff,quadruple,cashSessionId,sales[quadruple]?.cashSessionId,reason)
-            beginReserveCoordinated(quadruple,cashSessionId,lines,ticketLines,now,staff.id.value)
+            authority().reserve(staff,quadruple,cashSessionId,findSale(quadruple)?.cashSessionId,reason)
+            beginReserveCoordinated(quadruple,cashSessionId,lines,ticketLines,now,staff.id.value,
+                com.blackstore.domain.sales.SaleStaffCommandAudit(com.blackstore.domain.sales.SaleStaffCommandEvent.RESERVE_REQUESTED,staff.id,reason))
         }
     }
     fun stored(staff: AuthenticatedStaff, operationId: String): SaleSaga? { authority().sale(staff,StaffPermission.SaleRead,operationId); return stored(operationId) }
@@ -86,6 +97,34 @@ class LocalSaleSagaService(
     }
     private fun authority()=authorization ?: throw StaffSecurityException(StaffSecurityFailure.IDENTITY_UNAVAILABLE)
 
+    fun detail(staff: AuthenticatedStaff, operationId: String): DurableSaleView? {
+        val cash = authority().sale(staff, StaffPermission.SaleRead, operationId)
+        val stored = durable()?.findDurable(operationId) ?: return null
+        if (stored.saga.cashSessionId != cash.id) throw StaffSecurityException(StaffSecurityFailure.NOT_FOUND)
+        val entries = ledger(stored.saga.quadruple)
+        return DurableSaleView(stored, cash.cashierId.value, PaymentTransitionPolicy().snapshot(stored.saga, entries),
+            (entries as? OperationLedger.Known)?.entries.orEmpty(), com.blackstore.domain.sales.DurableSaleActions().allowed(stored, entries, cash.open))
+    }
+
+    fun list(staff: AuthenticatedStaff, cursor: Long, limit: Int, state: com.blackstore.domain.sales.DurableSaleState?): DurableSalePage {
+        authority().permission(staff, StaffPermission.SaleRead)
+        require(cursor >= 0 && limit in 1..100)
+        val store = durable() ?: return DurableSalePage(emptyList(), null)
+        var position = cursor
+        val visible = mutableListOf<DurableSaleView>()
+        while (visible.size < limit) {
+            val batch = store.listDurable(position, minOf(100, limit - visible.size))
+            if (batch.isEmpty()) return DurableSalePage(visible, null)
+            for (sale in batch) {
+                position = sale.projectionId
+                if (state != null && sale.state != state) continue
+                try { detail(staff, sale.saga.quadruple.operationId)?.let(visible::add) }
+                catch (denied: StaffSecurityException) { if (denied.failure != StaffSecurityFailure.NOT_FOUND) throw denied }
+            }
+        }
+        return DurableSalePage(visible, position)
+    }
+
     fun beginReserve(quadruple: OperationQuadruple, cashSessionId: Long, lines: List<ReserveLineCommand>, ticketLines: List<TicketLine> = emptyList(), now: Instant, createdBy: Long? = null): SaleSaga =
         coordinator.coordinate(quadruple) { beginReserveCoordinated(quadruple, cashSessionId, lines, ticketLines, now, createdBy) }
 
@@ -96,7 +135,31 @@ class LocalSaleSagaService(
         ticketLines: List<TicketLine> = emptyList(),
         now: Instant,
         createdBy: Long? = null,
+        admission: com.blackstore.domain.sales.SaleStaffCommandAudit? = null,
     ): SaleSaga {
+        durable()?.let { store ->
+            val requestHash = ReserveRequestFingerprint.hash(quadruple, cashSessionId, lines, ticketLines, admission?.reason)
+            val existing = store.findDurable(quadruple.operationId)
+            if (existing != null) {
+                require(existing.saga.quadruple == quadruple && existing.saga.cashSessionId == cashSessionId) { "idempotency payload mismatch" }
+                val original = existing.saga.outbox.singleOrNull { it.kind == StoreCoreOperationKind.RESERVE }
+                val payload = original?.payload as? com.blackstore.domain.sales.CanonicalCommandPayload.Reserve
+                require(payload != null && original.requestHash == requestHash) { "idempotency payload mismatch" }
+                if (existing.saga.status != SaleStatus.PENDING_RESERVATION || existing.saga.blockSameOperationRepost || existing.saga.retired) return existing.saga
+                return dispatchDurable(existing.saga, com.blackstore.domain.sales.CommandKind.RESERVE)
+            }
+            val snapshot = catalogPort.currentSnapshot()
+            catalogPolicy.assertSaleAllowed(snapshot, now)
+            val resolved = reserveLinePolicy.resolve(snapshot, lines, ticketLines)
+            retiredPolicy.assertCanPost(retirementPort.isRetired(quadruple.operationId))
+            val pending = SaleSaga(quadruple, cashSessionId, lines = ticketLines, createdBy = createdBy, staffCommandAudit = admission).withReserveCommand(
+                OutboxCommand(quadruple, StoreCoreOperationKind.RESERVE, canonicalPath, contractVersion, openapiDigest,
+                    requestHash,
+                    payload = com.blackstore.domain.sales.CanonicalCommandPayload.Reserve(requireNotNull(snapshot).version,
+                        resolved.map { com.blackstore.domain.sales.CanonicalReserveLine(it.variantId,it.quantity,it.expectedPriceVersion) })))
+            saleRecordStore.recordIntentAndOutbox(pending)
+            return dispatchDurable(pending, com.blackstore.domain.sales.CommandKind.RESERVE)
+        }
         com.blackstore.domain.sales.MoneyPolicy.normalize(ticketLines.fold(java.math.BigDecimal.ZERO) { sum, line -> sum + line.effectiveUnitPrice.multiply(java.math.BigDecimal(line.quantity)) })
         val resolved =
             reserveLinesByOperation[quadruple]
@@ -150,6 +213,7 @@ class LocalSaleSagaService(
             now = now,
         )
         if (decision == TransitionDecision.RecoverExistingCommand) {
+            if (durable() != null) return dispatchDurable(current, com.blackstore.domain.sales.CommandKind.COMMIT)
             return recoverCommit(current)
         }
         val pending =
@@ -163,6 +227,7 @@ class LocalSaleSagaService(
             }
         val attributed = pending.copy(staffCommandAudit = audit)
         saleRecordStore.recordCommitPending(attributed)
+        if (durable() != null) return dispatchDurable(attributed, com.blackstore.domain.sales.CommandKind.COMMIT)
         sales[identity] = attributed
         return callCommit(attributed)
     }
@@ -183,6 +248,7 @@ class LocalSaleSagaService(
         if (decision == TransitionDecision.RecoverExistingCommand || decision == TransitionDecision.TerminalReplay) assertOriginalCommand(current, StoreCoreOperationKind.RELEASE)
         if (decision == TransitionDecision.TerminalReplay) return current
         if (decision == TransitionDecision.RecoverExistingCommand) {
+            if (durable() != null) return dispatchDurable(current, com.blackstore.domain.sales.CommandKind.RELEASE)
             return recoverRelease(current)
         }
         val pending =
@@ -194,6 +260,7 @@ class LocalSaleSagaService(
             }
         val attributed = pending.copy(staffCommandAudit = audit)
         saleRecordStore.recordReleasePending(attributed)
+        if (durable() != null) return dispatchDurable(attributed, com.blackstore.domain.sales.CommandKind.RELEASE)
         sales[identity] = attributed
         return callRelease(attributed)
     }
@@ -452,7 +519,8 @@ class LocalSaleSagaService(
 
     private fun command(saga: SaleSaga, kind: StoreCoreOperationKind): OutboxCommand {
         val reserve = saga.outbox.first { it.kind == StoreCoreOperationKind.RESERVE }
-        return reserve.copy(kind = kind, reservationRef = saga.evidence?.reservationRef, requestHash = StoreCoreRequestHash.hex(kind, saga.quadruple.operationId + saga.evidence?.reservationRef))
+        return reserve.copy(kind = kind, reservationRef = saga.evidence?.reservationRef, requestHash = StoreCoreRequestHash.hex(kind, saga.quadruple.operationId + saga.evidence?.reservationRef),
+            payload = saga.evidence?.reservationRef?.let { com.blackstore.domain.sales.CanonicalCommandPayload.Terminal(it) })
     }
 
     private fun assertOriginalCommand(sale: SaleSaga, kind: StoreCoreOperationKind) {
@@ -472,8 +540,11 @@ class LocalSaleSagaService(
     }
 
     fun stored(operationId: String): SaleSaga? = resolveSale(operationId)
-    override fun resolveSale(operationId: String): SaleSaga? = sales.values.filter { it.quadruple.operationId == operationId }.singleOrNull()
-    override fun findSale(identity: OperationQuadruple): SaleSaga? = sales[identity]?.let { if (retirementPort.isRetired(identity.operationId)) it.markRetired() else it }
+    override fun resolveSale(operationId: String): SaleSaga? = durable()?.let { it.findDurable(operationId)?.saga }
+        ?: if (durable() == null) sales.values.filter { it.quadruple.operationId == operationId }.singleOrNull() else null
+    override fun findSale(identity: OperationQuadruple): SaleSaga? =
+        durable()?.findDurable(identity.operationId)?.saga?.takeIf { it.quadruple == identity }
+            ?: if (durable() == null) sales[identity] else null
     private fun ledger(identity: OperationQuadruple): OperationLedger = counterEntryStore?.paymentLedger(identity) ?: OperationLedger.Unknown
     fun paymentSnapshot(sale: SaleSaga): PaymentSnapshot = coordinator.coordinate(sale.quadruple) { PaymentTransitionPolicy().snapshot(findSale(sale.quadruple) ?: sale, ledger(sale.quadruple)) }
 }

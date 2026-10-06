@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.RequestParam
 import java.math.BigDecimal
 import com.blackstore.infrastructure.identity.staffSession
 
@@ -29,6 +30,45 @@ import com.blackstore.infrastructure.identity.staffSession
 class SaleController(
     private val localSaleSagaService: LocalSaleSagaService,
 ) {
+    @GetMapping
+    fun list(request: HttpServletRequest, @RequestParam(required = false) cursor: String?,
+        @RequestParam(defaultValue = "50") limit: Int, @RequestParam(required = false) state: String?): ResponseEntity<BaseResponse<DurableSaleListResponse>> {
+        val after = cursor?.toLongOrNull() ?: if (cursor == null) 0L else throw IllegalArgumentException("invalid cursor")
+        require(after >= 0 && limit in 1..100)
+        val filter = state?.let { raw -> com.blackstore.domain.sales.DurableSaleState.entries.firstOrNull { it.name == raw }
+            ?: throw IllegalArgumentException("invalid sale state") }
+        val page = localSaleSagaService.list(request.staffSession().staff, after, limit, filter)
+        return ResponseEntity.ok(BaseResponse.success(DurableSaleListResponse(page.items.map(::durableResponse), page.nextCursor?.toString()), trace(request)))
+    }
+
+    @GetMapping("/operations/{operationId}")
+    fun durableDetail(request: HttpServletRequest, @PathVariable operationId: String): ResponseEntity<BaseResponse<DurableSaleDetailResponse>> {
+        val view = localSaleSagaService.detail(request.staffSession().staff, operationId)
+            ?: throw com.blackstore.domain.identity.StaffSecurityException(com.blackstore.domain.identity.StaffSecurityFailure.NOT_FOUND)
+        return ResponseEntity.ok(BaseResponse.success(durableResponse(view), trace(request)))
+    }
+
+    private fun trace(request: HttpServletRequest) = request.getHeader(GlobalExceptionHandler.TRACE_HEADER)?.takeIf { it.isNotBlank() }
+        ?: java.util.UUID.randomUUID().toString()
+
+    internal fun durableResponse(view: com.blackstore.application.sales.DurableSaleView): DurableSaleDetailResponse {
+        val sale = view.sale.saga
+        val kind = when (sale.status) {
+            SaleStatus.PENDING_RESERVATION -> com.blackstore.domain.sales.CommandKind.RESERVE
+            SaleStatus.COMMIT_PENDING -> com.blackstore.domain.sales.CommandKind.COMMIT
+            SaleStatus.RELEASE_PENDING -> com.blackstore.domain.sales.CommandKind.RELEASE
+            else -> null
+        }
+        return DurableSaleDetailResponse(sale.quadruple.operationId, sale.quadruple.clientInstanceId, sale.quadruple.deviceId,
+            sale.quadruple.saleId, sale.cashSessionId, view.cashierId, view.createdBy, view.sale.state, sale.evidence?.receipt, sale.evidence?.reservationRef,
+            view.snapshot.evidenceValid, view.snapshot.totalAmount, view.snapshot.pendingAmount,
+            PaymentCoverageWire.toWire(view.snapshot.paymentCoverage), view.snapshot.hasPaymentHistory,
+            view.createdBy == null || sale.blockSameOperationRepost || view.sale.state in setOf(com.blackstore.domain.sales.DurableSaleState.UNKNOWN,
+                com.blackstore.domain.sales.DurableSaleState.LEGACY_INCOMPLETE, com.blackstore.domain.sales.DurableSaleState.RECONCILIATION_REQUIRED),
+            sale.retired, sale.lines.map { DurableSaleLineResponse(it.sku, it.productName, it.quantity, it.effectiveUnitPrice.multiply(it.quantity.toBigDecimal())) },
+            view.payments.map { DurableSalePaymentResponse(it.paymentId, it.status, it.method, it.amount, it.feeAmount) },
+            kind?.let(::DurableSalePendingCommandResponse), if (view.createdBy == null) emptySet() else view.allowedActions)
+    }
     @PostMapping("/reservations")
     fun reserve(
         request: HttpServletRequest,
@@ -76,7 +116,7 @@ class SaleController(
                     httpCode = HttpCode.NOT_FOUND,
                     traceId = traceId,
                     errorCode = "NOT_FOUND",
-                    message = "sale is not in this process",
+                    message = "sale not found",
                     retryable = false,
                 ),
             )
@@ -169,6 +209,18 @@ data class ReserveSaleResponse(
 )
 
 data class SaleActionRequest(val reason: String? = null)
+
+data class DurableSaleListResponse(val items: List<DurableSaleDetailResponse>, val nextCursor: String?)
+data class DurableSaleLineResponse(val sku: String, val productName: String, val quantity: Int, val totalAmount: BigDecimal)
+data class DurableSalePaymentResponse(val paymentId: Long, val status: com.blackstore.domain.sales.PaymentStatus,
+    val method: com.blackstore.domain.sales.PaymentMethod, val amount: BigDecimal?, val feeAmount: BigDecimal?)
+data class DurableSalePendingCommandResponse(val kind: com.blackstore.domain.sales.CommandKind)
+data class DurableSaleDetailResponse(val operationId: String, val clientInstanceId: String, val deviceId: String, val saleId: String,
+    val cashSessionId: Long, val cashierId: Long, val createdBy: Long?, val status: com.blackstore.domain.sales.DurableSaleState,
+    val receipt: String?, val reservationRef: String?, val evidenceValid: Boolean, val totalAmount: BigDecimal?,
+    val pendingAmount: BigDecimal?, val paymentCoverage: String, val hasPaymentHistory: Boolean, val blocked: Boolean, val retired: Boolean,
+    val lines: List<DurableSaleLineResponse>, val payments: List<DurableSalePaymentResponse>,
+    val pendingCommand: DurableSalePendingCommandResponse?, val allowedActions: Set<com.blackstore.domain.sales.SaleAllowedAction>)
 
 private object PaymentCoverageWire {
     fun toWire(value: PaymentCoverage): String = when (value) {

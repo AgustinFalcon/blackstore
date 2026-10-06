@@ -17,6 +17,7 @@ import java.util.UUID
 /** Closed route table: unlisted endpoints are private and have zero permissions. */
 object StaffHttpPermission {
     fun permission(method: String,path: String): StaffPermission = when {
+        method=="OPTIONS" && path.startsWith("/api/v1/") -> StaffPermission.CorsPreflight
         method=="GET" && path=="/api/v1/health" -> StaffPermission.PublicHealthRead
         method=="GET" && path=="/api/v1/auth/csrf" -> StaffPermission.CsrfBootstrap
         method=="POST" && path=="/api/v1/auth/login" -> StaffPermission.StaffLogin
@@ -28,7 +29,7 @@ object StaffHttpPermission {
         method=="POST" && path=="/api/v1/cash-sessions" -> StaffPermission.CashSessionOpen
         method=="POST" && Regex("/api/v1/cash-sessions/[^/]+/close").matches(path) -> StaffPermission.CashSessionClose
         method=="POST" && path=="/api/v1/sales/reservations" -> StaffPermission.SaleReserve
-        method=="GET" && Regex("/api/v1/sales/[^/]+").matches(path) -> StaffPermission.SaleRead
+        method=="GET" && (path=="/api/v1/sales" || Regex("/api/v1/sales/operations/[^/]+").matches(path) || Regex("/api/v1/sales/[^/]+").matches(path)) -> StaffPermission.SaleRead
         method=="POST" && Regex("/api/v1/sales/[^/]+/commit").matches(path) -> StaffPermission.SaleCommit
         method=="POST" && Regex("/api/v1/sales/[^/]+/release").matches(path) -> StaffPermission.SaleRelease
         method=="POST" && path=="/api/v1/payments" -> StaffPermission.PaymentCapture
@@ -38,7 +39,7 @@ object StaffHttpPermission {
         method=="GET" && path=="/api/v1/reports/daily" -> StaffPermission.DailyReportRead
         else -> StaffPermission.Unknown
     }
-    fun public(permission: StaffPermission)=permission in setOf(StaffPermission.PublicHealthRead,StaffPermission.CsrfBootstrap,StaffPermission.StaffLogin)
+    fun public(permission: StaffPermission)=permission in setOf(StaffPermission.PublicHealthRead,StaffPermission.CorsPreflight,StaffPermission.CsrfBootstrap,StaffPermission.StaffLogin)
 }
 class StaffSessionFilter(private val resolve: ResolveStaffSession,private val settings: StaffCookieSettings,private val mapper: ObjectMapper) : OncePerRequestFilter() {
     private val policy=StaffAuthorizationPolicy()
