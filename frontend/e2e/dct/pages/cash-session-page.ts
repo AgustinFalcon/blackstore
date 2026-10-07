@@ -38,4 +38,13 @@ export class CashSessionPage {
     await expect(this.page.getByRole('button', { name: 'Registrar gasto', exact: true })).toHaveCount(0);
     await expect(this.page.getByRole('button', { name: 'Cerrar sesión', exact: true })).toHaveCount(0);
   }
+  async expectClosedWorkstation(terminal: number, cashier: number) {
+    await expect(this.page.getByText('Cargando puesto de trabajo…', { exact: true })).toHaveCount(0);
+    const terminalInput = this.page.getByLabel('Terminal', { exact: true });
+    await terminalInput.fill(String(terminal));
+    await expect(terminalInput).toHaveValue(String(terminal));
+    await expect(this.page.getByLabel('Cajero', { exact: true })).toHaveValue(String(cashier));
+    await expect(this.page.getByText('Sin caja activa para la terminal y el cajero solicitados', { exact: true })).toBeVisible();
+    await this.expectClosedControlsAbsent();
+  }
 }

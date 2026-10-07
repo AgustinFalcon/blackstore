@@ -45,7 +45,7 @@ test('cash-browser-restart: real cash facts and staff session survive a new JAR 
   expect(response.status()).toBe(200);
   const sessions = PosWireMapper.cashSessions((await response.json()).data);
   expect(sessions.find(item => item.id === cashId)?.status).toBe(CashSessionStatus.Closed);
-  await cashPage.expectClosedControlsAbsent();
+  await cashPage.expectClosedWorkstation(terminal, staff.id);
   expect(posts).toEqual([]);
   expect(await runtime.database.facts(cashId)).toEqual(before);
 });

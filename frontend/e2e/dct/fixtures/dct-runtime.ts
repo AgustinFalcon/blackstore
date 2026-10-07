@@ -64,8 +64,14 @@ export class DctRuntime {
     await this.frontend.ready('http://localhost:4201');
   }
   private async startBackend() {
+    const inherited = { ...process.env };
+    for (const key of Object.keys(inherited)) {
+      if (/^(SPRING_|SERVER_|BLACKSTORE_)/.test(key) || ['JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS'].includes(key)) {
+        delete inherited[key];
+      }
+    }
     this.backend.start(process.env['DCT_JAVA'] ?? 'java', ['-jar', this.jar], this.backendRoot, {
-      ...process.env, SERVER_ADDRESS: '127.0.0.1', SERVER_PORT: '8081',
+      ...inherited, SERVER_ADDRESS: '127.0.0.1', SERVER_PORT: '8081',
       BLACKSTORE_PERSISTENCE_ENABLED: 'true', BLACKSTORE_PERSISTENCE_URL: `jdbc:postgresql://127.0.0.1:${this.database.port}/dct_browser`,
       BLACKSTORE_PERSISTENCE_USERNAME: 'dct_admin', BLACKSTORE_PERSISTENCE_PASSWORD: this.database.password,
       BLACKSTORE_IDENTITY_LOOPBACK_HTTP: 'true', BLACKSTORE_IDENTITY_ALLOWED_ORIGIN: 'http://localhost:4201',

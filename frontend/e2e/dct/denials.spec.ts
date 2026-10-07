@@ -77,13 +77,13 @@ test('denials: real authority/CSRF/unknown method and stale UI conflict never cr
     const refreshed = page.waitForResponse(r => r.url().endsWith('/api/v1/cash-sessions') && r.request().method() === 'GET');
     await cashPage.expense('7.25', CashMutationOutcome.Conflict);
     expect((await refreshed).status()).toBe(200);
-    await cashPage.expectClosedControlsAbsent();
+    await cashPage.expectClosedWorkstation(terminal, own.id);
     expect(cashReads).toBeGreaterThanOrEqual(1);
     expect(posts).toBe(1);
     const reloaded = page.waitForResponse(r => r.url().endsWith('/api/v1/cash-sessions') && r.request().method() === 'GET');
     await page.reload();
     expect((await reloaded).status()).toBe(200);
-    await cashPage.expectClosedControlsAbsent();
+    await cashPage.expectClosedWorkstation(terminal, own.id);
     expect(posts).toBe(1);
     expect(await runtime.database.facts(cashId)).toEqual(closed);
     // Four application-level authority denials: other open/missing/closed and owner override.
