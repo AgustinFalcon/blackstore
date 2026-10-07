@@ -32,9 +32,10 @@ class AccountingV2ContractsTest {
         }
 
         val capture = AccountingV2RequestTranslator.translate(
-            PaymentCaptureV2Request(commandId, "client", "device", "sale", "operation", "CARD", BigDecimal("10.00")),
+            PaymentCaptureV2Request(commandId, "client", "device", "sale", "operation", "CARD", BigDecimal("10.00"), "override"),
         ) as AccountingCommandDraft.PaymentCapture
         assertEquals(PaymentMethod.CARD, capture.method)
+        assertEquals("override", capture.reason)
         assertThrows(IllegalArgumentException::class.java) {
             AccountingV2RequestTranslator.translate(
                 PaymentCaptureV2Request(commandId, "client", "device", "sale", "operation", "CRYPTO", BigDecimal("10.00")),

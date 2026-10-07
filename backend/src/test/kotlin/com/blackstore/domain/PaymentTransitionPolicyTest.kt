@@ -31,7 +31,7 @@ class PaymentTransitionPolicyTest {
     private val identity = OperationQuadruple("11111111-1111-1111-1111-111111111111", "terminal-1", "sale-1", "op-1")
     private val line = TicketLine("SKU-1", "Cafe", 1, BigDecimal("18"), BigDecimal.ZERO)
     private val now = Instant.parse("2026-09-23T12:00:00Z")
-    private val policy = PaymentTransitionPolicy()
+    private val policy = PaymentTransitionPolicy(PaymentLedgerSemantics.NetCapturedAndRefunded)
 
     private class Fixture(val sale: LocalSaleSagaService, val counter: CounterApplicationService, val store: InMemoryCounterEntryStore, val inventory: ScriptedStoreCoreInventoryAdapter, val coordinator: LocalSaleCoordinator)
     private fun fixture(identity: OperationQuadruple = this.identity, decorate: (CounterEntryStore) -> CounterEntryStore = { it }): Fixture {
@@ -40,9 +40,10 @@ class PaymentTransitionPolicyTest {
         val guard = LocalSaleCoordinator()
         val inventory = ScriptedStoreCoreInventoryAdapter(ReserveScript.Receipt(ScriptedStoreCoreInventoryAdapter.durable(identity)))
         val sale = LocalSaleSagaService(FixtureCatalogAdapter(StoreCoreCanonicalContract.CANONICAL_PATH, StoreCoreCanonicalContract.VERSION), inventory, inventory,
-            NoOpSaleRecordStore(), StoreCoreCanonicalContract.CANONICAL_PATH, StoreCoreCanonicalContract.VERSION, counterEntryStore = decorated, coordinator = guard)
+            NoOpSaleRecordStore(), StoreCoreCanonicalContract.CANONICAL_PATH, StoreCoreCanonicalContract.VERSION, counterEntryStore = decorated, coordinator = guard,
+            paymentLedgerSemantics = PaymentLedgerSemantics.NetCapturedAndRefunded)
         sale.beginReserve(identity, 1, listOf(ReserveLineCommand("variant-1", 1, "price-v1")), listOf(line), now)
-        return Fixture(sale, CounterApplicationService(decorated, sale, guard), store, inventory, guard)
+        return Fixture(sale, CounterApplicationService(decorated, sale, guard, paymentLedgerSemantics = PaymentLedgerSemantics.NetCapturedAndRefunded), store, inventory, guard)
     }
 
     @Test fun t01UnknownBoundaryTranslatorsAndLedgerDoNotAuthorize() {
@@ -123,7 +124,7 @@ class PaymentTransitionPolicyTest {
         assertTrue(policy.terminal(sale, OperationLedger.Unknown, StoreCoreOperationKind.COMMIT) is TransitionDecision.Denied)
     }
 
-    @Test fun t08ReleaseRequiresEmptyHistoryIncludingReversalsAndVoids() {
+    @Test fun t08ReleaseRequiresZeroNetWithValidFullReversals() {
         val empty = fixture()
         assertEquals(SaleStatus.RELEASED, empty.sale.release(identity.operationId).status)
         assertEquals(SaleStatus.RELEASED, empty.sale.release(identity.operationId).status)
@@ -136,9 +137,61 @@ class PaymentTransitionPolicyTest {
         val f = fixture()
         val captured = f.counter.capture(identity, PaymentMethod.CASH, BigDecimal.TEN, BigDecimal.ZERO)
         f.counter.reverse(identity, captured.id, 7, StaffRole.CASHIER, "return", "evidence")
-        assertThrows<IllegalArgumentException> { f.sale.release(identity.operationId) }
         assertThrows<IllegalArgumentException> { f.sale.commit(identity.operationId, now) }
+        assertEquals(SaleStatus.RELEASED, f.sale.release(identity.operationId).status)
         assertEquals(2, (f.store.paymentLedger(identity) as OperationLedger.Known).entries.size)
+    }
+
+    @Test fun splitRefundKeepsPositiveNetAndAllowsCompletingCoverage() {
+        val f = fixture()
+        val cash = f.counter.capture(identity, PaymentMethod.CASH, BigDecimal.TEN, BigDecimal.ZERO)
+        f.counter.capture(identity, PaymentMethod.CARD, BigDecimal("8"), BigDecimal.ZERO)
+        f.counter.reverse(identity, cash.id, 7, StaffRole.CASHIER, "returned cash", "proof")
+        val snapshot = f.sale.paymentSnapshot(f.sale.stored(identity.operationId)!!)
+        assertEquals(PaymentCoverage.Partial, snapshot.paymentCoverage)
+        assertEquals(BigDecimal("10.00"), snapshot.pendingAmount)
+        assertTrue(snapshot.hasPaymentHistory)
+        assertThrows<IllegalArgumentException> { f.counter.reverse(identity, cash.id, 7, StaffRole.CASHIER, "again", "proof") }
+        assertThrows<IllegalArgumentException> { f.sale.release(identity.operationId) }
+        f.counter.capture(identity, PaymentMethod.TRANSFER, BigDecimal.TEN, BigDecimal.ZERO)
+        assertEquals(SaleStatus.COMMITTED, f.sale.commit(identity.operationId, now).status)
+        assertThrows<IllegalArgumentException> { f.counter.reverse(identity, 2, 7, StaffRole.CASHIER, "late return", "proof") }
+    }
+
+    @Test fun `legacy semantics never reinterpret refunds while v2 uses the net ledger`() {
+        val sale = fixture().sale.stored(identity.operationId)!!
+        val capture = PaymentLedgerEntry(identity, 1, PaymentMethod.CASH, PaymentStatus.CAPTURED, BigDecimal("18"), BigDecimal.ZERO)
+        val refund = PaymentLedgerEntry(identity, 2, PaymentMethod.CASH, PaymentStatus.REFUNDED, BigDecimal("18"), BigDecimal.ZERO, 1)
+        val ledger = OperationLedger.Known(listOf(capture, refund))
+        val legacy = PaymentTransitionPolicy(PaymentLedgerSemantics.LegacyCapturedOnly)
+        val v2 = PaymentTransitionPolicy(PaymentLedgerSemantics.NetCapturedAndRefunded)
+        assertEquals(PaymentCoverage.InvalidUnknown, legacy.snapshot(sale, ledger).paymentCoverage)
+        assertTrue(legacy.terminal(sale, ledger, StoreCoreOperationKind.RELEASE) is TransitionDecision.Denied)
+        assertEquals(PaymentCoverage.Unpaid, v2.snapshot(sale, ledger).paymentCoverage)
+        assertEquals(TransitionDecision.NewCommand, v2.terminal(sale, ledger, StoreCoreOperationKind.RELEASE))
+        assertTrue(PaymentTransitionPolicy(PaymentLedgerSemantics.Unknown).terminal(sale, ledger, StoreCoreOperationKind.RELEASE) is TransitionDecision.Denied)
+    }
+
+    @Test fun malformedRefundHistoriesRemainUnknown() {
+        val sale = fixture().sale.stored(identity.operationId)!!
+        val capture = PaymentLedgerEntry(identity, 1, PaymentMethod.CASH, PaymentStatus.CAPTURED, BigDecimal.TEN, BigDecimal.ZERO)
+        val refund = capture.copy(paymentId = 2, status = PaymentStatus.REFUNDED, originalPaymentId = 1)
+        for (entries in listOf(
+            listOf(capture, refund.copy(amount = BigDecimal.ONE)),
+            listOf(capture, refund.copy(method = PaymentMethod.CARD)),
+            listOf(capture, refund.copy(identity = identity.copy(saleId = "foreign"))),
+            listOf(capture, refund.copy(originalPaymentId = 999)),
+            listOf(capture, refund.copy(originalPaymentId = null)),
+            listOf(capture, refund, refund.copy(paymentId = 3)),
+            listOf(capture, refund.copy(status = PaymentStatus.UNKNOWN)),
+            listOf(capture, refund.copy(status = PaymentStatus.VOIDED)),
+        )) {
+            val ledger = OperationLedger.Known(entries)
+            assertEquals(PaymentCoverage.InvalidUnknown, policy.snapshot(sale, ledger).paymentCoverage)
+            assertTrue(policy.capture(sale, ledger, PaymentMethod.CASH, BigDecimal.ONE, BigDecimal.ZERO) is TransitionDecision.Denied)
+            assertTrue(policy.reverse(sale, ledger, 1) is TransitionDecision.Denied)
+            assertTrue(policy.terminal(sale, ledger, StoreCoreOperationKind.RELEASE) is TransitionDecision.Denied)
+        }
     }
 
     @Test fun t10UnassociatedLegacyEvidenceIsUnknownInsteadOfEmpty() {

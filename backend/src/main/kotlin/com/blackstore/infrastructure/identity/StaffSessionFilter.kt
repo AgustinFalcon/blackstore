@@ -17,7 +17,7 @@ import java.util.UUID
 /** Closed route table: unlisted endpoints are private and have zero permissions. */
 object StaffHttpPermission {
     fun permission(method: String,path: String): StaffPermission = when {
-        method=="OPTIONS" && path.startsWith("/api/v1/") -> StaffPermission.CorsPreflight
+        method=="OPTIONS" && (path.startsWith("/api/v1/") || path.startsWith("/api/v2/")) -> StaffPermission.CorsPreflight
         method=="GET" && path=="/api/v1/health" -> StaffPermission.PublicHealthRead
         method=="GET" && path=="/api/v1/auth/csrf" -> StaffPermission.CsrfBootstrap
         method=="POST" && path=="/api/v1/auth/login" -> StaffPermission.StaffLogin
@@ -37,6 +37,11 @@ object StaffHttpPermission {
         method=="POST" && path=="/api/v1/expenses" -> StaffPermission.ExpenseRecord
         method=="GET" && path=="/api/v1/reports/shift" -> StaffPermission.ShiftReportRead
         method=="GET" && path=="/api/v1/reports/daily" -> StaffPermission.DailyReportRead
+        method=="POST" && path=="/api/v2/cash-sessions" -> StaffPermission.CashSessionOpen
+        method=="POST" && path=="/api/v2/expenses" -> StaffPermission.ExpenseRecord
+        method=="POST" && path=="/api/v2/payments" -> StaffPermission.PaymentCapture
+        method=="POST" && Regex("/api/v2/payments/[^/]+/reversals").matches(path) -> StaffPermission.PaymentReverse
+        method=="GET" && Regex("/api/v2/accounting/commands/[^/]+").matches(path) -> StaffPermission.AccountingCommandRead
         else -> StaffPermission.Unknown
     }
     fun public(permission: StaffPermission)=permission in setOf(StaffPermission.PublicHealthRead,StaffPermission.CorsPreflight,StaffPermission.CsrfBootstrap,StaffPermission.StaffLogin)

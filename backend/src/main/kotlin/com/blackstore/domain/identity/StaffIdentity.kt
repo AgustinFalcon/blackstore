@@ -15,7 +15,7 @@ enum class AuthenticationFailure(val securityFailure: StaffSecurityFailure) {
 enum class StaffPermission {
     PublicHealthRead, CorsPreflight, CsrfBootstrap, StaffLogin, SessionRead, StaffLogout, CatalogRead, WorkspaceRead,
     CashSessionList, CashSessionOpen, CashSessionClose, SaleReserve, SaleRead, SaleCommit, SaleRelease,
-    PaymentCapture, PaymentReverse, ExpenseRecord, ShiftReportRead, DailyReportRead, Unknown
+    PaymentCapture, PaymentReverse, ExpenseRecord, AccountingCommandRead, ShiftReportRead, DailyReportRead, Unknown
 }
 enum class AuthorizationDecision { ALLOW, FORBIDDEN, NOT_FOUND, REASON_REQUIRED, UNKNOWN }
 enum class SecurityAuditEvent { LOGIN_SUCCEEDED, LOGIN_FAILED, LOGIN_RATE_LIMITED, LOGOUT, AUTHORIZATION_DENIED, STAFF_CREATED, STAFF_RESET, PROVISION_FAILED, PAYMENT_CAPTURED }
@@ -50,7 +50,7 @@ class StaffAuthorizationPolicy {
         StaffPermission.CatalogRead, StaffPermission.WorkspaceRead, StaffPermission.CashSessionOpen,
         StaffPermission.CashSessionClose, StaffPermission.SaleReserve, StaffPermission.SaleRead,
         StaffPermission.SaleCommit, StaffPermission.SaleRelease, StaffPermission.PaymentCapture,
-        StaffPermission.PaymentReverse, StaffPermission.ExpenseRecord -> role in operators
+        StaffPermission.PaymentReverse, StaffPermission.ExpenseRecord, StaffPermission.AccountingCommandRead -> role in operators
         StaffPermission.Unknown -> false
     }
     fun decide(staff: AuthenticatedStaff, permission: StaffPermission, cash: OwnedCashSession?, reason: String? = null): AuthorizationDecision =

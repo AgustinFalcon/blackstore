@@ -14,6 +14,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
  private val mapper = DurableCommandMapper()
  private val json = jacksonObjectMapper()
  private val writer = JdbcBlackStoreWriter()
+ private val aggregateLocks = JdbcAccountingAggregateLocks()
  internal fun <T> transaction(block: (Connection) -> T): T = dataSource.connection.use { c ->
   c.autoCommit=false
   try { c.createStatement().execute("SET LOCAL ROLE blackstore_app"); val result=block(c); c.commit(); result }
@@ -32,13 +33,8 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
    s.setLong(1,afterId); s.setInt(2,limit); s.executeQuery().use { r -> buildList { while(r.next()) add(read(c,r.getLong(1))) } }
   }
  }
- internal fun lock(c: Connection, operationId: String): StoredSale = c.prepareStatement("SELECT id FROM sale_state_projection WHERE operation_id=? FOR UPDATE").use { s ->
-  s.setObject(1,UUID.fromString(operationId)); s.executeQuery().use { r -> check(r.next()); val id=r.getLong(1); check(!r.next()); read(c,id) }
- }
- internal fun lock(c: Connection,identity: OperationQuadruple): StoredSale = c.prepareStatement("SELECT id FROM sale_state_projection WHERE operation_id=? AND client_instance_id=? AND device_id=? AND sale_id=? FOR UPDATE").use { s ->
-  s.setObject(1,UUID.fromString(identity.operationId));s.setObject(2,UUID.fromString(identity.clientInstanceId));s.setString(3,identity.deviceId);s.setString(4,identity.saleId)
-  s.executeQuery().use { r ->require(r.next()) { "sale identity missing" };val id=r.getLong(1);check(!r.next());read(c,id) }
- }
+ internal fun lock(c: Connection, operationId: String): StoredSale = read(c, aggregateLocks.lockSale(c, operationId).projectionId)
+ internal fun lock(c: Connection,identity: OperationQuadruple): StoredSale = read(c, aggregateLocks.lockSale(c, identity).projectionId)
  internal fun read(c: Connection,id: Long): StoredSale = c.prepareStatement("SELECT p.*,i.cash_session_id,i.created_by FROM sale_state_projection p JOIN sale_intents i ON i.id=p.sale_intent_id WHERE p.id=?").use { s ->
   s.setLong(1,id); s.executeQuery().use { r ->
    check(r.next()); val identity=OperationQuadruple(r.getString("client_instance_id"),r.getString("device_id"),r.getString("sale_id"),r.getString("operation_id"))
@@ -66,36 +62,43 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
  }
  override fun claimNext(lease: Duration): ClaimedSaleCommand? = claim(null,null,lease)
  override fun claimCommand(operationId: String,kind: CommandKind,lease: Duration): ClaimedSaleCommand? = claim(operationId,kind,lease)
- private fun claim(operationId: String?,kind: CommandKind?,lease: Duration): ClaimedSaleCommand? = transaction { c ->
+ private fun claim(operationId: String?,kind: CommandKind?,lease: Duration): ClaimedSaleCommand? {
+  while(true) when(val result=claimOne(operationId,kind,lease)) {
+   is ClaimAttempt.Claimed -> return result.command
+   ClaimAttempt.Empty -> return null
+   ClaimAttempt.Quarantined -> Unit // The transaction committed; the next aggregate starts without retained locks.
+  }
+ }
+ private fun claimOne(operationId: String?,kind: CommandKind?,lease: Duration): ClaimAttempt = transaction { c ->
   require(lease.seconds in 1..300 && kind!=CommandKind.UNKNOWN)
   val filter=if(operationId==null) "" else " AND o.operation_id=? AND o.operation_kind=?"
-  var claimed: ClaimedSaleCommand? = null
-  var poisoned: Boolean
-  do {
-  poisoned=false
-  c.prepareStatement("SELECT o.*,d.claim_epoch,d.attempts,d.state AS delivery_state FROM storecore_command_delivery d JOIN storecore_outbox_commands o ON o.id=d.command_id WHERE ((d.state IN ('PENDING','UNCERTAIN') AND d.next_attempt_at<=now()) OR (d.state='IN_FLIGHT' AND d.lease_until<=now()))$filter ORDER BY o.id FOR UPDATE OF d SKIP LOCKED LIMIT 1").use { s ->
+  val candidate=c.prepareStatement("SELECT o.id,o.client_instance_id,o.device_id,o.sale_id,o.operation_id FROM storecore_command_delivery d JOIN storecore_outbox_commands o ON o.id=d.command_id WHERE ((d.state IN ('PENDING','UNCERTAIN') AND d.next_attempt_at<=now()) OR (d.state='IN_FLIGHT' AND d.lease_until<=now()))$filter ORDER BY o.id LIMIT 1").use { s ->
    if(operationId!=null) {s.setObject(1,UUID.fromString(operationId));s.setString(2,kind!!.name)}
-   s.executeQuery().use { r -> if(!r.next()) null else {
-    val id=r.getLong("id")
+   s.executeQuery().use { r -> if(!r.next()) null else ClaimCandidate(r.getLong("id"),OperationQuadruple(r.getString("client_instance_id"),r.getString("device_id"),r.getString("sale_id"),r.getString("operation_id"))) }
+  } ?: return@transaction ClaimAttempt.Empty
+  aggregateLocks.lockSale(c,candidate.identity)
+  aggregateLocks.lockDelivery(c,candidate.id)
+  c.prepareStatement("SELECT o.*,d.claim_epoch,d.attempts,d.state AS delivery_state,((d.state IN ('PENDING','UNCERTAIN') AND d.next_attempt_at<=now()) OR (d.state='IN_FLIGHT' AND d.lease_until<=now())) AS eligible FROM storecore_command_delivery d JOIN storecore_outbox_commands o ON o.id=d.command_id WHERE o.id=?").use { s ->
+   s.setLong(1,candidate.id)
+   s.executeQuery().use { r ->
+    check(r.next())
+    if(!r.getBoolean("eligible")) return@transaction ClaimAttempt.Empty
     // Invalid/unknown records cannot reach HTTP or repeatedly monopolize the head of the queue.
     val command=runCatching { mapper.decode(r.getString("canonical_payload"),r.getString("payload_hash"),r.getString("request_hash")) }.getOrNull()
     if(command==null) {
-     c.prepareStatement("UPDATE storecore_command_delivery SET state='LEGACY_INCOMPLETE',last_error_code='INCOMPLETE_EVIDENCE',lease_until=NULL,updated_at=now() WHERE command_id=?").use { u ->u.setLong(1,id);check(u.executeUpdate()==1) }
-     poisoned=true
-     null
+     c.prepareStatement("UPDATE storecore_command_delivery SET state='LEGACY_INCOMPLETE',last_error_code='INCOMPLETE_EVIDENCE',lease_until=NULL,updated_at=now() WHERE command_id=?").use { u ->u.setLong(1,candidate.id);check(u.executeUpdate()==1) }
+     return@transaction ClaimAttempt.Quarantined
     } else {
-    val token=UUID.randomUUID();val epoch=r.getLong("claim_epoch")+1;val attempts=r.getInt("attempts")+1
-    c.prepareStatement("UPDATE storecore_command_delivery SET state='IN_FLIGHT',claim_token=?,claim_epoch=?,lease_until=now()+(? * interval '1 second'),attempts=?,updated_at=now() WHERE command_id=?").use { u -> u.setObject(1,token);u.setLong(2,epoch);u.setLong(3,lease.seconds);u.setInt(4,attempts);u.setLong(5,id);check(u.executeUpdate()==1) }
-    claimed=ClaimedSaleCommand(id,command,token,epoch,mapper.delivery(r.getString("delivery_state"))!=DeliveryState.PENDING,attempts,r.getLong("actor_id"),r.getLong("cash_session_id"))
-    claimed
+     val token=UUID.randomUUID();val epoch=r.getLong("claim_epoch")+1;val attempts=r.getInt("attempts")+1
+     c.prepareStatement("UPDATE storecore_command_delivery SET state='IN_FLIGHT',claim_token=?,claim_epoch=?,lease_until=now()+(? * interval '1 second'),attempts=?,updated_at=now() WHERE command_id=?").use { u -> u.setObject(1,token);u.setLong(2,epoch);u.setLong(3,lease.seconds);u.setInt(4,attempts);u.setLong(5,candidate.id);check(u.executeUpdate()==1) }
+     return@transaction ClaimAttempt.Claimed(ClaimedSaleCommand(candidate.id,command,token,epoch,mapper.delivery(r.getString("delivery_state"))!=DeliveryState.PENDING,attempts,r.getLong("actor_id"),r.getLong("cash_session_id")))
     }
-   } }
+   }
   }
-  } while(poisoned)
-  claimed
  }
  override fun reconcileClaimEvidence(claim: ClaimedSaleCommand,receipt: StoreCoreOperationReceipt,reason: RecoveryReason): AttemptOutcome = transaction { c ->
   val stored=lock(c,claim.command.quadruple.operationId)
+  aggregateLocks.lockDelivery(c,claim.id)
   val current=c.prepareStatement("SELECT state,claim_token,claim_epoch,lease_until>now() AS active FROM storecore_command_delivery WHERE command_id=? FOR UPDATE").use { s ->s.setLong(1,claim.id);s.executeQuery().use { r ->check(r.next());r.getString(1)==DeliveryState.IN_FLIGHT.name && r.getObject(2)==claim.claimToken && r.getLong(3)==claim.claimEpoch && r.getBoolean(4) } }
   // Use an explicit allowlist even for incompatible responses. Never copy an envelope, bearer or request headers.
   val evidence=mapper.remoteEvidence(receipt)
@@ -119,6 +122,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
  override fun deferClaim(claim: ClaimedSaleCommand,reason: RecoveryReason,delay: Duration,reconciliation: Boolean): Boolean = transaction { c ->
   require(delay.seconds in 0..3600)
   val stored=lock(c,claim.command.quadruple.operationId)
+  aggregateLocks.lockDelivery(c,claim.id)
   val updated=c.prepareStatement("UPDATE storecore_command_delivery SET state=?,last_error_code=?,next_attempt_at=now()+(? * interval '1 second'),lease_until=NULL,updated_at=now() WHERE command_id=? AND claim_token=? AND claim_epoch=? AND state='IN_FLIGHT' AND lease_until>now()").use { s ->
    s.setString(1,if(reconciliation) DeliveryState.RECONCILIATION_REQUIRED.name else DeliveryState.UNCERTAIN.name);s.setString(2,reason.name);s.setLong(3,delay.seconds);s.setLong(4,claim.id);s.setObject(5,claim.claimToken);s.setLong(6,claim.claimEpoch);s.executeUpdate()==1
   }
@@ -133,6 +137,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
   require(receipt==null || (receipt.quadruple==claim.command.quadruple && receipt.state.name==remoteState))
   require(remoteState!="PENDING" || receipt!=null) { "pending evidence requires the received receipt" }
   val stored=lock(c,saga.quadruple.operationId)
+  aggregateLocks.lockDelivery(c,claim.id)
   val current=c.prepareStatement("SELECT state,claim_token,claim_epoch,lease_until>now() AS active FROM storecore_command_delivery WHERE command_id=? FOR UPDATE").use { s -> s.setLong(1,claim.id);s.executeQuery().use { r -> check(r.next());r.getString(1)==DeliveryState.IN_FLIGHT.name && r.getObject(2)==claim.claimToken && r.getLong(3)==claim.claimEpoch && r.getBoolean(4) } }
   val evidence=receipt?.let(mapper::remoteEvidence) ?: mapper.evidence(saga,remoteState)
   val evidenceHash=mapper.hash(evidence);val e=saga.evidence
@@ -159,4 +164,10 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
   }
  }
  internal fun findId(c: Connection,operationId: String): Long=c.prepareStatement("SELECT id FROM sale_state_projection WHERE operation_id=?").use { s ->s.setObject(1,UUID.fromString(operationId));s.executeQuery().use { r ->check(r.next());val id=r.getLong(1);check(!r.next());id } }
+ private data class ClaimCandidate(val id: Long, val identity: OperationQuadruple)
+ private sealed interface ClaimAttempt {
+  data object Empty : ClaimAttempt
+  data object Quarantined : ClaimAttempt
+  data class Claimed(val command: ClaimedSaleCommand) : ClaimAttempt
+ }
 }

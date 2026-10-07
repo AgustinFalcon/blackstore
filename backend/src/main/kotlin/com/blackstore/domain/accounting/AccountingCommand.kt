@@ -14,6 +14,7 @@ enum class AccountingCommandKind {
 
 enum class AccountingCommandFailure(val wire: String) {
     NotVisible("NOT_VISIBLE"), Forbidden("FORBIDDEN"), Validation("VALIDATION"), Closed("CLOSED"),
+    TransitionConflict("PAYMENT_TRANSITION_CONFLICT"), CashSessionConflict("CASH_SESSION_CONFLICT"),
     NonTerminalSale("NON_TERMINAL_SALE"), PayloadMismatch("PAYLOAD_MISMATCH"),
     LegacyContractDisabled("LEGACY_CONTRACT_DISABLED"), NotActivated("NOT_ACTIVATED"),
     Paused("PAUSED"), Unavailable("UNAVAILABLE"), Unknown("UNKNOWN");
@@ -28,11 +29,16 @@ data class AccountingCommandReceipt(
     val payloadHash: String,
     val ledgerEventIds: List<Long>,
     val committedAt: Instant,
+    val saleId: Long? = null,
+    val paymentId: Long? = null,
+    val expenseId: Long? = null,
+    val settlementId: Long? = null,
 ) {
     init {
         require(actorId > 0 && cashSessionId > 0 && kind != AccountingCommandKind.Unknown)
         require(payloadHash.length == 64 && payloadHash.all { it in '0'..'9' || it in 'a'..'f' })
         require(ledgerEventIds.all { it > 0 } && ledgerEventIds.distinct().size == ledgerEventIds.size)
+        require(listOfNotNull(saleId, paymentId, expenseId, settlementId).all { it > 0 })
     }
 }
 
@@ -83,10 +89,12 @@ sealed interface AccountingCommandDraft {
         val identity: OperationQuadruple,
         val method: PaymentMethod,
         val amount: BigDecimal,
+        val reason: String? = null,
     ) : AccountingCommandDraft {
         init {
             require(method != PaymentMethod.UNKNOWN && amount.signum() > 0)
             MoneyPolicy.normalize(amount)
+            require(reason == null || reason.isNotBlank())
         }
     }
 
@@ -98,6 +106,22 @@ sealed interface AccountingCommandDraft {
         val evidenceRef: String,
     ) : AccountingCommandDraft {
         init { require(originalPaymentId > 0 && reason.isNotBlank() && evidenceRef.isNotBlank()) }
+    }
+
+    /** Internal OWNER-only capability; never translated from a browser fee endpoint. */
+    data class FeeRecord(
+        override val commandId: UUID,
+        val cashSessionId: Long,
+        val method: PaymentMethod,
+        val amount: BigDecimal,
+        val reason: String,
+        val evidenceRef: String,
+    ) : AccountingCommandDraft {
+        init {
+            require(cashSessionId > 0 && method != PaymentMethod.UNKNOWN && amount.signum() > 0)
+            MoneyPolicy.normalize(amount)
+            require(reason.trim().length >= 3 && evidenceRef.trim().length >= 3)
+        }
     }
 }
 

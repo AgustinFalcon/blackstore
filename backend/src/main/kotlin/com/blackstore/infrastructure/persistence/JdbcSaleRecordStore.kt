@@ -9,6 +9,7 @@ import java.util.UUID
 import javax.sql.DataSource
 import com.blackstore.domain.port.out.sales.DurableSaleStore
 import com.blackstore.domain.sales.*
+import com.blackstore.domain.accounting.AccountingRuntimeState
 
 @Component
 @ConditionalOnProperty(name = ["blackstore.persistence.enabled"], havingValue = "true")
@@ -18,6 +19,7 @@ class JdbcSaleRecordStore(
     private val writer = JdbcBlackStoreWriter()
     private val durable = JdbcDurableSaleRepository(dataSource)
     private val mapper = DurableCommandMapper()
+    private val aggregateLocks = JdbcAccountingAggregateLocks()
 
     override fun recordIntentAndOutbox(saga: SaleSaga) {
         val clientId = UUID.fromString(saga.quadruple.clientInstanceId)
@@ -26,6 +28,7 @@ class JdbcSaleRecordStore(
         val digest = command.openapiDigest.padEnd(64, '0').take(64)
         asRole("blackstore_app") { connection ->
             connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?,0))").use { s -> s.setString(1,saga.quadruple.toString());s.execute() }
+            aggregateLocks.lockCash(connection, saga.cashSessionId)
             val existing = connection.prepareStatement("SELECT id FROM sale_state_projection WHERE operation_id=?").use { s ->s.setObject(1,operationId);s.executeQuery().use { r ->if(r.next()) r.getLong(1) else null } }
             if(existing!=null) {
                 val stored=durable.read(connection,existing)
@@ -79,6 +82,7 @@ class JdbcSaleRecordStore(
             reservationRef?.let { runCatching { UUID.fromString(it) }.getOrNull() }
                 ?: reservationRef?.let { UUID.nameUUIDFromBytes(it.toByteArray()) }
         asRole("blackstore_app") { connection ->
+            durable.lock(connection, saga.quadruple)
             writer.insertInbox(
                 connection,
                 UUID.fromString(saga.quadruple.clientInstanceId),
@@ -101,6 +105,8 @@ class JdbcSaleRecordStore(
         val reason = saga.reconciliationReason ?: return
         val versions = evidence.acceptedPriceVersions.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
         asRole("blackstore_projection_worker") { connection ->
+            durable.lock(connection, saga.quadruple)
+            connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
             writer.markReconciliationRequired(
                 connection,
                 findProjection(connection, saga),
@@ -118,6 +124,8 @@ class JdbcSaleRecordStore(
         val evidence = saga.evidence ?: return
         val digest = evidence.openapiDigest.padEnd(64, '0').take(64)
         asRole("blackstore_projection_worker") { connection ->
+            durable.lock(connection, saga.quadruple)
+            connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
             writer.markReserved(
                 connection,
                 findProjection(connection, saga),
@@ -137,8 +145,10 @@ class JdbcSaleRecordStore(
 
     override fun recordCommitted(saga: SaleSaga) {
         asRole("blackstore_projection_worker") { connection ->
+            durable.lock(connection, saga.quadruple)
+            connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
             val projectionId = findProjection(connection, saga)
-            writer.advanceSaleStatus(connection, projectionId, "COMMIT_PENDING", "COMMITTED")
+            check(writer.advanceSaleStatus(connection, projectionId, "COMMIT_PENDING", "COMMITTED") == 1)
         }
     }
 
@@ -148,8 +158,10 @@ class JdbcSaleRecordStore(
 
     override fun recordReleased(saga: SaleSaga) {
         asRole("blackstore_projection_worker") { connection ->
+            durable.lock(connection, saga.quadruple)
+            connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
             val projectionId = findProjection(connection, saga)
-            writer.advanceSaleStatus(connection, projectionId, "RELEASE_PENDING", "RELEASED")
+            check(writer.advanceSaleStatus(connection, projectionId, "RELEASE_PENDING", "RELEASED") == 1)
         }
     }
 
@@ -166,7 +178,14 @@ class JdbcSaleRecordStore(
             val stored=durable.lock(connection,saga.quadruple.operationId)
             authorize(connection,stored.saga,audit.actor.value,audit.reason)
             val ledger=ledger(connection,stored.saga)
-            val decision=PaymentTransitionPolicy().terminal(stored.saga,ledger,kind)
+            val semantics=connection.prepareStatement("SELECT state FROM accounting_runtime WHERE singleton").use { statement -> statement.executeQuery().use { rows ->
+                if(!rows.next()) PaymentLedgerSemantics.Unknown else when(AccountingRuntimeState.fromWire(rows.getString(1))) {
+                    AccountingRuntimeState.PreActivation -> PaymentLedgerSemantics.LegacyCapturedOnly
+                    AccountingRuntimeState.Active -> PaymentLedgerSemantics.NetCapturedAndRefunded
+                    AccountingRuntimeState.Paused,AccountingRuntimeState.Unknown -> PaymentLedgerSemantics.Unknown
+                }
+            } }
+            val decision=PaymentTransitionPolicy(semantics).terminal(stored.saga,ledger,kind)
             decision.assertAllowed()
             if(decision==TransitionDecision.TerminalReplay || decision==TransitionDecision.RecoverExistingCommand) {
                 require(stored.saga.outbox.single { it.kind==kind }.let { mapper.encode(it)==mapper.encode(command) }) { "IDEMPOTENCY_PAYLOAD_MISMATCH" }
@@ -206,7 +225,7 @@ class JdbcSaleRecordStore(
         }
     }
     internal fun ledger(c: java.sql.Connection,saga: SaleSaga): OperationLedger = c.prepareStatement("SELECT * FROM payments WHERE sale_id=? ORDER BY id").use { s ->
-        s.setLong(1,findProjection(c,saga));s.executeQuery().use { r ->OperationLedger.Known(buildList { while(r.next()) add(PaymentLedgerEntry(saga.quadruple,r.getLong("id"),PaymentMethod.fromWire(r.getString("payment_method")),PaymentStatus.fromWire(r.getString("status")),r.getBigDecimal("amount"),r.getBigDecimal("fee_amount"))) }) }
+        s.setLong(1,findProjection(c,saga));s.executeQuery().use { r ->OperationLedger.Known(buildList { while(r.next()) add(PaymentLedgerEntry(saga.quadruple,r.getLong("id"),PaymentMethod.fromWire(r.getString("payment_method")),PaymentStatus.fromWire(r.getString("status")),r.getBigDecimal("amount"),r.getBigDecimal("fee_amount"),(r.getObject("original_payment_id") as? Number)?.toLong())) }) }
     }
 
     private fun findProjection(connection: java.sql.Connection, saga: SaleSaga): Long =
