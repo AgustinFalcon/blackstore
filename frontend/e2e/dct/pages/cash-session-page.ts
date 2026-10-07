@@ -15,9 +15,10 @@ export class CashSessionPage {
     await this.page.getByRole('button', { name: 'Abrir sesión', exact: true }).click();
     const response = await pending;
     expect(response.status()).toBe(200);
-    const session = this.page.getByText(/^Sesión \d+ en terminal \d+/);
+    const session = this.page.getByText(/^\s*Sesión\s+\d+\s+en\s+terminal\s+\d+/);
     await expect(session).toBeVisible();
-    const match = /^Sesión (\d+) en terminal/.exec((await session.textContent()) ?? '');
+    const rendered = ((await session.textContent()) ?? '').replace(/\s+/g, ' ').trim();
+    const match = /^Sesión (\d+) en terminal/.exec(rendered);
     expect(match).not.toBeNull();
     return Number(match![1]);
   }
