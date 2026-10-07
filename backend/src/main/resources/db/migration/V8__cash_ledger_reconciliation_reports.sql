@@ -208,7 +208,7 @@ ALTER TABLE cash_ledger_events
       AND expense_id IS NOT NULL AND payment_id IS NULL AND sale_id IS NULL AND original_event_id IS NULL)
     OR (event_type='ADJUSTMENT' AND component='ADJUSTMENT' AND origin_kind='OPERATION'
       AND original_event_id IS NOT NULL AND reason IS NOT NULL AND evidence_ref IS NOT NULL
-      AND length(btrim(reason))>=3 AND length(btrim(evidence_ref))>=3))))
+       AND length(btrim(reason))>=3 AND length(btrim(evidence_ref))>=3)))
  );
 CREATE UNIQUE INDEX ledger_one_opening ON cash_ledger_events(cash_session_id) WHERE event_type='OPENING';
 CREATE UNIQUE INDEX ledger_origin_component ON cash_ledger_events(origin_kind,origin_id,component) WHERE accounting_version=2;
