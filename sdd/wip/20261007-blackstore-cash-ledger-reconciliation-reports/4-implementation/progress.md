@@ -10,4 +10,10 @@ Se especificaron fórmulas de efectivo/flujo comercial, cierre sin ajuste autom�
 
 Código y migraciones: NOT_RUN. Los escenarios CLR de PG16 clean/upgrade, atomicidad/crash/concurrencia/seguridad, browser/reinicio y rollback/kill switch: NOT_RUN. Reviews y GO de diseño: PASS. La infraestructura DCT base quedó integrada en PR #28 (`bca02bf`, merge `b8ce3b1`) con Bugbot y Security APPROVED, CI PR `37657282222` 3/3 SUCCESS y CI posmerge `37658142335` 3/3 SUCCESS. No deploy ni homologación productiva como parte de CLR-T01.
 
-Próximo paso: integrar el PR documental exact-head y luego abrir el corte CLR-T02/T03 de dominio + V8. No activar StoreCore, fiscal ni publicación.
+2026-10-07: CLR-T02/T03 quedaron implementadas en el PR apilado #30, con reviews exact-head aprobadas y pruebas locales; el CI alojado continúa bloqueado por billing/spending de la cuenta GitHub, por lo que no se marcaron `done` ni se activó el runtime.
+
+2026-10-07: CLR-T04 quedó implementada sobre `77c69125469be6dacc5a68729436a8d33d8ffefd`. Incluye commands y receipts v2, apertura, captura, reversión total, fee OWNER, devengo/liquidación de egresos, atomicidad, locks caja→venta→delivery, autorización post-lock, opacidad, replay/mismatch, selección de semántica por lifecycle y traducción estructurada de `original_payment_id`. La vista y las acciones comparten el mismo tipo cerrado `PaymentLedgerSemantics`; `PAUSED` conserva lecturas v2 y bloquea admisión de writers por separado.
+
+Evidencia local T04: PostgreSQL 18, 7 suites, 45 tests, 0 failures/errors/skips; regresión real `LocalSaleSagaService` + autorización JDBC + `JdbcCounterEntryStore` + `JdbcSaleRecordStore` + runtime ACTIVE/PAUSED llega a RELEASED. Bugbot, Security y SDD/SOLID emitieron APPROVE sin P0–P3. Detalle en `evidence/CLR-T04-local-20261007.md`.
+
+Estado: CLR-T02/T03/T04 `implemented_pending_ci`, no `done`. PostgreSQL 16, crash/reinicio, T05/T06, browser y homologación siguen `NOT_RUN`/pendientes. Runtime contable permanece PRE_ACTIVATION; no se activaron StoreCore, fiscal ni publicación.

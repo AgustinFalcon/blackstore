@@ -127,7 +127,7 @@ class JdbcCounterEntryStore(
         asRole("blackstore_app") { connection ->
             val projectionId = findProjection(connection, identity)
             connection.prepareStatement("""
-                SELECT p.id, p.payment_method, p.amount, p.fee_amount, p.status,
+                SELECT p.id, p.payment_method, p.amount, p.fee_amount, p.status, p.original_payment_id,
                     (SELECT MIN(a.payload_redacted->>'detail') FROM audit_events a
                      WHERE a.aggregate_type = 'payment' AND a.aggregate_id = p.id AND a.event_type = 'PAYMENT_REVERSED') AS reversal_detail
                 FROM payments p WHERE p.sale_id = ? ORDER BY p.id
@@ -136,7 +136,10 @@ class JdbcCounterEntryStore(
                 statement.executeQuery().use { rows ->
                     val entries = mutableListOf<PaymentLedgerEntry>()
                     while (rows.next()) {
-                        val original = rows.getString("reversal_detail")?.let { Regex("^original=(\\d+);reason=").find(it)?.groupValues?.get(1)?.toLongOrNull() }
+                        // V2 stores the relationship as a constrained foreign key. The audit parser is
+                        // retained only for pre-V8 rows, whose schema has no structured relationship.
+                        val original = (rows.getObject("original_payment_id") as? Number)?.toLong()
+                            ?: rows.getString("reversal_detail")?.let { Regex("^original=(\\d+);reason=").find(it)?.groupValues?.get(1)?.toLongOrNull() }
                         entries += PaymentLedgerEntry(identity, rows.getLong("id"), PaymentMethod.fromWire(rows.getString("payment_method")), PaymentStatus.fromWire(rows.getString("status")), rows.getBigDecimal("amount"), rows.getBigDecimal("fee_amount"), original)
                     }
                     OperationLedger.Known(entries)
