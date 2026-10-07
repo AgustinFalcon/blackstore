@@ -64,11 +64,13 @@ export class DctRuntime {
     await this.frontend.ready('http://localhost:4201');
   }
   private async startBackend() {
-    const inherited = { ...process.env };
-    for (const key of Object.keys(inherited)) {
-      if (/^(SPRING_|SERVER_|BLACKSTORE_)/.test(key) || ['JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS'].includes(key)) {
-        delete inherited[key];
-      }
+    // The JAR gets an allowlist rather than the parent environment. Spring also
+    // accepts dotted keys such as `spring.application.json`, which cannot be
+    // made safe by filtering only conventional uppercase environment names.
+    const inherited: NodeJS.ProcessEnv = {};
+    for (const key of ['PATH', 'Path', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'JAVA_HOME',
+      'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'LANG', 'LC_ALL', 'TZ']) {
+      if (process.env[key] !== undefined) inherited[key] = process.env[key];
     }
     this.backend.start(process.env['DCT_JAVA'] ?? 'java', ['-jar', this.jar], this.backendRoot, {
       ...inherited, SERVER_ADDRESS: '127.0.0.1', SERVER_PORT: '8081',
