@@ -1,6 +1,5 @@
 import { Page, expect } from '@playwright/test';
 import { CashMutationOutcome } from '../../../src/app/core/domain/pos-types';
-import { PosWireMapper } from '../../../src/app/core/infrastructure/pos-wire-mapper';
 
 export class CashSessionPage {
   constructor(readonly page: Page) {}
@@ -16,23 +15,27 @@ export class CashSessionPage {
     await this.page.getByRole('button', { name: 'Abrir sesión', exact: true }).click();
     const response = await pending;
     expect(response.status()).toBe(200);
-    const session = PosWireMapper.cashMutationSession(await response.json());
-    expect(session).not.toBeNull();
-    return session!.id;
+    const session = this.page.getByText(/^Sesión \d+ en terminal \d+/);
+    await expect(session).toBeVisible();
+    const match = /^Sesión (\d+) en terminal/.exec((await session.textContent()) ?? '');
+    expect(match).not.toBeNull();
+    return Number(match![1]);
   }
   async expense(amount: string, outcome = CashMutationOutcome.Applied) {
     await this.page.getByLabel('Gasto', { exact: true }).fill(amount);
     const pending = this.response('/api/v1/expenses');
     await this.page.getByRole('button', { name: 'Registrar gasto', exact: true }).click();
     const response = await pending;
-    expect(PosWireMapper.cashMutationOutcome(await response.json(), response.status())).toBe(outcome);
+    expect(response.status()).toBe(outcome.httpStatus);
+    await expect(this.page.getByText(outcome === CashMutationOutcome.Applied ? 'Gasto registrado' : outcome.label, { exact: true })).toBeVisible();
   }
   async close(cashId: number, amount: string) {
     await this.page.getByLabel('Declarado', { exact: true }).fill(amount);
     const pending = this.response(`/api/v1/cash-sessions/${cashId}/close`);
     await this.page.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
     const response = await pending;
-    expect(PosWireMapper.cashMutationOutcome(await response.json(), response.status())).toBe(CashMutationOutcome.Applied);
+    expect(response.status()).toBe(CashMutationOutcome.Applied.httpStatus);
+    await expect(this.page.getByText(`Sesión ${cashId} cerrada`, { exact: true })).toBeVisible();
   }
   async expectClosedControlsAbsent() {
     await expect(this.page.getByRole('button', { name: 'Registrar gasto', exact: true })).toHaveCount(0);
