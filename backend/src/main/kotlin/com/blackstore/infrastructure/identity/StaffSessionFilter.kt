@@ -35,6 +35,8 @@ object StaffHttpPermission {
         method=="POST" && path=="/api/v1/payments" -> StaffPermission.PaymentCapture
         method=="POST" && Regex("/api/v1/payments/[^/]+/reversals").matches(path) -> StaffPermission.PaymentReverse
         method=="POST" && path=="/api/v1/expenses" -> StaffPermission.ExpenseRecord
+        method=="GET" && path=="/api/v2/reports/shift" -> StaffPermission.ShiftReportRead
+        method=="GET" && path=="/api/v2/reports/day" -> StaffPermission.DailyReportRead
         method=="GET" && path=="/api/v1/reports/shift" -> StaffPermission.ShiftReportRead
         method=="GET" && path=="/api/v1/reports/daily" -> StaffPermission.DailyReportRead
         method=="POST" && path=="/api/v2/cash-sessions" -> StaffPermission.CashSessionOpen
