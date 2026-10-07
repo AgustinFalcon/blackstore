@@ -18,16 +18,69 @@ import java.lang.reflect.Proxy
 import java.math.BigDecimal
 import java.sql.Connection
 import java.sql.SQLException
+import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.sql.DataSource
 
 /** These tests exercise V8's real triggers and the runtime roles in PostgreSQL 16. */
 class AccountingMutationPostgresTest {
     private val staff = AuthenticatedStaff(StaffUserId(1), "Cashier", StaffRole.CASHIER)
     private val owner = AuthenticatedStaff(StaffUserId(2), "Owner", StaffRole.OWNER)
+
+    @Test fun closePersistsSignedSnapshotAndReplayWithoutAdjustment() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        for ((declared, expectedOutcome) in listOf("10" to ReconciliationOutcome.Balanced,
+            "8" to ReconciliationOutcome.Shortage, "12" to ReconciliationOutcome.Overage)) {
+            val cash = applied(commands.execute(staff, opening().copy(openingCash = BigDecimal.TEN))).cashSessionId
+            val command = AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), cash, BigDecimal(declared), "close shift")
+            val first = applied(commands.execute(staff, command))
+            val snapshot = requireNotNull(first.closeSnapshot)
+            assertEquals(expectedOutcome, snapshot.outcome)
+            assertEquals(BigDecimal("10.00"), snapshot.expectedCash)
+            assertEquals(BigDecimal(declared).setScale(2) - BigDecimal("10.00"), snapshot.difference)
+            assertEquals(1L, snapshot.localWatermark)
+            assertEquals(first, applied(commands.execute(staff, command)))
+            assertEquals(AccountingCommandResult.Committed(first), commands.findReceipt(staff, first.commandId))
+            assertEquals(AccountingCommandFailure.PayloadMismatch, rejected(commands.execute(staff, command.copy(declaredCash = BigDecimal("9")))))
+            assertEquals("1", scalar(source, "SELECT count(*) FROM cash_reconciliations WHERE cash_session_id=$cash"))
+            assertEquals("1", scalar(source, "SELECT count(*) FROM cash_ledger_events WHERE cash_session_id=$cash"))
+            assertEquals("true", scalar(source, "SELECT bool_and(l.occurred_at<c.closed_at)::text FROM cash_ledger_events l JOIN cash_session_projection c ON c.id=l.cash_session_id WHERE c.id=$cash"))
+        }
+    }
+
+    @Test fun pendingSalesAndForeignSessionsRejectBeforeReconciliation() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val cash = applied(commands.execute(staff, opening())).cashSessionId
+        sale(source, cash)
+        val command = AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), cash, BigDecimal.ZERO, "close shift")
+        val other = AuthenticatedStaff(StaffUserId(3), "Other", StaffRole.CASHIER)
+        assertEquals(AccountingCommandFailure.NotVisible, rejected(commands.execute(other, command)))
+        assertEquals(AccountingCommandFailure.NonTerminalSale, rejected(commands.execute(staff, command)))
+        assertEquals("OPEN", scalar(source, "SELECT status FROM cash_session_projection"))
+        assertEquals("0", scalar(source, "SELECT count(*) FROM cash_reconciliations"))
+    }
+
+    @Test fun legacyClosePreservesNullOfficialAmountsAndAuditFailureRollsBack() = database { source ->
+        sql(source, "INSERT INTO cash_session_projection(terminal_id,cashier_id,opened_at,opening_cash) VALUES(1,1,clock_timestamp(),20)")
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val command = AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), 1, BigDecimal("18"), "close legacy shift")
+        assertEquals(AccountingCommandFailure.Unavailable, rejected(JdbcAccountingMutationCommands(FailingAuditSource(source)).execute(staff, command)))
+        assertEquals("OPEN", scalar(source, "SELECT status FROM cash_session_projection"))
+        assertEquals("0", scalar(source, "SELECT count(*) FROM cash_accounting_coverage"))
+        assertEquals("0", scalar(source, "SELECT count(*) FROM cash_reconciliations"))
+        val snapshot = requireNotNull(applied(commands.execute(staff, command)).closeSnapshot)
+        assertEquals(ReconciliationOutcome.Unavailable, snapshot.outcome)
+        assertEquals(AccountingCoverage.LegacyIncomplete, snapshot.coverage)
+        assertNull(snapshot.expectedCash); assertNull(snapshot.difference)
+        assertEquals("0", scalar(source, "SELECT count(*) FROM cash_ledger_events"))
+    }
 
     @Test fun openingReplayMismatchAndLifecycleAreDurable() = database { source ->
         val commands = JdbcAccountingMutationCommands(source)
@@ -75,7 +128,7 @@ class AccountingMutationPostgresTest {
         assertEquals(AccountingCommandFailure.Closed, rejected(commands.execute(staff, capture.copy(commandId = UUID.randomUUID(), amount = BigDecimal.ONE))))
     }
 
-    @Test fun fullyRefundedV2SaleCanEnterDurableReleasePending() = database { source ->
+    @Test fun activeRejectsLegacyReleaseBeforeOutboxOrProjectionMutation() = database { source ->
         activate(source)
         val commands = JdbcAccountingMutationCommands(source)
         val cash = applied(commands.execute(staff, opening())).cashSessionId
@@ -89,12 +142,30 @@ class AccountingMutationPostgresTest {
             payload = CanonicalCommandPayload.Terminal(evidence.reservationRef))
         val pending = current.copy(status = SaleStatus.RELEASE_PENDING, outbox = current.outbox + release,
             staffCommandAudit = SaleStaffCommandAudit(SaleStaffCommandEvent.RELEASE_REQUESTED, staff.id, null))
-        JdbcSaleRecordStore(source).recordReleasePending(pending)
-        assertEquals("RELEASE_PENDING", scalar(source, "SELECT status FROM sale_state_projection"))
-        assertEquals("1", scalar(source, "SELECT count(*) FROM storecore_outbox_commands WHERE operation_kind='RELEASE'"))
+        val denied = assertThrows(AccountingAdmissionException::class.java) { JdbcSaleRecordStore(source).recordReleasePending(pending) }
+        assertEquals(AccountingCommandFailure.LegacyContractDisabled, denied.failure)
+        assertEquals("PAYMENT_CAPTURED", scalar(source, "SELECT status FROM sale_state_projection"))
+        assertEquals("0", scalar(source, "SELECT count(*) FROM storecore_outbox_commands WHERE operation_kind='RELEASE'"))
     }
 
-    @Test fun fullyRefundedV2SaleReleasesThroughRealServiceAndCounterLedger() = database { source ->
+    @Test fun activeRejectsLegacyReservationBeforeIntentOrOutbox() = database { source ->
+        activate(source)
+        val cash = applied(JdbcAccountingMutationCommands(source).execute(staff, opening())).cashSessionId
+        val identity = OperationQuadruple(UUID.randomUUID().toString(), "POS", "legacy-sale", UUID.randomUUID().toString())
+        val command = OutboxCommand(identity, StoreCoreOperationKind.RESERVE,
+            com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH,
+            com.blackstore.domain.model.StoreCoreCanonicalContract.VERSION,
+            com.blackstore.domain.model.StoreCoreCanonicalContract.SHA256, "d".repeat(64),
+            payload = CanonicalCommandPayload.Reserve("catalog-v1", listOf(CanonicalReserveLine("SKU", 1, "price-v1"))))
+        val saga = SaleSaga(identity, cash, outbox = listOf(command), lines = listOf(TicketLine("SKU", "Product", 1, BigDecimal.TEN, BigDecimal.ZERO)),
+            createdBy = staff.id.value, staffCommandAudit = SaleStaffCommandAudit(SaleStaffCommandEvent.RESERVE_REQUESTED, staff.id, null))
+        val denied = assertThrows(AccountingAdmissionException::class.java) { JdbcSaleRecordStore(source).recordIntentAndOutbox(saga) }
+        assertEquals(AccountingCommandFailure.LegacyContractDisabled, denied.failure)
+        assertEquals("0", scalar(source, "SELECT count(*) FROM sale_intents"))
+        assertEquals("0", scalar(source, "SELECT count(*) FROM storecore_outbox_commands"))
+    }
+
+    @Test fun activeRejectsLegacyServiceReleaseWithoutCallingStoreCore() = database { source ->
         activate(source)
         val commands = JdbcAccountingMutationCommands(source)
         val cash = applied(commands.execute(staff, opening())).cashSessionId
@@ -153,10 +224,10 @@ class AccountingMutationPostgresTest {
         assertEquals(activeView.allowedActions, pausedView.allowedActions)
         sql(source, "UPDATE accounting_runtime SET state='ACTIVE'")
 
-        val released = service.release(staff, identity.operationId, null)
-        assertEquals(SaleStatus.RELEASED, released.status)
-        assertEquals("RELEASED", scalar(source, "SELECT status FROM sale_state_projection"))
-        assertEquals("1", scalar(source, "SELECT count(*) FROM storecore_outbox_commands WHERE operation_kind='RELEASE'"))
+        val denied = assertThrows(AccountingAdmissionException::class.java) { service.release(staff, identity.operationId, null) }
+        assertEquals(AccountingCommandFailure.LegacyContractDisabled, denied.failure)
+        assertEquals("PAYMENT_CAPTURED", scalar(source, "SELECT status FROM sale_state_projection"))
+        assertEquals("0", scalar(source, "SELECT count(*) FROM storecore_outbox_commands WHERE operation_kind='RELEASE'"))
     }
 
     @Test fun accrualAndOneFullSettlementNeverRewriteExpenseHistory() = database { source ->
@@ -233,6 +304,215 @@ class AccountingMutationPostgresTest {
         } finally { pool.shutdownNow() }
     }
 
+    @Test fun expenseThenCloseAndCloseThenExpenseSerializeWithoutDeadlock() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val cash = applied(commands.execute(staff, opening().copy(openingCash = BigDecimal.TEN))).cashSessionId
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val expenseFirst = PausingDataSource(source, "SELECT state FROM accounting_runtime WHERE singleton")
+            val expense = pool.submit<AccountingMutationOutcome> {
+                JdbcAccountingMutationCommands(expenseFirst).execute(staff, AccountingCommandDraft.ExpenseRecord(
+                    UUID.randomUUID(), cash, "paid supplies", ExpenseInstruction.AccrueAndSettle("OPERATING", BigDecimal("2"), PaymentMethod.CASH)))
+            }
+            assertTrue(expenseFirst.reached.await(5, TimeUnit.SECONDS))
+            val close = pool.submit<AccountingMutationOutcome> {
+                commands.execute(staff, AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), cash, BigDecimal("8"), "close after expense"))
+            }
+            expenseFirst.proceed.countDown()
+            assertTrue(expense.get(15, TimeUnit.SECONDS) is AccountingMutationOutcome.Applied)
+            val closed = applied(close.get(15, TimeUnit.SECONDS))
+            assertEquals(BigDecimal("8.00"), closed.closeSnapshot?.expectedCash)
+            assertEquals(ReconciliationOutcome.Balanced, closed.closeSnapshot?.outcome)
+            assertEquals("1", scalar(source, "SELECT count(*) FROM expense_settlements"))
+        } finally { pool.shutdownNow() }
+    }
+
+    @Test fun closeWinnerRejectsConcurrentExpenseAndRevalidatesAuthorityAfterCashLock() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val cash = applied(commands.execute(staff, opening())).cashSessionId
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val closeFirst = PausingDataSource(source, "FROM sale_intents i LEFT JOIN sale_state_projection")
+            val close = pool.submit<AccountingMutationOutcome> {
+                JdbcAccountingMutationCommands(closeFirst).execute(staff,
+                    AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), cash, BigDecimal.ZERO, "close first"))
+            }
+            assertTrue(closeFirst.reached.await(5, TimeUnit.SECONDS))
+            val expense = pool.submit<AccountingMutationOutcome> {
+                commands.execute(staff, AccountingCommandDraft.ExpenseRecord(UUID.randomUUID(), cash, "late expense",
+                    ExpenseInstruction.AccrueAndSettle("OPERATING", BigDecimal.ONE, PaymentMethod.CASH)))
+            }
+            closeFirst.proceed.countDown()
+            assertTrue(close.get(15, TimeUnit.SECONDS) is AccountingMutationOutcome.Applied)
+            assertEquals(AccountingCommandFailure.Closed, rejected(expense.get(15, TimeUnit.SECONDS)))
+            assertEquals("0", scalar(source, "SELECT count(*) FROM expenses"))
+
+            // A new session proves actor eligibility is read only after the row lock is obtained.
+            sql(source, "UPDATE staff_users SET active=true WHERE id=1")
+            sql(source, "INSERT INTO terminals(terminal_code) VALUES('POS-2')")
+            val open = opening().copy(commandId = UUID.randomUUID(), terminalId = 2)
+            val secondCash = applied(commands.execute(staff, open)).cashSessionId
+            source.connection.use { blocker ->
+                blocker.autoCommit = false
+                blocker.createStatement().execute("SET LOCAL ROLE blackstore_projection_worker")
+                blocker.prepareStatement("SELECT * FROM cash_session_projection WHERE id=? FOR UPDATE").use { lock ->
+                    lock.setLong(1, secondCash); lock.executeQuery().use { assertTrue(it.next()) }
+                }
+                val waiting = PausingDataSource(source, "SELECT * FROM cash_session_projection WHERE id=? FOR UPDATE")
+                val denied = pool.submit<AccountingMutationOutcome> {
+                    JdbcAccountingMutationCommands(waiting).execute(staff,
+                        AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), secondCash, BigDecimal.ZERO, "authority changed"))
+                }
+                assertTrue(waiting.reached.await(5, TimeUnit.SECONDS))
+                sql(source, "UPDATE staff_users SET active=false WHERE id=1")
+                waiting.proceed.countDown()
+                blocker.commit()
+                assertEquals(AccountingCommandFailure.Forbidden, rejected(denied.get(15, TimeUnit.SECONDS)))
+            }
+            assertEquals("OPEN", scalar(source, "SELECT status FROM cash_session_projection WHERE id=$secondCash"))
+            assertEquals("0", scalar(source, "SELECT count(*) FROM cash_reconciliations WHERE cash_session_id=$secondCash"))
+        } finally { pool.shutdownNow() }
+    }
+
+    @Test fun paymentAndReverseWinnersRemainVisibleToConcurrentClose() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val cash = applied(commands.execute(staff, opening())).cashSessionId
+        val identity = sale(source, cash)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val paymentFirst = PausingDataSource(source, "SELECT state FROM accounting_runtime WHERE singleton")
+            val captureDraft = AccountingCommandDraft.PaymentCapture(UUID.randomUUID(), identity, PaymentMethod.CASH, BigDecimal.TEN)
+            val capture = pool.submit<AccountingMutationOutcome> { JdbcAccountingMutationCommands(paymentFirst).execute(staff, captureDraft) }
+            assertTrue(paymentFirst.reached.await(5, TimeUnit.SECONDS))
+            val closeAfterPayment = pool.submit<AccountingMutationOutcome> { commands.execute(staff,
+                AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), cash, BigDecimal.TEN, "close racing payment")) }
+            paymentFirst.proceed.countDown()
+            val payment = applied(capture.get(15, TimeUnit.SECONDS))
+            assertEquals(AccountingCommandFailure.NonTerminalSale, rejected(closeAfterPayment.get(15, TimeUnit.SECONDS)))
+
+            val reverseFirst = PausingDataSource(source, "SELECT state FROM accounting_runtime WHERE singleton")
+            val reverse = pool.submit<AccountingMutationOutcome> { JdbcAccountingMutationCommands(reverseFirst).execute(staff,
+                AccountingCommandDraft.PaymentReverse(UUID.randomUUID(), identity, requireNotNull(payment.paymentId), "refund", "refund-proof")) }
+            assertTrue(reverseFirst.reached.await(5, TimeUnit.SECONDS))
+            val closeAfterReverse = pool.submit<AccountingMutationOutcome> { commands.execute(staff,
+                AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), cash, BigDecimal.ZERO, "close racing reverse")) }
+            reverseFirst.proceed.countDown()
+            assertTrue(reverse.get(15, TimeUnit.SECONDS) is AccountingMutationOutcome.Applied)
+            assertEquals(AccountingCommandFailure.NonTerminalSale, rejected(closeAfterReverse.get(15, TimeUnit.SECONDS)))
+            assertEquals("0.00", scalar(source, "SELECT sum(amount_delta)::numeric(14,2)::text FROM cash_ledger_events WHERE event_type IN ('PAYMENT','REFUND')"))
+            assertEquals("OPEN", scalar(source, "SELECT status FROM cash_session_projection WHERE id=$cash"))
+        } finally { pool.shutdownNow() }
+    }
+
+    @Test fun workerRecognitionAndCloseSerializeInBothOrders() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val first = committable(source, commands)
+            val predictableOldId = UUID.nameUUIDFromBytes("COMMERCIAL_RECOGNITION:${first.committed.quadruple.operationId}".toByteArray())
+            assertTrue(commands.execute(staff, AccountingCommandDraft.ExpenseRecord(predictableOldId, first.cashId,
+                "occupy formerly predictable id", ExpenseInstruction.Accrue("OPERATING", BigDecimal.ONE))) is AccountingMutationOutcome.Applied)
+            val workerFirst = PausingDataSource(source, "UPDATE storecore_command_delivery SET state=?")
+            val appliedWorker = pool.submit<AttemptOutcome> { JdbcDurableSaleRepository(workerFirst).applyClaimEvidence(
+                first.claim, first.committed, "e".repeat(64), "COMMITTED", first.receipt) }
+            assertTrue(workerFirst.reached.await(5, TimeUnit.SECONDS))
+            val closeAfterWorker = pool.submit<AccountingMutationOutcome> { commands.execute(staff,
+                AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), first.cashId, BigDecimal.TEN, "worker first")) }
+            workerFirst.proceed.countDown()
+            assertEquals(AttemptOutcome.APPLIED, appliedWorker.get(15, TimeUnit.SECONDS))
+            assertEquals(ReconciliationOutcome.Balanced, applied(closeAfterWorker.get(15, TimeUnit.SECONDS)).closeSnapshot?.outcome)
+            assertEquals("1", scalar(source, "SELECT count(*) FROM commercial_recognitions WHERE cash_session_id=${first.cashId}"))
+            assertEquals("10.00", scalar(source, "SELECT net_sales::text FROM commercial_recognitions WHERE cash_session_id=${first.cashId}"))
+            assertEquals("EXPENSE_RECORD", scalar(source, "SELECT command_kind FROM accounting_command_receipts WHERE command_id='$predictableOldId'"))
+            assertEquals("false", scalar(source, "SELECT (command_id='$predictableOldId')::text FROM commercial_recognitions WHERE cash_session_id=${first.cashId}"))
+
+            val second = committable(source, commands)
+            val closeFirst = PausingDataSource(source, "FROM sale_intents i LEFT JOIN sale_state_projection")
+            val earlyClose = pool.submit<AccountingMutationOutcome> { JdbcAccountingMutationCommands(closeFirst).execute(staff,
+                AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), second.cashId, BigDecimal.TEN, "close first")) }
+            assertTrue(closeFirst.reached.await(5, TimeUnit.SECONDS))
+            val workerAfterClose = pool.submit<AttemptOutcome> { JdbcDurableSaleRepository(source).applyClaimEvidence(
+                second.claim, second.committed, "f".repeat(64), "COMMITTED", second.receipt) }
+            closeFirst.proceed.countDown()
+            assertEquals(AccountingCommandFailure.NonTerminalSale, rejected(earlyClose.get(15, TimeUnit.SECONDS)))
+            assertEquals(AttemptOutcome.APPLIED, workerAfterClose.get(15, TimeUnit.SECONDS))
+            assertEquals(ReconciliationOutcome.Balanced, applied(commands.execute(staff,
+                AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), second.cashId, BigDecimal.TEN, "retry after worker"))).closeSnapshot?.outcome)
+            assertEquals("1", scalar(source, "SELECT count(*) FROM commercial_recognitions WHERE cash_session_id=${second.cashId}"))
+        } finally { pool.shutdownNow() }
+    }
+
+    @Test fun preActivationWorkerCommitRemainsLegacyWithoutV2AccountingFacts() = database { source ->
+        sql(source, "INSERT INTO cash_session_projection(terminal_id,cashier_id,opened_at,opening_cash) VALUES(1,1,clock_timestamp(),0)")
+        val identity = sale(source, 1)
+        val repository = JdbcDurableSaleRepository(source)
+        val current = requireNotNull(repository.findDurable(identity.operationId)).saga
+        val evidence = requireNotNull(current.evidence)
+        val command = OutboxCommand(identity, StoreCoreOperationKind.COMMIT,
+            com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH, evidence.contractVersion, evidence.openapiDigest,
+            "9".repeat(64), reservationRef = evidence.reservationRef, payload = CanonicalCommandPayload.Terminal(evidence.reservationRef))
+        val pending = current.markPaymentCaptured().withCommand(command).markCommitPending()
+        source.connection.use { c ->
+            c.autoCommit = false
+            c.createStatement().execute("SET LOCAL ROLE blackstore_app")
+            JdbcAccountingLifecycleAdmission().requireLegacy(c)
+            val locked = JdbcAccountingAggregateLocks().lockSale(c, identity)
+            JdbcSaleRecordStore(source).insertCanonicalCommand(c, pending, command, staff.id.value, "legacy commit fixture")
+            check(JdbcBlackStoreWriter().advanceSaleStatus(c, locked.projectionId, SaleStatus.RESERVED.name, SaleStatus.PAYMENT_CAPTURED.name) == 1)
+            check(JdbcBlackStoreWriter().advanceSaleStatus(c, locked.projectionId, SaleStatus.PAYMENT_CAPTURED.name, SaleStatus.COMMIT_PENDING.name) == 1)
+            c.prepareStatement("UPDATE sale_state_projection SET version=version+1,updated_at=now() WHERE id=?").use { it.setLong(1, locked.projectionId); it.executeUpdate() }
+            c.commit()
+        }
+        val claim = requireNotNull(repository.claimCommand(identity.operationId, CommandKind.COMMIT, Duration.ofSeconds(30)))
+        val receipt = com.blackstore.domain.model.StoreCoreOperationReceipt(identity, StoreCoreOperationKind.COMMIT,
+            com.blackstore.domain.model.StoreCoreOperationState.COMMITTED, evidence.reservationRef, "legacy-commit-receipt",
+            com.blackstore.domain.model.StoreCoreContractRef(command.canonicalPath, command.contractVersion, command.openapiDigest),
+            evidence.acceptedPriceVersions, null)
+        val committed = requireNotNull(repository.findDurable(identity.operationId)).saga.applyRemoteDurable(
+            com.blackstore.domain.model.StoreCoreOperationState.COMMITTED,
+            RemoteEvidence(evidence.reservationRef, requireNotNull(receipt.receipt), evidence.contractVersion, evidence.openapiDigest,
+                evidence.acceptedPriceVersions, null))
+        assertEquals(AttemptOutcome.APPLIED, repository.applyClaimEvidence(claim, committed, "7".repeat(64), "COMMITTED", receipt))
+        assertEquals("COMMITTED", scalar(source, "SELECT status FROM sale_state_projection"))
+        assertEquals("APPLIED", scalar(source, "SELECT state FROM storecore_command_delivery WHERE command_id=${claim.id}"))
+        assertEquals("1", scalar(source, "SELECT count(*) FROM storecore_inbox_applications WHERE command_id=${claim.id} AND state='APPLIED'"))
+        assertEquals("0", scalar(source, "SELECT count(*) FROM accounting_command_receipts"))
+        assertEquals("0", scalar(source, "SELECT count(*) FROM commercial_recognitions"))
+        assertEquals("0.00", scalar(source, "SELECT gross_sales::text FROM sale_state_projection"))
+    }
+
+    @Test fun closeWinnerCannotHideConcurrentLegacySaleIntent() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val cash = applied(commands.execute(staff, opening())).cashSessionId
+        val identity = OperationQuadruple(UUID.randomUUID().toString(), "POS", "racing-sale", UUID.randomUUID().toString())
+        val reserve = OutboxCommand(identity, StoreCoreOperationKind.RESERVE,
+            com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH,
+            com.blackstore.domain.model.StoreCoreCanonicalContract.VERSION,
+            com.blackstore.domain.model.StoreCoreCanonicalContract.SHA256, "a".repeat(64),
+            payload = CanonicalCommandPayload.Reserve("catalog-v1", listOf(CanonicalReserveLine("SKU", 1, "price-v1"))))
+        val intent = SaleSaga(identity, cash, outbox = listOf(reserve),
+            lines = listOf(TicketLine("SKU", "Product", 1, BigDecimal.TEN, BigDecimal.ZERO)), createdBy = staff.id.value,
+            staffCommandAudit = SaleStaffCommandAudit(SaleStaffCommandEvent.RESERVE_REQUESTED, staff.id, null))
+        val closeFirst = PausingDataSource(source, "FROM sale_intents i LEFT JOIN sale_state_projection")
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val close = pool.submit<AccountingMutationOutcome> { JdbcAccountingMutationCommands(closeFirst).execute(staff,
+                AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), cash, BigDecimal.ZERO, "close before legacy intent")) }
+            assertTrue(closeFirst.reached.await(5, TimeUnit.SECONDS))
+            val attemptedIntent = pool.submit<Throwable?> { runCatching { JdbcSaleRecordStore(source).recordIntentAndOutbox(intent) }.exceptionOrNull() }
+            closeFirst.proceed.countDown()
+            assertTrue(close.get(15, TimeUnit.SECONDS) is AccountingMutationOutcome.Applied)
+            assertNotNull(attemptedIntent.get(15, TimeUnit.SECONDS))
+            assertEquals("0", scalar(source, "SELECT count(*) FROM sale_intents WHERE cash_session_id=$cash"))
+            assertEquals("0", scalar(source, "SELECT count(*) FROM storecore_outbox_commands WHERE cash_session_id=$cash"))
+        } finally { pool.shutdownNow() }
+    }
+
     private fun opening() = AccountingCommandDraft.CashSessionOpen(UUID.randomUUID(), 1, 1, BigDecimal("0.00"), null)
     private fun applied(outcome: AccountingMutationOutcome) = (outcome as AccountingMutationOutcome.Applied).receipt
     private fun rejected(outcome: AccountingMutationOutcome) = (outcome as AccountingMutationOutcome.Rejected).failure
@@ -241,13 +521,14 @@ class AccountingMutationPostgresTest {
         val identity = OperationQuadruple(UUID.randomUUID().toString(), "POS", "sale", UUID.randomUUID().toString())
         val contractVersion = com.blackstore.domain.model.StoreCoreCanonicalContract.VERSION
         val openapiDigest = com.blackstore.domain.model.StoreCoreCanonicalContract.SHA256
+        val reservationRef = "reservation-${identity.operationId}"
         val writer = JdbcBlackStoreWriter()
         source.connection.use { c ->
             c.autoCommit = false
             val id = writer.insertPendingSale(c, UUID.fromString(identity.clientInstanceId), identity.deviceId, identity.saleId,
                 UUID.fromString(identity.operationId), cash, 1, contractVersion, openapiDigest)
             writer.insertSaleLine(c, id, "SKU", "Product", 1, BigDecimal.TEN, BigDecimal.ZERO)
-            c.createStatement().execute("UPDATE sale_state_projection SET status='RESERVED',storecore_reservation_ref='reservation',reservation_receipt='receipt',contract_version='$contractVersion',openapi_digest='$openapiDigest',accepted_price_versions='[\"price-v1\"]',reservation_expires_at=clock_timestamp()+interval '1 hour' WHERE id=$id")
+            c.createStatement().execute("UPDATE sale_state_projection SET status='RESERVED',storecore_reservation_ref='$reservationRef',reservation_receipt='receipt',contract_version='$contractVersion',openapi_digest='$openapiDigest',accepted_price_versions='[\"price-v1\"]',reservation_expires_at=clock_timestamp()+interval '1 hour' WHERE id=$id")
             // A real canonical outbox is needed for durable read to classify the sale, rather than guessing legacy state.
             val command = com.blackstore.domain.sales.OutboxCommand(identity, com.blackstore.domain.model.StoreCoreOperationKind.RESERVE,
                 com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH, contractVersion, openapiDigest, "b".repeat(64), payload =
@@ -263,6 +544,42 @@ class AccountingMutationPostgresTest {
             c.commit()
         }
         return identity
+    }
+
+    private data class CommittableSale(val cashId: Long, val claim: ClaimedSaleCommand, val committed: SaleSaga,
+        val receipt: com.blackstore.domain.model.StoreCoreOperationReceipt)
+
+    private fun committable(source: DataSource, commands: JdbcAccountingMutationCommands): CommittableSale {
+        val cash = applied(commands.execute(staff, opening().copy(commandId = UUID.randomUUID()))).cashSessionId
+        val identity = sale(source, cash)
+        applied(commands.execute(staff, AccountingCommandDraft.PaymentCapture(UUID.randomUUID(), identity, PaymentMethod.CASH, BigDecimal.TEN)))
+        val repository = JdbcDurableSaleRepository(source)
+        val current = requireNotNull(repository.findDurable(identity.operationId)).saga
+        val evidence = requireNotNull(current.evidence)
+        val command = OutboxCommand(identity, StoreCoreOperationKind.COMMIT,
+            com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH, evidence.contractVersion, evidence.openapiDigest,
+            "c".repeat(64), reservationRef = evidence.reservationRef, payload = CanonicalCommandPayload.Terminal(evidence.reservationRef))
+        val pending = current.withCommand(command).markCommitPending()
+        source.connection.use { c ->
+            c.autoCommit = false
+            c.createStatement().execute("SET LOCAL ROLE blackstore_app")
+            JdbcAccountingLifecycleAdmission().requireV2(c)
+            val locked = JdbcAccountingAggregateLocks().lockSale(c, identity)
+            JdbcSaleRecordStore(source).insertCanonicalCommand(c, pending, command, staff.id.value, "v2 commit fixture")
+            check(JdbcBlackStoreWriter().advanceSaleStatus(c, locked.projectionId, current.status.name, SaleStatus.COMMIT_PENDING.name) == 1)
+            c.prepareStatement("UPDATE sale_state_projection SET version=version+1,updated_at=now() WHERE id=?").use { it.setLong(1, locked.projectionId); it.executeUpdate() }
+            c.commit()
+        }
+        val claim = requireNotNull(repository.claimCommand(identity.operationId, CommandKind.COMMIT, Duration.ofSeconds(30)))
+        val receipt = com.blackstore.domain.model.StoreCoreOperationReceipt(identity, StoreCoreOperationKind.COMMIT,
+            com.blackstore.domain.model.StoreCoreOperationState.COMMITTED, evidence.reservationRef, "commit-receipt-${identity.saleId}",
+            com.blackstore.domain.model.StoreCoreContractRef(command.canonicalPath, command.contractVersion, command.openapiDigest),
+            evidence.acceptedPriceVersions, null)
+        val committed = requireNotNull(repository.findDurable(identity.operationId)).saga.applyRemoteDurable(
+            com.blackstore.domain.model.StoreCoreOperationState.COMMITTED,
+            RemoteEvidence(evidence.reservationRef, requireNotNull(receipt.receipt), evidence.contractVersion, evidence.openapiDigest,
+                evidence.acceptedPriceVersions, null))
+        return CommittableSale(cash, claim, committed, receipt)
     }
 
     private fun scalar(source: DataSource, sql: String): String = source.connection.use { c -> c.createStatement().use { s -> s.executeQuery(sql).use { r -> r.next(); r.getString(1) } } }
@@ -309,6 +626,32 @@ class AccountingMutationPostgresTest {
                     throw SQLException("test failure at final audit")
                 try { method.invoke(connection, *(arguments ?: emptyArray())) }
                 catch (error: InvocationTargetException) { throw error.targetException }
+            } as Connection
+        }
+    }
+
+    /** Test-only SQL barrier; it pauses one statement while the transaction retains earlier locks. */
+    private class PausingDataSource(private val delegate: DataSource, private val sqlFragment: String) : DataSource by delegate {
+        val reached = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        private val armed = AtomicBoolean(true)
+        override fun getConnection(): Connection {
+            val connection = delegate.connection
+            return Proxy.newProxyInstance(Connection::class.java.classLoader, arrayOf(Connection::class.java)) { _, method, arguments ->
+                try {
+                    val result = method.invoke(connection, *(arguments ?: emptyArray()))
+                    if (method.name != "prepareStatement" || result !is java.sql.PreparedStatement ||
+                        !(arguments?.firstOrNull() as? String).orEmpty().contains(sqlFragment)) return@newProxyInstance result
+                    Proxy.newProxyInstance(java.sql.PreparedStatement::class.java.classLoader,
+                        arrayOf(java.sql.PreparedStatement::class.java)) { _, statementMethod, statementArguments ->
+                        if (statementMethod.name in setOf("execute", "executeQuery", "executeUpdate") && armed.compareAndSet(true, false)) {
+                            reached.countDown()
+                            check(proceed.await(10, TimeUnit.SECONDS)) { "test SQL barrier timed out" }
+                        }
+                        try { statementMethod.invoke(result, *(statementArguments ?: emptyArray())) }
+                        catch (error: InvocationTargetException) { throw error.targetException }
+                    }
+                } catch (error: InvocationTargetException) { throw error.targetException }
             } as Connection
         }
     }

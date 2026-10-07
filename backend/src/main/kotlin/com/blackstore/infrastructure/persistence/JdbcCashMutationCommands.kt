@@ -23,6 +23,7 @@ class JdbcCashMutationCommands(private val source: DataSource) : CashMutationCom
     private val policy = CashMutationPolicy()
     private val sessions = LoadLockedCashSession()
     private val authority = LoadCashAuthority()
+    private val lifecycle = JdbcAccountingLifecycleAdmission()
 
     override fun open(staff: AuthenticatedStaff, terminalId: Long, cashierId: Long, amount: BigDecimal, reason: String?, now: Instant): CashMutationResult<CashSession> = outcome {
         try {
@@ -32,6 +33,7 @@ class JdbcCashMutationCommands(private val source: DataSource) : CashMutationCom
                 val candidate = CashSession(0, terminalId, cashierId, now, policy.money(amount))
                 authorize(currentStaff, StaffPermission.CashSessionOpen, candidate, reason)
                 authority.eligibleOwner(connection, StaffUserId(cashierId))
+                lifecycle.requireLegacy(connection)
                 val id = writer.insertOpenCashSession(connection,terminalId,cashierId,candidate.openingCash,now)
                 audit(connection, currentStaff, CashAuditEventType.CASH_SESSION_OPENED, id, reason)
                 candidate.copy(id = id)
@@ -61,6 +63,7 @@ class JdbcCashMutationCommands(private val source: DataSource) : CashMutationCom
             role(connection, RuntimeCashRole.Application)
             val actor = authority.actor(connection,staff.id)
             authorize(actor,StaffPermission.CashSessionClose,session,reason)
+            lifecycle.requireLegacy(connection)
             policy.requireOpen(session!!)
             val declared = policy.money(amount)
             if (now.isBefore(session.openedAt)) throw CashMutationException(CashMutationFailure.Validation)
@@ -79,6 +82,7 @@ class JdbcCashMutationCommands(private val source: DataSource) : CashMutationCom
             role(connection, RuntimeCashRole.Application)
             val actor = authority.actor(connection,staff.id)
             authorize(actor,StaffPermission.ExpenseRecord,session,expense.reason)
+            lifecycle.requireLegacy(connection)
             policy.requireOpen(session!!)
             val amount = policy.money(expense.amount, positive=true)
             if (expense.paymentMethod == PaymentMethod.UNKNOWN || expense.reason.isBlank() || expense.reason.length > 500 || expense.category.isBlank() || expense.category.length > 80)
@@ -96,12 +100,16 @@ class JdbcCashMutationCommands(private val source: DataSource) : CashMutationCom
     private fun audit(connection: Connection, staff: AuthenticatedStaff, event: CashAuditEventType, id: Long, reason: String?) =
         writer.insertAudit(connection,staff.id.value,event.name,"cash_session",id,detail=reason?.takeIf { it.isNotBlank() } ?: "own cash session")
     private fun <T> outcome(block: () -> T): CashMutationResult<T> = try { CashMutationResult.Applied(block()) }
+        catch (error: com.blackstore.domain.accounting.AccountingAdmissionException) {
+            CashMutationResult.Rejected(if (error.failure == com.blackstore.domain.accounting.AccountingCommandFailure.LegacyContractDisabled)
+                CashMutationFailure.LegacyContractDisabled else CashMutationFailure.Unavailable)
+        }
         catch (error: CashMutationException) { CashMutationResult.Rejected(error.failure,error.source) }
         catch (error: SQLException) { CashMutationResult.Rejected(CashMutationFailure.Unavailable) }
     private fun <T> transaction(block: (Connection) -> T): T = source.connection.use { connection ->
         connection.autoCommit=false
         connection.transactionIsolation=Connection.TRANSACTION_READ_COMMITTED
-        try { val result=block(connection);connection.commit();result }
+        try { lifecycle.lock(connection);val result=block(connection);connection.commit();result }
         catch (error: Exception) { connection.rollback();throw error }
     }
     private fun role(connection: Connection, role: RuntimeCashRole) { connection.createStatement().use { it.execute("SET LOCAL ROLE ${role.sqlName}") } }

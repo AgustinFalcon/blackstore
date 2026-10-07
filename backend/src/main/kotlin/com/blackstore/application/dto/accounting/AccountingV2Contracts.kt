@@ -70,7 +70,21 @@ data class AccountingCommandReceiptV2Response(
     val paymentId: Long? = null,
     val expenseId: Long? = null,
     val settlementId: Long? = null,
+    val closeSnapshot: CashCloseSnapshotV2Response? = null,
 )
+
+enum class ReconciliationOutcomeV2(@get:JsonValue val wire: String) {
+    Balanced("BALANCED"), Shortage("SHORTAGE"), Overage("OVERAGE"), Unavailable("UNAVAILABLE"), Unknown("UNKNOWN");
+    companion object { @JvmStatic @JsonCreator fun fromWire(value: String?): ReconciliationOutcomeV2 = entries.firstOrNull { it.wire == value } ?: Unknown }
+}
+
+enum class AccountingCoverageV2(@get:JsonValue val wire: String) {
+    CompleteFromOpening("COMPLETE_FROM_OPENING"), LegacyIncomplete("LEGACY_INCOMPLETE"), Unknown("UNKNOWN");
+    companion object { @JvmStatic @JsonCreator fun fromWire(value: String?): AccountingCoverageV2 = entries.firstOrNull { it.wire == value } ?: Unknown }
+}
+
+data class CashCloseSnapshotV2Response(val declaredCash: BigDecimal, val expectedCash: BigDecimal?, val difference: BigDecimal?,
+    val outcome: ReconciliationOutcomeV2, val coverage: AccountingCoverageV2, val cutoff: Instant, val localWatermark: Long, val accountingVersion: Int)
 
 object AccountingV2ResponseTranslator {
     fun rejected(failure: AccountingCommandFailure): AccountingCommandReceiptV2Response = AccountingCommandReceiptV2Response(
@@ -87,5 +101,8 @@ object AccountingV2ResponseTranslator {
     }
 
     private fun AccountingCommandReceipt.toResponse() = AccountingCommandReceiptV2Response(AccountingCommandOutcomeV2.Committed, commandId, ledgerEventIds, committedAt, null,
-        cashSessionId, paymentId, expenseId, settlementId)
+        cashSessionId, paymentId, expenseId, settlementId, closeSnapshot?.let {
+            CashCloseSnapshotV2Response(it.declaredCash, it.expectedCash, it.difference, ReconciliationOutcomeV2.fromWire(it.outcome.wire),
+                AccountingCoverageV2.fromWire(it.coverage.wire), it.cutoff, it.localWatermark, it.accountingVersion)
+        })
 }

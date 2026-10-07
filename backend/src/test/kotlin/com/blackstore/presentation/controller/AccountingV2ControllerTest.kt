@@ -31,6 +31,7 @@ class AccountingV2ControllerTest {
     @Test fun `post translators pass SID authority and UUID command to transaction port`() {
         val requests = listOf(
             "/api/v2/cash-sessions" to """{"commandId":"$id","terminalId":1,"cashierId":7,"openingCash":0}""",
+            "/api/v2/cash-sessions/2/close" to """{"commandId":"$id","cashSessionId":2,"declaredCash":0,"reason":"close shift"}""",
             "/api/v2/expenses" to """{"commandId":"$id","cashSessionId":2,"operation":"ACCRUE","category":"supplies","amount":10,"reason":"supplies"}""",
             "/api/v2/payments" to """{"commandId":"$id","clientInstanceId":"client","deviceId":"device","saleId":"sale","operationId":"operation","paymentMethod":"CASH","amount":10,"reason":"override"}""",
             "/api/v2/payments/3/reversals" to """{"commandId":"$id","clientInstanceId":"client","deviceId":"device","saleId":"sale","operationId":"operation","originalPaymentId":3,"reason":"reverse","evidenceRef":"evidence"}""",
@@ -45,7 +46,7 @@ class AccountingV2ControllerTest {
             assertEquals(AccountingCommandOutcomeV2.Committed.wire, mapper.readTree(response.contentAsString)["data"]["outcome"].asText())
             (port.lastCommand as? AccountingCommandDraft.PaymentCapture)?.let { assertEquals("override", it.reason) }
         }
-        assertEquals(4, port.executions)
+        assertEquals(5, port.executions)
     }
 
     @Test fun `bad UUID unknown method and reversal path mismatch do not execute`() {
@@ -54,6 +55,7 @@ class AccountingV2ControllerTest {
             """{"terminalId":1,"cashierId":7,"openingCash":0}""" to "/api/v2/cash-sessions",
             """{"commandId":"$id","clientInstanceId":"client","deviceId":"device","saleId":"sale","operationId":"operation","paymentMethod":"alien","amount":10}""" to "/api/v2/payments",
             """{"commandId":"$id","clientInstanceId":"client","deviceId":"device","saleId":"sale","operationId":"operation","originalPaymentId":3,"reason":"reverse","evidenceRef":"evidence"}""" to "/api/v2/payments/4/reversals",
+            """{"commandId":"$id","cashSessionId":2,"declaredCash":0,"reason":"close shift"}""" to "/api/v2/cash-sessions/3/close",
         )
         bodies.forEach { (body, path) ->
             assertEquals(400, mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body)
@@ -103,6 +105,21 @@ class AccountingV2ControllerTest {
         assertEquals(AccountingCommandResult.Unavailable, unavailable.receipt(staff, id))
         assertEquals(AccountingMutationOutcome.Rejected(AccountingCommandFailure.Unavailable),
             unavailable.execute(staff, AccountingCommandDraft.CashSessionOpen(id, 1, 7, java.math.BigDecimal.ZERO, null)))
+    }
+
+    @Test fun `close receipt publishes typed reconciliation and nullable legacy amounts`() {
+        val snapshot = CashCloseSnapshot(java.math.BigDecimal.TEN, null, null, ReconciliationOutcome.Unavailable,
+            AccountingCoverage.LegacyIncomplete, Instant.EPOCH, 0)
+        port.next = AccountingMutationOutcome.Applied(port.receipt.copy(kind = AccountingCommandKind.CASH_SESSION_CLOSE,
+            ledgerEventIds = emptyList(), closeSnapshot = snapshot))
+        val response = mvc.perform(post("/api/v2/cash-sessions/2/close").contentType(MediaType.APPLICATION_JSON)
+            .content("""{"commandId":"$id","cashSessionId":2,"declaredCash":10,"reason":"close shift"}""")
+            .requestAttr(StaffSessionFilter.SESSION_ATTRIBUTE, session)).andReturn().response
+        assertEquals(200, response.status)
+        val result = mapper.readTree(response.contentAsString)["data"]["closeSnapshot"]
+        assertEquals(com.blackstore.application.dto.accounting.ReconciliationOutcomeV2.Unavailable.wire, result["outcome"].asText())
+        assertEquals(com.blackstore.application.dto.accounting.AccountingCoverageV2.LegacyIncomplete.wire, result["coverage"].asText())
+        assertTrue(result["expectedCash"].isNull && result["difference"].isNull)
     }
 
     private class RecordingCommands : AccountingMutationCommands {

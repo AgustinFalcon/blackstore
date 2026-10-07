@@ -18,6 +18,7 @@ class StaffSessionFilterTest {
     @Test fun accountingV2RoutesHaveExactPermissionsWithoutOperationalBrowserEndpoints() {
         val routes = mapOf(
             "POST /api/v2/cash-sessions" to StaffPermission.CashSessionOpen,
+            "POST /api/v2/cash-sessions/1/close" to StaffPermission.CashSessionClose,
             "POST /api/v2/expenses" to StaffPermission.ExpenseRecord,
             "POST /api/v2/payments" to StaffPermission.PaymentCapture,
             "POST /api/v2/payments/3/reversals" to StaffPermission.PaymentReverse,
@@ -27,7 +28,7 @@ class StaffSessionFilterTest {
             assertEquals(permission, StaffHttpPermission.permission(method, path))
             assertFalse(StaffHttpPermission.public(permission))
         }
-        for (path in listOf("/api/v2/fees", "/api/v2/adjustments", "/api/v2/cash-sessions/1/close", "/api/v2/payments/1/reversals/extra"))
+        for (path in listOf("/api/v2/fees", "/api/v2/adjustments", "/api/v2/cash-sessions/1/close/extra", "/api/v2/payments/1/reversals/extra"))
             assertEquals(StaffPermission.Unknown, StaffHttpPermission.permission("POST", path))
         assertEquals(StaffPermission.Unknown, StaffHttpPermission.permission("POST", "/api/v2/accounting/commands/command"))
         val policy = StaffAuthorizationPolicy()
@@ -42,7 +43,7 @@ class StaffSessionFilterTest {
         val session = ResolvedStaffSession(AuthenticatedStaff(StaffUserId(1), "Operator", StaffRole.CASHIER),
             StaffSession("digest", StaffUserId(1), "csrf", now, now, now.plusSeconds(43200), null))
         Mockito.`when`(resolver.execute(token)).thenReturn(session)
-        for (path in listOf("/api/v2/cash-sessions", "/api/v2/expenses", "/api/v2/payments", "/api/v2/payments/3/reversals")) {
+        for (path in listOf("/api/v2/cash-sessions", "/api/v2/cash-sessions/1/close", "/api/v2/expenses", "/api/v2/payments", "/api/v2/payments/3/reversals")) {
             val request = MockHttpServletRequest("POST", path)
             request.setCookies(Cookie("__Host-blackstore-session", token))
             val response = MockHttpServletResponse(); var effects = 0
