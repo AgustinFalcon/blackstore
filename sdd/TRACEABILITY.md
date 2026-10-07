@@ -2,6 +2,8 @@
 
 ## Estado vigente — 2026-10-07
 
+Incremento local de aceptación (base checkout8fcff40): DCT-001..007 → frontend/e2e/dct/cash-browser-restart.spec.ts y denials.spec.ts, fixture PG16/JAR/Chromium y job dct-browser. Domain/application54 tests/11 suites y compileTestKotlin PASS; typechecks/discovery PASS. Browser/PG16 BLOCKED antes de assertions por Docker pipe; review/CI nuevos NOT_RUN, no heredan caab0a9. Evidencia DCT-browser-harness-20261007.md del WIP; no cierra T05/T06.
+
 El corte DCT está `merged_partial_acceptance`: PR #26 MERGED, head `caab0a9`,
 merge master `a9887a3`; CI PR `37634224683` y post-merge master `37634797108`
 verdes. Dos revisiones independientes GPT-6.1 Sol sobre el head exacto aprobaron

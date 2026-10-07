@@ -55,3 +55,46 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+  dct-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/master' }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build real backend JAR
+        working-directory: backend
+        run: bash ./gradlew bootJar --no-daemon --max-workers=2
+      - name: Install browser acceptance dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Typecheck browser acceptance
+        working-directory: frontend
+        run: npm run typecheck:dct
+      - name: Accept DCT with PostgreSQL 16 and real JAR restart
+        working-directory: frontend
+        run: npm run test:dct
+      - name: Preserve DCT results without traces or session data
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dct-browser-${{ github.sha }}
+          path: frontend/work/dct-browser-results/results.json
+          if-no-files-found: ignore
+          retention-days: 7

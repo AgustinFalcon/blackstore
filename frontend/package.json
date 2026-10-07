@@ -7,7 +7,9 @@
     "build": "ng build",
     "test": "ng test --watch=false --browsers=ChromeHeadless",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.spec.json",
-    "lint": "ng lint"
+    "lint": "ng lint",
+    "test:dct": "playwright test --config playwright.dct.config.ts",
+    "typecheck:dct": "tsc --noEmit -p tsconfig.dct.json"
   },
   "dependencies": {
     "@angular/animations": "22.2.1",
@@ -23,6 +25,11 @@
     "zone.js": "~0.15.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.15.6",
+    "bcryptjs": "3.0.3",
+    "pg": "8.16.3",
     "@angular/build": "22.2.1",
     "@angular/cli": "22.2.1",
     "@angular/compiler-cli": "22.2.1",
