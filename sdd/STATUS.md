@@ -1,5 +1,11 @@
 # Estado canónico del SDD — BlackStore
 
+DCT run amplio FINAL 2026-10-07: source posterior a residual actor/owner validado con151 tests/39 suites/0 failures/errors/skips (seis exclusiones Docker), BUILD SUCCESSFUL1m29. Enfocada20 PASS. Teardown main5020/5441/children/launcher PASS. Antecedente149 debajo reemplazado por151 final; no cambia gates PG16/browser/CI ni cierre global.
+
+DCT extensión residual 2026-10-07: actor durable inactivo/owner inelegible también auditados como autoridad; memoria y PG prueban una denegación independiente y cero mutación. Enfocada final20 PASS; teardown PID50428/5441 PASS. Amplia149 debajo corresponde al source previo a esta extensión, nueva review pendiente.
+
+Actualización DCT 2026-10-07: P2 exact-head `AUTHORIZATION_DENIED` restaurado con procedencia cerrada y auditoría fuera de la transacción rechazada, sin auditar conflictos ni validación común. Enfocada18/amplia nativa149 PASS (39 suites, cero fallos/errores/skips; seis exclusiones Docker); PostgreSQL PID65748/5441 y seis crash children apagados. Nueva review del source corregido, PG16, browser/UI y CI siguen pendientes. Evidencia `wip/20261006-durable-cash-transaction-boundary/evidence/DCT-authorization-denial-resolution.md`; sin cierre global.
+
 **Validado:** 2026-10-06
 **Madurez:** simulador local parcial; identidad, recovery durable, caja contable y E2E real pendientes. Companion live no aprobado.
 **Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `b9211764f525d723d020c780d4eb62564ffaadf6` (PR #23). CI post-merge `37398297188` verde. Sin tag ni publicación.

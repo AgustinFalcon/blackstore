@@ -21,7 +21,7 @@ class InMemoryCashMutationCommandsTest {
         val cash=InMemoryCashSessionStore()
         sessions.forEach { cash.save(it) }
         val commands=InMemoryCashMutationCommands(cash,InMemoryCounterEntryStore(),users)
-        assertEquals(CashMutationResult.Rejected(CashMutationFailure.NotVisible),
+        assertEquals(CashMutationResult.Rejected(CashMutationFailure.NotVisible,CashRejectionSource.Authorization),
             commands.open(staff,hidden.terminalId,staff.id.value,BigDecimal.ZERO,null,now))
         assertEquals(sessions,cash.list())
     }
@@ -36,5 +36,27 @@ class InMemoryCashMutationCommandsTest {
         assertEquals(CashMutationResult.Rejected(CashMutationFailure.Conflict),
             commands.open(staff,hidden.terminalId,staff.id.value,BigDecimal.ZERO,null,now))
         assertEquals(listOf(visible),cash.list())
+    }
+    @Test fun inactiveActorAndIneligibleOwnerHaveAuthorizationProvenanceAndIndependentAudit() {
+        for(inactiveActor in listOf(true,false)) {
+            val actor=if(inactiveActor) staff else staff.copy(role=StaffRole.OWNER)
+            val ownerId=if(inactiveActor) actor.id.value else 8L
+            val repository=object : StaffUserRepository {
+                override fun findByLogin(login: String): StaffUser?=null
+                override fun findById(id: StaffUserId)=StaffUser(id,"fixture","Fixture",if(id==actor.id) actor.role else StaffRole.AUDITOR,if(inactiveActor && id==actor.id) StaffAccountState.INACTIVE else StaffAccountState.ACTIVE,"fixture-only")
+            }
+            val cash=InMemoryCashSessionStore()
+            val events=mutableListOf<SecurityAuditEvent>()
+            val audit=object : SecurityAuditPort {
+                override fun record(event: SecurityAuditEvent,actor: StaffUserId?,target: StaffUserId?) { assertEquals(emptyList<CashSession>(),cash.list());events.add(event) }
+            }
+            val authorization=com.blackstore.application.identity.AuthorizeStaffAction(org.mockito.Mockito.mock(StaffOwnershipQuery::class.java),audit)
+            val application=com.blackstore.application.cash.CashSessionApplicationService(cash,authorization,InMemoryCashMutationCommands(cash,InMemoryCounterEntryStore(),repository))
+            val failure=org.junit.jupiter.api.assertThrows<CashMutationException> { application.open(actor,10,ownerId,BigDecimal.ZERO,"override") }
+            assertEquals(if(inactiveActor) CashMutationFailure.Forbidden else CashMutationFailure.NotVisible,failure.failure)
+            assertEquals(CashRejectionSource.Authorization,failure.source)
+            assertEquals(listOf(SecurityAuditEvent.AUTHORIZATION_DENIED),events)
+            assertEquals(emptyList<CashSession>(),cash.list())
+        }
     }
 }

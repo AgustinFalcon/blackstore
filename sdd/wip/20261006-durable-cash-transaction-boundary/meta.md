@@ -1,5 +1,9 @@
 # Frontera transaccional durable de caja
 
+Validación final actual 2026-10-07: amplia nativa151 PASS/39 suites/cero fallos/errores/skips sobre source posterior a residual actor/owner; enfocada20 PASS, seis exclusiones Docker. Teardown final5020/5441/children/launcher PASS. Reemplaza antecedente149, no cierra gates PG16/browser/CI/review global.
+
+Última extensión 2026-10-07: actor/owner sin autoridad también llevan procedencia Authorization (paridad con eligibleCashier anterior); enfocada final20 PASS, teardown PID50428/5441 PASS. Amplia149 es antecedente anterior a esta extensión; nueva review/CI/browser/PG16 pendientes.
+
 - Feature: `durable-cash-transaction-boundary`.
 - Fecha: 2026-10-06. Idioma: español.
 - Branch: `fix/durable-cash-transaction-boundary`.
@@ -13,3 +17,5 @@
 - Gates: Implementation `PARTIAL` (backend PASS, UI typecheck PASS; UI build/tests BLOCKED); Integration `BLOCKED` (PG18 local/crash PASS, browser BLOCKED, PG16 pendiente); Review implementación `FAIL` (dos P2 informados, corregidos; nueva revisión pendiente; diseño APPROVED); Homologation `BLOCKED`; Publication `NOT_RUN`.
 
 Objetivo: apertura/cierre con auditoría atómicos y egresos serializados con cierre mediante PostgreSQL. Libro de caja, arqueo, fórmulas de reportes, StoreCore live y fiscal permanecen pendientes fuera de este corte. No `/sdd.finish`.
+
+Actualización exact-head 2026-10-07: P2 AUTHORIZATION_DENIED corregido con procedencia cerrada y escritura independiente del comando rechazado. Enfocada18/amplia nativa149 PASS; teardown PID65748/5441 PASS. Nueva review del source corregido pendiente; no supersede gates browser/UI/PG16/CI ni aprobación global. Evidencia `evidence/DCT-authorization-denial-resolution.md`.

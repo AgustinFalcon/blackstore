@@ -1,10 +1,17 @@
 package com.blackstore.application.identity
 
 import com.blackstore.domain.identity.*
+import com.blackstore.domain.cash.CashMutationResult
+import com.blackstore.domain.cash.CashRejectionSource
 import com.blackstore.domain.model.OperationQuadruple
 
 class AuthorizeStaffAction(private val ownership: StaffOwnershipQuery, private val audit: SecurityAuditPort) {
     private val policy=StaffAuthorizationPolicy()
+    /** Commands return only after rollback/connection release; denial audit is an independent write. */
+    fun recordCashDenial(staff: AuthenticatedStaff, result: CashMutationResult<*>) {
+        if (result is CashMutationResult.Rejected && result.source == CashRejectionSource.Authorization)
+            audit.record(SecurityAuditEvent.AUTHORIZATION_DENIED, staff.id)
+    }
     fun reserve(staff: AuthenticatedStaff, identity: OperationQuadruple, submittedCashId: Long, existingCashId: Long?, reason: String?) {
         cash(staff,StaffPermission.SaleReserve,submittedCashId,reason)
         val persisted = ownership.sale(identity)

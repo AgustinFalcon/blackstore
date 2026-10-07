@@ -45,6 +45,10 @@ Validar y normalizar `BigDecimal` antes de JDBC, incluida entrada interna fuera 
 
 ## Schema, migración y rollback
 
+### Procedencia cerrada de denegaciones
+
+`CashMutationResult.Rejected` y su excepción conservan `CashRejectionSource` (`Mutation` por defecto seguro, `Authorization` desde `CashMutationPolicy.authorize` o revalidación durable de actor/owner). Ambos adapters propagan esa procedencia después del rollback y cierre de conexión; los blockers ocultos detectados por la misma política también se marcan. Un lookup inconcluso, validación monetaria/categoría/método/motivo largo, conflicto de estado o fallo DB no se transforma en denegación de autorización. Application llama `AuthorizeStaffAction.recordCashDenial` después de recibir el resultado y antes de lanzar el fallo HTTP: escribe una sola `AUTHORIZATION_DENIED` independiente para ownership/permiso/motivo de override, sin evento de éxito ni mutación parcial. Se mantienen 404 oculto, 400 de override y 409 visible. No auditoría de denegación para Conflict/Unavailable o validación común.
+
 **Decisión DCT-ADR-01: no crear migración.** Este corte utiliza tablas, columnas, índice parcial, secuencias y grants de V1–V7; atomicidad y locks no necesitan versión de fila, ledger ni tabla de comandos. No editar migraciones aplicadas. Validar Flyway desde DB nueva y DB V7 poblada, preservando datos y restricciones. Si aparece necesidad de schema, requiere cambio explícito de SDD y nueva migración forward-only antes del código; no reservar una V8 vacía.
 
 Rollback de implementación: revertir únicamente commits del corte, preservando todas las filas y auditorías escritas; no rollback SQL ni reset. Volver al binario anterior reintroduce la brecha original: detener escrituras de caja/egresos hasta aplicar corrección verificada. Para fallo durante un comando, rollback de transacción y cierre de conexión; ante commit incierto consultar DB y no repetir automáticamente egreso. No borrar historia ni inventar auditorías retrospectivas de filas previas.

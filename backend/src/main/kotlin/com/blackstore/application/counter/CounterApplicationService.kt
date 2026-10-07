@@ -45,7 +45,9 @@ class CounterApplicationService(
     }
     fun addExpense(staff: AuthenticatedStaff, cashSessionId: Long, category: String, amount: BigDecimal, reason: String, method: PaymentMethod): ExpenseRecord {
         val commands = cashMutations ?: throw com.blackstore.domain.cash.CashMutationException(com.blackstore.domain.cash.CashMutationFailure.Unavailable)
-        return commands.expense(staff,ExpenseRecord(0,cashSessionId,category,amount,reason,method,staff.id.value,Instant.now())).recordOrThrow()
+        val result = commands.expense(staff,ExpenseRecord(0,cashSessionId,category,amount,reason,method,staff.id.value,Instant.now()))
+        authority().recordCashDenial(staff,result)
+        return result.recordOrThrow()
     }
     fun shiftReport(staff: AuthenticatedStaff): ShiftReport { authority().permission(staff,StaffPermission.ShiftReportRead); return shiftReport() }
     fun dailyReport(staff: AuthenticatedStaff): ShiftReport { authority().permission(staff,StaffPermission.DailyReportRead); return dailyReport() }

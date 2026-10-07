@@ -37,7 +37,7 @@ class DurableCashPostgresTest {
     private fun open(f: Fixture)=commands().open(f.staff,f.terminal,f.staff.id.value,BigDecimal.ZERO,null,now).recordOrThrow()
     private fun expense(f: Fixture, cash: CashSession)=ExpenseRecord(987654,cash.id,"supplies",BigDecimal("1.23"),"supplies expense",PaymentMethod.CASH,f.staff.id.value,now)
     private fun count(sql: String): Long=admin().connection.use { c ->c.createStatement().executeQuery(sql).use { r ->r.next();r.getLong(1) } }
-    private fun rejected(result: CashMutationResult<*>, failure: CashMutationFailure) = assertEquals(CashMutationResult.Rejected(failure),result)
+    private fun rejected(result: CashMutationResult<*>, failure: CashMutationFailure, source: CashRejectionSource = CashRejectionSource.Mutation) = assertEquals(CashMutationResult.Rejected(failure,source),result)
 
     @Test fun lifecycleHasGeneratedIdentityAndCompleteAuditsAcrossNewAdapters() {
         val f=fixture();val cash=open(f)
@@ -97,23 +97,23 @@ class DurableCashPostgresTest {
     @Test fun visibilityAndExistingUniqueIndexesNeverDiscloseAnotherCashier() {
         val own=fixture();val other=fixture();val cash=open(own)
         rejected(commands().open(own.staff,other.terminal,own.staff.id.value,BigDecimal.ZERO,null,now),CashMutationFailure.Conflict)
-        rejected(commands().open(other.staff,own.terminal,other.staff.id.value,BigDecimal.ZERO,null,now),CashMutationFailure.NotVisible)
-        rejected(commands().close(other.staff,cash.id,BigDecimal.ZERO,null,now),CashMutationFailure.NotVisible)
+        rejected(commands().open(other.staff,own.terminal,other.staff.id.value,BigDecimal.ZERO,null,now),CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
+        rejected(commands().close(other.staff,cash.id,BigDecimal.ZERO,null,now),CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
         commands().close(own.staff,cash.id,BigDecimal.ZERO,null,now).recordOrThrow()
-        rejected(commands().expense(other.staff,expense(other,cash)),CashMutationFailure.NotVisible)
-        rejected(commands().close(other.staff,Long.MAX_VALUE,BigDecimal.ZERO,null,now),CashMutationFailure.NotVisible)
+        rejected(commands().expense(other.staff,expense(other,cash)),CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
+        rejected(commands().close(other.staff,Long.MAX_VALUE,BigDecimal.ZERO,null,now),CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
         val owner=fixture(StaffRole.OWNER)
-        rejected(commands().close(owner.staff,cash.id,BigDecimal.ZERO,null,now),CashMutationFailure.Validation)
+        rejected(commands().close(owner.staff,cash.id,BigDecimal.ZERO,null,now),CashMutationFailure.Validation,CashRejectionSource.Authorization)
         rejected(commands().close(owner.staff,cash.id,BigDecimal.ZERO,"override",now),CashMutationFailure.Conflict)
         val auditor=fixture(StaffRole.AUDITOR)
-        rejected(commands().close(auditor.staff,cash.id,BigDecimal.ZERO,"override",now),CashMutationFailure.Forbidden)
+        rejected(commands().close(auditor.staff,cash.id,BigDecimal.ZERO,"override",now),CashMutationFailure.Forbidden,CashRejectionSource.Authorization)
     }
     @Test fun dualBlockersMatchMemoryVisibilityInBothInsertionOrders() {
         for(visibleFirst in listOf(true,false)) {
             val own=fixture();val other=fixture()
             val ordered=if(visibleFirst) listOf(own,other) else listOf(other,own)
             val sessions=ordered.map { open(it) }
-            rejected(commands().open(own.staff,other.terminal,own.staff.id.value,BigDecimal.ZERO,null,now),CashMutationFailure.NotVisible)
+            rejected(commands().open(own.staff,other.terminal,own.staff.id.value,BigDecimal.ZERO,null,now),CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
             val ids=sessions.joinToString(",") { it.id.toString() }
             assertEquals(2,count("SELECT count(*) FROM cash_session_projection WHERE id IN ($ids)"))
             assertEquals(2,count("SELECT count(*) FROM audit_events WHERE aggregate_type='cash_session' AND aggregate_id IN ($ids)"))
@@ -157,7 +157,7 @@ class DurableCashPostgresTest {
     @Test fun durableRoleAndExactMoneyAreRevalidatedRatherThanTrustingRequestSnapshot() {
         val f=fixture();val cash=open(f)
         admin().connection.use { c ->c.createStatement().execute("UPDATE staff_users SET role_code='AUDITOR' WHERE id=${f.staff.id.value}") }
-        rejected(commands().close(f.staff,cash.id,BigDecimal.ZERO,null,now),CashMutationFailure.Forbidden)
+        rejected(commands().close(f.staff,cash.id,BigDecimal.ZERO,null,now),CashMutationFailure.Forbidden,CashRejectionSource.Authorization)
         admin().connection.use { c ->c.createStatement().execute("UPDATE staff_users SET role_code='CASHIER' WHERE id=${f.staff.id.value}") }
         rejected(commands().close(f.staff,cash.id,BigDecimal("0.001"),null,now),CashMutationFailure.Validation)
         rejected(commands().expense(f.staff,expense(f,cash).copy(paymentMethod=PaymentMethod.UNKNOWN)),CashMutationFailure.Validation)
@@ -199,7 +199,7 @@ class DurableCashPostgresTest {
                 // The request already waited for the cash lock; revalidation must see this role change.
                 admin().connection.use { c ->c.createStatement().execute("UPDATE staff_users SET role_code='AUDITOR' WHERE id=${f.staff.id.value}") }
                 first.rollback()
-                rejected(follower.get(10,TimeUnit.SECONDS),CashMutationFailure.Forbidden)
+                rejected(follower.get(10,TimeUnit.SECONDS),CashMutationFailure.Forbidden,CashRejectionSource.Authorization)
                 assertEquals(0,count("SELECT count(*) FROM expenses WHERE cash_session_id=${cash.id}"))
             } finally { first.rollback();pool.shutdownNow() }
         }

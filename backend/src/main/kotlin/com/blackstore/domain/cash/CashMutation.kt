@@ -12,13 +12,14 @@ enum class CashMutationFailure(val status: Int, val code: String, val label: Str
     Unavailable(503, "PERSISTENCE_UNAVAILABLE", "Service unavailable"),
     Unknown(403, "FORBIDDEN", "Staff operation denied");
 }
-class CashMutationException(val failure: CashMutationFailure) : RuntimeException(failure.label)
+enum class CashRejectionSource { Mutation, Authorization }
+class CashMutationException(val failure: CashMutationFailure, val source: CashRejectionSource = CashRejectionSource.Mutation) : RuntimeException(failure.label)
 sealed class CashMutationResult<out T> {
     data class Applied<T>(val record: T) : CashMutationResult<T>()
-    data class Rejected(val failure: CashMutationFailure) : CashMutationResult<Nothing>()
+    data class Rejected(val failure: CashMutationFailure, val source: CashRejectionSource = CashRejectionSource.Mutation) : CashMutationResult<Nothing>()
     fun recordOrThrow(): T = when (this) {
         is Applied -> record
-        is Rejected -> throw CashMutationException(failure)
+        is Rejected -> throw CashMutationException(failure, source)
     }
 }
 

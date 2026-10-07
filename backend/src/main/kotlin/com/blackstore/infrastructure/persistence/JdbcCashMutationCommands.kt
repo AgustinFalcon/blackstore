@@ -44,8 +44,10 @@ class JdbcCashMutationCommands(private val source: DataSource) : CashMutationCom
                 role(connection, RuntimeCashRole.Application)
                 val actor = authority.actor(connection, staff.id)
                 val blocking = sessions.blocking(connection, terminalId, cashierId)
-                if (blocking.isEmpty() || blocking.any { policy.authorize(actor,StaffPermission.CashSessionOpen,it,reason) == CashMutationFailure.NotVisible })
+                if (blocking.isEmpty())
                     throw CashMutationException(CashMutationFailure.NotVisible)
+                if (blocking.any { policy.authorize(actor,StaffPermission.CashSessionOpen,it,reason) == CashMutationFailure.NotVisible })
+                    throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
                 blocking.forEach { authorize(actor,StaffPermission.CashSessionOpen,it,reason) }
                 throw CashMutationException(CashMutationFailure.Conflict)
             }
@@ -88,13 +90,13 @@ class JdbcCashMutationCommands(private val source: DataSource) : CashMutationCom
     }
 
     private fun authorize(staff: AuthenticatedStaff, permission: StaffPermission, session: CashSession?, reason: String?) {
-        policy.authorize(staff,permission,session,reason)?.let { throw CashMutationException(it) }
+        policy.authorize(staff,permission,session,reason)?.let { throw CashMutationException(it,CashRejectionSource.Authorization) }
         if (reason != null && reason.length > 500) throw CashMutationException(CashMutationFailure.Validation)
     }
     private fun audit(connection: Connection, staff: AuthenticatedStaff, event: CashAuditEventType, id: Long, reason: String?) =
         writer.insertAudit(connection,staff.id.value,event.name,"cash_session",id,detail=reason?.takeIf { it.isNotBlank() } ?: "own cash session")
     private fun <T> outcome(block: () -> T): CashMutationResult<T> = try { CashMutationResult.Applied(block()) }
-        catch (error: CashMutationException) { CashMutationResult.Rejected(error.failure) }
+        catch (error: CashMutationException) { CashMutationResult.Rejected(error.failure,error.source) }
         catch (error: SQLException) { CashMutationResult.Rejected(CashMutationFailure.Unavailable) }
     private fun <T> transaction(block: (Connection) -> T): T = source.connection.use { connection ->
         connection.autoCommit=false
@@ -119,10 +121,10 @@ private class LoadLockedCashSession {
 }
 
 private class LoadCashAuthority {
-    fun actor(connection: Connection, id: StaffUserId): AuthenticatedStaff = user(connection,id) ?: throw CashMutationException(CashMutationFailure.Forbidden)
+    fun actor(connection: Connection, id: StaffUserId): AuthenticatedStaff = user(connection,id) ?: throw CashMutationException(CashMutationFailure.Forbidden,CashRejectionSource.Authorization)
     fun eligibleOwner(connection: Connection, id: StaffUserId) {
-        val owner=user(connection,id) ?: throw CashMutationException(CashMutationFailure.NotVisible)
-        if (!StaffAuthorizationPolicy().permits(owner.role,StaffPermission.CashSessionOpen)) throw CashMutationException(CashMutationFailure.NotVisible)
+        val owner=user(connection,id) ?: throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
+        if (!StaffAuthorizationPolicy().permits(owner.role,StaffPermission.CashSessionOpen)) throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
     }
     private fun user(connection: Connection, id: StaffUserId): AuthenticatedStaff? = connection.prepareStatement("SELECT display_name,role_code,active FROM staff_users WHERE id=?").use { statement ->
         statement.setLong(1,id.value);statement.executeQuery().use { rows ->

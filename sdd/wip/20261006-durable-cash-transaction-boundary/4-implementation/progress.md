@@ -1,5 +1,17 @@
 # Progreso
 
+## 2026-10-07 — amplia nativa FINAL del source residual
+
+Sin cambio de producción: suite amplia nativa compatible repetida sobre actor/owner Authorization actuales. BUILD SUCCESSFUL1m29; 151 tests/39 suites/0 failures/errors/skips. Mismas seis exclusiones Docker declaradas; PG18, no certificación PG16/browser/CI. Enfocada20 PASS. Teardown main5020, listener5441, seis crash children y launcher PASS después del completion explícito; no backend/frontend/browser. Evidencia DCT-authorization-denial-resolution.md. Amplia149 queda antecedente, reemplazada por151 sobre source final; review/CI/gates globales pendientes, no commit/push.
+
+## 2026-10-07 — procedencia de autoridad durable completada
+
+Revisión residual confirmó que actor inactivo/missing y owner inactivo/missing/rol inelegible son denegaciones de autoridad: el open anterior auditaba eligibleCashier=false. Marcados Authorization en ambos adapters, con tests nuevos memory/PG application (una denegación independiente por actor, cero caja/success audit, igualdad exacta). Enfocada final20 PASS/0 failures/errors/skips BUILD SUCCESSFUL1m55. Amplia149 del source previo conservada como antecedente, no rerun de este incremento solicitado enfocado. Teardown PID50428/5441 y seis hijos PASS; nueva review pendiente, sin commit/push. Ver evidence/DCT-authorization-denial-resolution.md.
+
+## 2026-10-07 — P2 exact-head AUTHORIZATION_DENIED restaurado
+
+Procedencia cerrada `CashRejectionSource` default Mutation, Authorization desde policy.authorize y revalidación de actor/owner en adapters JDBC/memory; application registra denegación independiente después de rollback/retorno antes del fallo HTTP. No marca validación común, Conflict/Unavailable; preserva 404/409 y éxito atómico. Unit/provenance + resultados existentes con igualdad exacta + MockMvc/PG caja ajena/override/permiso y cardinalidades. Enfocada 18 PASS; amplia nativa compatible 149 PASS/39 suites/0 failures/errors/skips, BUILD SUCCESSFUL 1m28. Primera enfocada 17 PASS/1 FAIL por expectation de auditor HTTP (filtro previo), conservada con disposición; se agregó prueba application sin relajar asserts HTTP. Evidencia `evidence/DCT-authorization-denial-resolution.md`. Seis clases Docker excluidas, PG16/browser/CI pendientes; nueva review de corrección pendiente. PostgreSQL PID65748 detenido tras completion explícita; pg_ctl sin servidor, pg_isready5441 sin respuesta, no backend/frontend/browser iniciados. Sin commit/push.
+
 ## 2026-10-07 — dos P2 corregidos, regresión y teardown
 
 Reemplazado escape JSON manual de auditoría por Jackson; prueba PG real conserva newline/tab/control/comillas/barra y verifica egreso/auditoría exactamente una vez con payload válido. Memoria ahora considera todos los blockers antes de revelar Conflict: cualquier oculto produce NotVisible, independiente del orden. Tres tests memory y paridad PG en ambos órdenes.

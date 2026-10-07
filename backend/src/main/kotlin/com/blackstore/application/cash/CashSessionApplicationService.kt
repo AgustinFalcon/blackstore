@@ -19,9 +19,13 @@ class CashSessionApplicationService(
         return store.list().filter { staff.role != StaffRole.CASHIER || it.cashierId == staff.id.value }
     }
     fun open(staff: AuthenticatedStaff, terminalId: Long, cashierId: Long, openingCash: BigDecimal, reason: String?): CashSession {
-        return mutations.open(staff,terminalId,cashierId,openingCash,reason).recordOrThrow()
+        val result = mutations.open(staff,terminalId,cashierId,openingCash,reason)
+        authorization.recordCashDenial(staff,result)
+        return result.recordOrThrow()
     }
     fun close(staff: AuthenticatedStaff, sessionId: Long, declared: BigDecimal, reason: String): CashSession {
-        return mutations.close(staff,sessionId,declared,reason).recordOrThrow()
+        val result = mutations.close(staff,sessionId,declared,reason)
+        authorization.recordCashDenial(staff,result)
+        return result.recordOrThrow()
     }
 }

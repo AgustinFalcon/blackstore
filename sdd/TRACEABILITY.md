@@ -1,5 +1,11 @@
 # RTM — `blackstore-pilot`
 
+DCT validación source final post-residual: amplia nativa151 PASS/39 suites/cero failures/errors/skips y enfocada20 PASS, mismas seis exclusiones Docker. Teardown5020/5441/children/launcher PASS; evidencia DCT-authorization-denial-resolution.md. Reemplaza amplia149 antecedente; no satisface PG16/browser/CI.
+
+DCT-004 residual → LoadCashAuthority.actor/eligibleOwner y equivalentes memory con Authorization; pruebas actor inactivo/owner inelegible en InMemoryCashMutationCommandsTest y CashMutationHttpPostgresTest. Enfocada final20 PASS, teardown50428/5441 PASS; amplia149 antecedente previo, revisión nueva pendiente.
+
+Corrección DCT exact-head 2026-10-07: DCT-004/005 → `CashRejectionSource` + adapters + `AuthorizeStaffAction.recordCashDenial` en application cash/counter. Regresiones `CashDenialAuditTest` y `CashMutationHttpPostgresTest`: ownership404, override400, permiso application403, auditoría independiente exacta y cero denegaciones para validación común/conflicto; asserts PG/memory de procedencia preservados. Enfocada18/amplia nativa149 PASS y teardown PASS, evidencia `DCT-authorization-denial-resolution.md`. Review nueva, browser/PG16/CI pendientes; T02–T06 no cerradas.
+
 **Estado:** `ready_for_sol_review`; no approved. El RTM `blackstore-pos-core-v1.0.0` es histórico.
 
 | Capacidad | Tarea | Gate |

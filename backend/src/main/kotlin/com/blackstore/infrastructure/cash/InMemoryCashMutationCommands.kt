@@ -23,10 +23,10 @@ class InMemoryCashMutationCommands(private val cash: InMemoryCashSessionStore, p
         val candidate=CashSession(0,terminalId,cashierId,now,policy.money(amount))
         authorize(actor,StaffPermission.CashSessionOpen,candidate,reason)
         val owner=users.findById(StaffUserId(cashierId))
-        if(owner?.state != StaffAccountState.ACTIVE || !StaffAuthorizationPolicy().permits(owner.role,StaffPermission.CashSessionOpen)) throw CashMutationException(CashMutationFailure.NotVisible)
+        if(owner?.state != StaffAccountState.ACTIVE || !StaffAuthorizationPolicy().permits(owner.role,StaffPermission.CashSessionOpen)) throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
         val blockers=cash.list().filter { it.status==CashSessionStatus.OPEN && (it.terminalId==terminalId || it.cashierId==cashierId) }
         if(blockers.any { policy.authorize(actor,StaffPermission.CashSessionOpen,it,reason)==CashMutationFailure.NotVisible })
-            throw CashMutationException(CashMutationFailure.NotVisible)
+            throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
         if(blockers.isNotEmpty()) {
             blockers.forEach { authorize(actor,StaffPermission.CashSessionOpen,it,reason) }
             throw CashMutationException(CashMutationFailure.Conflict)
@@ -58,14 +58,14 @@ class InMemoryCashMutationCommands(private val cash: InMemoryCashSessionStore, p
     }
     private fun actor(staff: AuthenticatedStaff): AuthenticatedStaff {
         val user=users.findById(staff.id)
-        if(user?.state != StaffAccountState.ACTIVE) throw CashMutationException(CashMutationFailure.Forbidden)
+        if(user?.state != StaffAccountState.ACTIVE) throw CashMutationException(CashMutationFailure.Forbidden,CashRejectionSource.Authorization)
         return AuthenticatedStaff(user.id,user.displayName,user.role)
     }
     private fun authorize(staff: AuthenticatedStaff, permission: StaffPermission, session: CashSession?, reason: String?) {
-        policy.authorize(staff,permission,session,reason)?.let { throw CashMutationException(it) }
+        policy.authorize(staff,permission,session,reason)?.let { throw CashMutationException(it,CashRejectionSource.Authorization) }
         if(reason != null && reason.length>500) throw CashMutationException(CashMutationFailure.Validation)
     }
     private fun <T> command(action: () -> T): CashMutationResult<T> = synchronized(this) {
-        try { CashMutationResult.Applied(cash.atomic { counter.atomicExpenses(action) }) } catch (error: CashMutationException) { CashMutationResult.Rejected(error.failure) }
+        try { CashMutationResult.Applied(cash.atomic { counter.atomicExpenses(action) }) } catch (error: CashMutationException) { CashMutationResult.Rejected(error.failure,error.source) }
     }
 }
