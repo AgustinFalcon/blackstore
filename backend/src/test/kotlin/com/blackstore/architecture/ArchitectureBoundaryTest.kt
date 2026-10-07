@@ -35,6 +35,17 @@ class ArchitectureBoundaryTest {
     }
 
     @Test
+    fun accountingDomainHasNoDatabaseHttpOrFrameworkTypes() {
+        noClasses()
+            .that().resideInAnyPackage("..domain.accounting..", "..domain.reports..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                "org.springframework..", "java.sql..", "javax.sql..", "java.net.http..",
+                "jakarta.persistence..", "com.fasterxml.jackson..",
+            )
+            .check(imported)
+    }
+
+    @Test
     fun presentationMustNotDependOnInfrastructurePersistence() {
         noClasses()
             .that().resideInAPackage("..presentation..")
