@@ -45,6 +45,10 @@ Validar y normalizar `BigDecimal` antes de JDBC, incluida entrada interna fuera 
 
 ## Schema, migración y rollback
 
+### Elegibilidad de titular distinta del permiso del actor
+
+Apertura exige titular existente, ACTIVE y exactamente `StaffRole.CASHIER`; SUPERVISOR/OWNER no son titulares elegibles aunque puedan actuar con permiso CashSessionOpen y motivo override sobre un cajero elegible. JDBC revalida active/rol y memory aplica la misma frontera. Titular missing/inactivo/rol distinto devuelve NotVisible/Authorization → 404 opaco y una denegación independiente; cero caja/success audit. Esto conserva el contrato anterior de `JdbcStaffIdentity.eligibleCashier` (active y role_code CASHIER), sin confundir permiso global del actor con tipo de titular.
+
 ### Procedencia cerrada de denegaciones
 
 `CashMutationResult.Rejected` y su excepción conservan `CashRejectionSource` (`Mutation` por defecto seguro, `Authorization` desde `CashMutationPolicy.authorize` o revalidación durable de actor/owner). Ambos adapters propagan esa procedencia después del rollback y cierre de conexión; los blockers ocultos detectados por la misma política también se marcan. Un lookup inconcluso, validación monetaria/categoría/método/motivo largo, conflicto de estado o fallo DB no se transforma en denegación de autorización. Application llama `AuthorizeStaffAction.recordCashDenial` después de recibir el resultado y antes de lanzar el fallo HTTP: escribe una sola `AUTHORIZATION_DENIED` independiente para ownership/permiso/motivo de override, sin evento de éxito ni mutación parcial. Se mantienen 404 oculto, 400 de override y 409 visible. No auditoría de denegación para Conflict/Unavailable o validación común.

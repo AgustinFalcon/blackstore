@@ -124,7 +124,7 @@ private class LoadCashAuthority {
     fun actor(connection: Connection, id: StaffUserId): AuthenticatedStaff = user(connection,id) ?: throw CashMutationException(CashMutationFailure.Forbidden,CashRejectionSource.Authorization)
     fun eligibleOwner(connection: Connection, id: StaffUserId) {
         val owner=user(connection,id) ?: throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
-        if (!StaffAuthorizationPolicy().permits(owner.role,StaffPermission.CashSessionOpen)) throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
+        if (owner.role != StaffRole.CASHIER) throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
     }
     private fun user(connection: Connection, id: StaffUserId): AuthenticatedStaff? = connection.prepareStatement("SELECT display_name,role_code,active FROM staff_users WHERE id=?").use { statement ->
         statement.setLong(1,id.value);statement.executeQuery().use { rows ->

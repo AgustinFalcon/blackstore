@@ -1,5 +1,7 @@
 # Estado canónico del SDD — BlackStore
 
+DCT último P2 Security 2026-10-07: titular exige ACTIVE y exactamente CASHIER; actor supervisory conserva permiso. Enfocada22/amplia FINAL153 PASS/39 suites/cero failures/errors/skips sobre post-fix, seis exclusiones Docker. Teardown75632/5441/children/launcher PASS; reemplaza151 antecedente. Nueva review/PG16/browser/CI siguen pendientes, sin cierre global.
+
 DCT run amplio FINAL 2026-10-07: source posterior a residual actor/owner validado con151 tests/39 suites/0 failures/errors/skips (seis exclusiones Docker), BUILD SUCCESSFUL1m29. Enfocada20 PASS. Teardown main5020/5441/children/launcher PASS. Antecedente149 debajo reemplazado por151 final; no cambia gates PG16/browser/CI ni cierre global.
 
 DCT extensión residual 2026-10-07: actor durable inactivo/owner inelegible también auditados como autoridad; memoria y PG prueban una denegación independiente y cero mutación. Enfocada final20 PASS; teardown PID50428/5441 PASS. Amplia149 debajo corresponde al source previo a esta extensión, nueva review pendiente.

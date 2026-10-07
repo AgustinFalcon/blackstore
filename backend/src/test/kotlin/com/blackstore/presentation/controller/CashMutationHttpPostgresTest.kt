@@ -120,6 +120,26 @@ class CashMutationHttpPostgresTest {
             c.createStatement().executeQuery("SELECT count(*) FROM cash_session_projection WHERE terminal_id IN (${actor.terminal},${owner.terminal})").use { r ->r.next();assertEquals(0,r.getLong(1)) }
         }
     }
+    @Test fun supervisorOwnerInactiveAndMissingTargetsHaveOpaque404AndOneIndependentDenial() {
+        for(role in listOf(StaffRole.SUPERVISOR,StaffRole.OWNER,StaffRole.CASHIER,null)) {
+            val actor=login(StaffRole.OWNER)
+            val target=role?.let { login(it) }
+            if(role==StaffRole.CASHIER) source.connection.use { c ->c.createStatement().execute("UPDATE staff_users SET active=false WHERE id=${target!!.id}") }
+            val response=post(actor,"/api/v1/cash-sessions",mapOf("terminalId" to actor.terminal,"cashierId" to (target?.id ?: Long.MAX_VALUE),"openingCash" to 0,"reason" to "override"))
+            assertError(response,404,"NOT_FOUND")
+            assertEquals("Staff operation denied",mapper.readTree(response.contentAsString)["message"].asText())
+            source.connection.use { c ->
+                c.createStatement().executeQuery("SELECT count(*) FROM audit_events WHERE actor_id=${actor.id} AND event_type='AUTHORIZATION_DENIED'").use { r ->r.next();assertEquals(1,r.getLong(1)) }
+                c.createStatement().executeQuery("SELECT count(*) FROM audit_events WHERE actor_id=${actor.id} AND event_type IN ('CASH_SESSION_OPENED','CASH_SESSION_CLOSED','EXPENSE_RECORDED')").use { r ->r.next();assertEquals(0,r.getLong(1)) }
+                c.createStatement().executeQuery("SELECT count(*) FROM cash_session_projection WHERE terminal_id=${actor.terminal}").use { r ->r.next();assertEquals(0,r.getLong(1)) }
+            }
+        }
+        // A supervisory actor may open for an eligible cashier, but cannot become the target implicitly.
+        for(role in listOf(StaffRole.SUPERVISOR,StaffRole.OWNER)) {
+            val actor=login(role);val target=login(StaffRole.CASHIER)
+            assertEquals(200,post(actor,"/api/v1/cash-sessions",mapOf("terminalId" to actor.terminal,"cashierId" to target.id,"openingCash" to 0,"reason" to "override")).status)
+        }
+    }
     companion object {
         private val native=System.getenv("DCT_TEST_JDBC_URL")
         private val container by lazy { PostgreSQLContainer<Nothing>("postgres:16-alpine").apply { start() } }

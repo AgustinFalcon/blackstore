@@ -1,5 +1,13 @@
 # P2 exact-head — auditoría de denegación de autorización
 
+## P2 Security exact-head — titular CASHIER estricto
+
+Finding confirmado: usar permits(CashSessionOpen) para eligibleOwner admitía SUPERVISOR/OWNER como titulares, distinto de `JdbcStaffIdentity.eligibleCashier` anterior (active y role_code CASHIER). Corregido JDBC/memory: titular ACTIVE y rol exactamente StaffRole.CASHIER; permiso del actor se mantiene separado. Rechazos source Authorization, NotVisible/404 opaco y auditoría independiente única; no schema/grants nuevos.
+
+Regresiones nuevas memory y HTTP/JDBC/PG: targets SUPERVISOR, OWNER, CASHIER inactivo y missing → una denegación, cero caja/success audit, mensaje genérico y procedencia exacta en memoria. HTTP positivos prueban SUPERVISOR/OWNER actuando sobre CASHIER ACTIVE con override (200), sin reducir permiso de actor.
+
+Validación final source CASHIER estricto: enfocada22 PASS, BUILD SUCCESSFUL1m58; amplia nativa compatible153 PASS/39 suites/0 failures/errors/skips, BUILD SUCCESSFUL1m33. Mismas seis exclusiones Docker declaradas abajo; PG18 real, no claim PG16/browser/CI. Amplia151 queda antecedente previo, sustituida por153 post-fix. XML en work/dct-runtime/build/test-results/test. Teardown después de completion explícita: pg_ctl fast server stopped, pg_ctl status no server running, pg_isready5441 no response; main75632 y children78824/27488/45148/80348/74232/8216 ausentes, listener5441 ausente, launcher exit0. Sin backend/frontend/browser ni commit/push. Review del source corregido pendiente.
+
 ## Suite amplia FINAL sobre source posterior a corrección residual
 
 2026-10-07: ejecutado nuevamente test amplio nativo compatible sobre source actual (incluye actor/owner sin autoridad), sin modificar producción. BUILD SUCCESSFUL 1m29. XML `work/dct-runtime/build/test-results/test`: 39 suites, **151 tests, 0 failures, 0 errors, 0 skipped**. Enfocada actual20 PASS. Amplia149 anterior queda como historia, reemplazada por esta validación151 del source final.

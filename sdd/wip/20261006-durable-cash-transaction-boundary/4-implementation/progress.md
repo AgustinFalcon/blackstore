@@ -1,5 +1,9 @@
 # Progreso
 
+## 2026-10-07 — P2 Security titular CASHIER estricto
+
+JDBC/memory dejan de usar permiso CashSessionOpen como elegibilidad de titular: exige ACTIVE y rol exactamente CASHIER, conservando permiso de actor aparte y NotVisible/Authorization con una auditoría independiente. Matriz memory/HTTP/PG supervisor/owner/inactivo/missing más positivos actor supervisor/owner sobre cajero activo. Enfocada22 PASS; amplia FINAL post-fix153 PASS/39 suites/0 failures/errors/skips, BUILD SUCCESSFUL1m33, mismas seis exclusiones Docker. Antecedente151 sustituido; PG18, PG16/browser/CI pendientes. Teardown main75632/5441/six children/launcher PASS tras completion explícita. Nueva review pendiente; sin commit/push ni schema/grants nuevos. Evidencia DCT-authorization-denial-resolution.md.
+
 ## 2026-10-07 — amplia nativa FINAL del source residual
 
 Sin cambio de producción: suite amplia nativa compatible repetida sobre actor/owner Authorization actuales. BUILD SUCCESSFUL1m29; 151 tests/39 suites/0 failures/errors/skips. Mismas seis exclusiones Docker declaradas; PG18, no certificación PG16/browser/CI. Enfocada20 PASS. Teardown main5020, listener5441, seis crash children y launcher PASS después del completion explícito; no backend/frontend/browser. Evidencia DCT-authorization-denial-resolution.md. Amplia149 queda antecedente, reemplazada por151 sobre source final; review/CI/gates globales pendientes, no commit/push.

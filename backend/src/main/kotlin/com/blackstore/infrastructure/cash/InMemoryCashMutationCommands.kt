@@ -23,7 +23,7 @@ class InMemoryCashMutationCommands(private val cash: InMemoryCashSessionStore, p
         val candidate=CashSession(0,terminalId,cashierId,now,policy.money(amount))
         authorize(actor,StaffPermission.CashSessionOpen,candidate,reason)
         val owner=users.findById(StaffUserId(cashierId))
-        if(owner?.state != StaffAccountState.ACTIVE || !StaffAuthorizationPolicy().permits(owner.role,StaffPermission.CashSessionOpen)) throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
+        if(owner?.state != StaffAccountState.ACTIVE || owner.role != StaffRole.CASHIER) throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)
         val blockers=cash.list().filter { it.status==CashSessionStatus.OPEN && (it.terminalId==terminalId || it.cashierId==cashierId) }
         if(blockers.any { policy.authorize(actor,StaffPermission.CashSessionOpen,it,reason)==CashMutationFailure.NotVisible })
             throw CashMutationException(CashMutationFailure.NotVisible,CashRejectionSource.Authorization)

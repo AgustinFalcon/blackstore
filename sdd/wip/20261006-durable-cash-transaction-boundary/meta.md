@@ -1,5 +1,7 @@
 # Frontera transaccional durable de caja
 
+Último P2 Security corregido 2026-10-07: titular ACTIVE + CASHIER exactamente, separado de permiso actor SUPERVISOR/OWNER. Enfocada22/amplia FINAL153 PASS sobre source post-fix, cero failures/errors/skips, mismas seis exclusiones Docker; teardown75632/5441/children/launcher PASS. Antecedente151 sustituido; nueva review/PG16/browser/CI pendientes.
+
 Validación final actual 2026-10-07: amplia nativa151 PASS/39 suites/cero fallos/errores/skips sobre source posterior a residual actor/owner; enfocada20 PASS, seis exclusiones Docker. Teardown final5020/5441/children/launcher PASS. Reemplaza antecedente149, no cierra gates PG16/browser/CI/review global.
 
 Última extensión 2026-10-07: actor/owner sin autoridad también llevan procedencia Authorization (paridad con eligibleCashier anterior); enfocada final20 PASS, teardown PID50428/5441 PASS. Amplia149 es antecedente anterior a esta extensión; nueva review/CI/browser/PG16 pendientes.

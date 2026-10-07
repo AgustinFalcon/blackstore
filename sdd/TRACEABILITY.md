@@ -1,5 +1,7 @@
 # RTM — `blackstore-pilot`
 
+DCT-004 P2 Security titular→Jdbc LoadCashAuthority.eligibleOwner/memory owner: ACTIVE+CASHIER exacto, no permisos actor como elegibilidad. InMemoryCashMutationCommandsTest y CashMutationHttpPostgresTest matrix supervisor/owner/inactivo/missing → 404 y una auditoría independiente, actor supervisory→cashier activo permitido. Enfocada22/amplia FINAL153 PASS/39 suites/cero failures/errors/skips, teardown75632/5441/children/launcher PASS; seis exclusiones Docker, nueva review/PG16/browser/CI pendientes.
+
 DCT validación source final post-residual: amplia nativa151 PASS/39 suites/cero failures/errors/skips y enfocada20 PASS, mismas seis exclusiones Docker. Teardown5020/5441/children/launcher PASS; evidencia DCT-authorization-denial-resolution.md. Reemplaza amplia149 antecedente; no satisface PG16/browser/CI.
 
 DCT-004 residual → LoadCashAuthority.actor/eligibleOwner y equivalentes memory con Authorization; pruebas actor inactivo/owner inelegible en InMemoryCashMutationCommandsTest y CashMutationHttpPostgresTest. Enfocada final20 PASS, teardown50428/5441 PASS; amplia149 antecedente previo, revisión nueva pendiente.
