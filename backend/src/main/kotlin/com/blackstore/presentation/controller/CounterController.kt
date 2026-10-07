@@ -103,7 +103,7 @@ class CounterController(
                 category = body.category,
                 amount = body.amount,
                 reason = body.reason,
-                method = body.method,
+                method = PaymentMethod.fromWire(body.method?.takeIf { it.isTextual }?.textValue()),
             )
         return ResponseEntity.ok(
             BaseResponse.success(ExpenseResponse(expense.id, expense.amount, expense.category), traceId(request)),
@@ -163,7 +163,7 @@ data class ExpenseRequest(
     @field:NotBlank val category: String,
     @field:NotNull @field:Positive val amount: BigDecimal,
     @field:NotBlank val reason: String,
-    @field:NotNull val method: PaymentMethod,
+    val method: JsonNode? = null,
 )
 
 data class ExpenseResponse(val id: Long, val amount: BigDecimal, val category: String)

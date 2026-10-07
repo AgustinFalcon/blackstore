@@ -112,21 +112,6 @@ class JdbcCounterEntryStore(
             }
         }
 
-    override fun saveExpense(expense: ExpenseRecord) {
-        asRole("blackstore_app") { connection ->
-            writer.insertExpense(
-                connection,
-                expense.cashSessionId,
-                expense.category,
-                expense.amount,
-                expense.reason,
-                expense.paymentMethod.name,
-                expense.actorId,
-                expense.accruedAt,
-            )
-        }
-    }
-
     override fun figures(): ShiftFigures =
         asRole("blackstore_app") { connection ->
             val gross = sum(connection, "SELECT COALESCE(SUM(original_unit_price * quantity), 0) FROM sale_lines")

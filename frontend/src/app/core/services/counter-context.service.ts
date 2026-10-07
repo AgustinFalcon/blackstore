@@ -5,7 +5,7 @@ import { StaffPermission } from '../domain/session-types';
 import { API_BASE } from '../api';
 import { PersistenceMode } from '../domain/pos-types';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
-import { BaseResponse } from '../models/base-response';
+import { BaseResponse, isSuccessResponse } from '../models/base-response';
 import { CashSessionData, CashSessionWire, WorkspaceWire } from '../models/pos-models';
 
 export interface CatalogItem {
@@ -28,9 +28,11 @@ export interface CatalogSnapshot {
 export class CounterContextService {
   private readonly http = inject(HttpClient);
   private readonly identity = inject(SessionStore);
+  private loadEpoch = 0;
 
   constructor() {
     this.identity.changed.subscribe(() => {
+      this.invalidate();
       this.catalog.set(null); this.openSession.set(null); this.persistence.set(PersistenceMode.Unknown);
       this.catalogError.set(null); this.loading.set(false);
     });
@@ -55,18 +57,24 @@ export class CounterContextService {
   });
 
   load(): void {
+    this.invalidate();
     if (!this.identity.can(StaffPermission.WorkspaceRead)) { this.loading.set(false); return; }
+    const generation = this.identity.generation();
+    const epoch = this.loadEpoch;
+    const current = () => generation === this.identity.generation() && epoch === this.loadEpoch;
     this.loading.set(true);
     this.catalogError.set(null);
     let pending = 3;
     const finish = () => {
+      if (!current()) return;
       pending -= 1;
       if (pending === 0) this.loading.set(false);
     };
 
     this.http.get<BaseResponse<WorkspaceWire>>(`${API_BASE}/workspace`).subscribe({
       next: (response) => {
-        if (response.data) {
+        if (!current()) return;
+        if (isSuccessResponse(response)) {
           const workspace = PosWireMapper.workspace(response.data);
           this.persistence.set(workspace.persistence);
         }
@@ -77,12 +85,14 @@ export class CounterContextService {
 
     this.http.get<BaseResponse<CashSessionWire[]>>(`${API_BASE}/cash-sessions`).subscribe({
       next: (response) => {
-        const sessions = PosWireMapper.cashSessions(response.data);
+        if (!current()) return;
+        const sessions = isSuccessResponse(response) ? PosWireMapper.cashSessions(response.data) : [];
         this.openSession.set(sessions.find(item => item.status.isOpen && item.cashierId === this.cashierId())
           ?? (this.identity.staff()?.role.canAssignCashier ? sessions.find(item => item.status.isOpen) : null) ?? null);
         finish();
       },
       error: () => {
+        if (!current()) return;
         this.openSession.set(null);
         finish();
       },
@@ -90,15 +100,24 @@ export class CounterContextService {
 
     this.http.get<BaseResponse<CatalogSnapshot>>(`${API_BASE}/catalog`).subscribe({
       next: (response) => {
-        this.catalog.set(response.data);
-        if (!response.data) this.catalogError.set('Catálogo no disponible. No inicies una venta nueva.');
+        if (!current()) return;
+        this.catalog.set(isSuccessResponse(response) ? response.data : null);
+        if (!this.catalog()) this.catalogError.set('Catálogo no disponible. No inicies una venta nueva.');
         finish();
       },
       error: () => {
+        if (!current()) return;
         this.catalog.set(null);
         this.catalogError.set('Catálogo no disponible. No inicies una venta nueva.');
         finish();
       },
     });
+  }
+
+  invalidate(): void {
+    this.loadEpoch++;
+    this.openSession.set(null);
+    this.persistence.set(PersistenceMode.Unknown);
+    this.loading.set(true);
   }
 }

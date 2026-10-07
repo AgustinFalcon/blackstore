@@ -1,0 +1,15 @@
+# Disposición de los dos P2 de revisión
+
+Fecha: 2026-10-06. Base `e6a47a32b5f21b9f020fc1f9f23a73a19e5ed4a7` + diff local de `fix/durable-cash-transaction-boundary`, sin commit.
+
+P2 auditoría: el escape manual histórico no representaba newline/tab/control como JSON válido; un egreso válido podía fallar al insertar su auditoría y revertirse. `JdbcBlackStoreWriter` ahora serializa el objeto source/detail mediante Jackson y su helper de strings también usa el serializador, sin escape ad-hoc. `expenseReasonControlCharactersAreSerializedAndBothRowsCommitExactlyOnce` usa newline, tab, CR, U+0001/U+0008/U+001F, comillas y barra invertida; comprueba una fila de egreso, una de auditoría, actor/ID, JSON válido y únicamente campos source/detail con texto exacto.
+
+P2 paridad de visibilidad: el adaptador de memoria podía devolver Conflict al encontrar primero un blocker visible e ignorar un segundo blocker oculto. Ahora reúne los blockers y aplica NotVisible si cualquiera lo requiere, antes de autorizar y divulgar Conflict. `InMemoryCashMutationCommandsTest` cubre ambos órdenes de inserción y visible-only sin mutación; `dualBlockersMatchMemoryVisibilityInBothInsertionOrders` comprueba la misma decisión sobre PostgreSQL con ambas constraints reales y sin audit/filas nuevas.
+
+Validación enfocada PASS: 17 tests, 0 fallos/errores/skips, BUILD SUCCESSFUL en 1m41. Incluye las tres pruebas memory, diez PG reales, tres de política y la matriz SID/HTTP. No se modificó código después de ese run.
+
+Primer run amplio retenido: 148 tests, 147 PASS / 1 FAIL, BUILD FAILED en 14h19m46. La espera del tool quedó suspendida hasta el día siguiente (51479.6 s); al retomar se detuvo PostgreSQL antes de comprobar que el runner había concluido. `CashMutationHttpPostgresTest` esperaba 404 y recibió 503 mientras la base se apagaba. Se registra como fallo de entorno/teardown; no se presenta como éxito ni se descarta del historial. Se reejecuta la suite sin cambios de código y se mantiene PG hasta completion explícito del runner.
+
+Repetición amplia final **PASS** el 2026-10-07: **148 tests, 0 failures, 0 errors, 0 skipped**, BUILD SUCCESSFUL en 1m32 sobre el mismo código. Las seis clases Docker previas continúan excluidas mediante el mismo init script local; no se presenta como suite completa ni certificación PostgreSQL16. No código cambiado ni retry oculto después del run fallido. P2 resueltos y probados; nueva revisión independiente del diff pendiente.
+
+Teardown después de completion explícito del runner: PostgreSQL PID18644 detenido mediante `pg_ctl -D work/dct-runtime/pgdata -m fast stop`, salida `server stopped`, log `database system is shut down` a las 10:27:03 local. Main PID18644 y anterior PID65668 ausentes; listener5441 ausente. Los seis hijos del run final fueron terminados por el harness: OPEN BEFORE/AFTER `83040`/`68028`, CLOSE `82632`/`79756`, EXPENSE `85432`/`55464`. No browser/backend HTTP/frontend creado para este corte. No commit/push/PR/merge, migración ni grants ampliados. Gate global permanece parcial/bloqueado por browser/PG16/CI/UI y nueva revisión, sin `/sdd.finish`.

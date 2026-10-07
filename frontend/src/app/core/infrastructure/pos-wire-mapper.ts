@@ -1,5 +1,6 @@
 import {
   CashSessionStatus,
+  CashMutationOutcome,
   PaymentStatus,
   PersistenceMode,
   SaleStatus,
@@ -20,6 +21,30 @@ import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, 
 
 export class PosWireMapper {
   private constructor() {}
+
+  static cashMutationOutcome(response: unknown, httpStatus: number): CashMutationOutcome {
+    const raw = PosWireMapper.record(response);
+    if (!raw || raw['code'] !== httpStatus || !PosWireMapper.nonempty(raw['traceId']) ||
+        (raw['message'] !== null && typeof raw['message'] !== 'string') ||
+        (raw['retryable'] !== null && typeof raw['retryable'] !== 'boolean')) return CashMutationOutcome.Unknown;
+    const outcome = CashMutationOutcome.fromWire(raw['errorCode']);
+    if (outcome.httpStatus !== httpStatus || (outcome.isApplied ? !PosWireMapper.record(raw['data']) : raw['data'] !== null)) return CashMutationOutcome.Unknown;
+    return outcome;
+  }
+
+  static cashMutationSession(response: unknown): CashSessionData | null {
+    const raw = PosWireMapper.payload(response);
+    if (!raw || !PosWireMapper.positiveId(raw['id']) || !PosWireMapper.positiveId(raw['terminalId']) ||
+        !PosWireMapper.positiveId(raw['cashierId']) || typeof raw['openingCash'] !== 'number' ||
+        !Number.isFinite(raw['openingCash']) || raw['openingCash'] < 0 || CashSessionStatus.fromWire(raw['status']) === CashSessionStatus.Unknown) return null;
+    return PosWireMapper.cashSession(raw as unknown as CashSessionWire);
+  }
+
+  static cashMutationExpense(response: unknown): boolean {
+    const raw = PosWireMapper.payload(response);
+    return !!raw && PosWireMapper.positiveId(raw['id']) && typeof raw['amount'] === 'number' &&
+      Number.isFinite(raw['amount']) && raw['amount'] > 0 && !!PosWireMapper.nonempty(raw['category']);
+  }
 
   static cashSession(raw: CashSessionWire): CashSessionData {
     return { ...raw, status: CashSessionStatus.fromWire(raw.status) };

@@ -18,15 +18,25 @@ class InMemoryCashSessionStore : CashSessionStore {
     private val sessions = linkedMapOf<Long, CashSession>()
     private val audits = mutableListOf<CashAuditEvent>()
 
-    override fun list(): List<CashSession> = sessions.values.toList()
+    override fun list(): List<CashSession> = synchronized(this) { sessions.values.toList() }
 
-    override fun save(session: CashSession): CashSession {
+    internal fun save(session: CashSession): CashSession = synchronized(this) {
         val stored = if (session.id == 0L) session.copy(id = ids.getAndIncrement()) else session
         sessions[stored.id] = stored
-        return stored
+        stored
     }
 
-    override fun appendClosureAudit(event: CashAuditEvent) {
-        audits += event
+    internal fun appendClosureAudit(event: CashAuditEvent) = synchronized(this) {
+        audits.add(event)
+        Unit
+    }
+    internal fun <T> atomic(action: () -> T): T = synchronized(this) {
+        val previousSessions=sessions.toMap()
+        val previousAudits=audits.toList()
+        try { action() } catch(error: Exception) {
+            sessions.clear();sessions.putAll(previousSessions)
+            audits.clear();audits.addAll(previousAudits)
+            throw error
+        }
     }
 }

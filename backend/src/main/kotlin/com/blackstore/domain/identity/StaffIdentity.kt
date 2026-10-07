@@ -53,7 +53,14 @@ class StaffAuthorizationPolicy {
         StaffPermission.PaymentReverse, StaffPermission.ExpenseRecord -> role in operators
         StaffPermission.Unknown -> false
     }
-    fun decide(staff: AuthenticatedStaff, permission: StaffPermission, cash: OwnedCashSession?, reason: String? = null): AuthorizationDecision {
+    fun decide(staff: AuthenticatedStaff, permission: StaffPermission, cash: OwnedCashSession?, reason: String? = null): AuthorizationDecision =
+        decideVisibility(staff, permission, cash, reason).let { decision ->
+            if (decision == AuthorizationDecision.ALLOW && permission == StaffPermission.ExpenseRecord && cash?.open != true)
+                AuthorizationDecision.NOT_FOUND else decision
+        }
+    fun decideCashMutation(staff: AuthenticatedStaff, permission: StaffPermission, cash: OwnedCashSession?, reason: String? = null): AuthorizationDecision =
+        decideVisibility(staff, permission, cash, reason)
+    private fun decideVisibility(staff: AuthenticatedStaff, permission: StaffPermission, cash: OwnedCashSession?, reason: String?): AuthorizationDecision {
         if (!permits(staff.role, permission)) return AuthorizationDecision.FORBIDDEN
         if (cash == null) return AuthorizationDecision.NOT_FOUND
         if (cash.status == com.blackstore.domain.cash.CashSessionStatus.UNKNOWN) return AuthorizationDecision.NOT_FOUND
@@ -62,7 +69,6 @@ class StaffAuthorizationPolicy {
         val mutation = permission in setOf(StaffPermission.CashSessionOpen, StaffPermission.CashSessionClose, StaffPermission.SaleReserve,
             StaffPermission.SaleCommit, StaffPermission.SaleRelease, StaffPermission.PaymentCapture, StaffPermission.PaymentReverse, StaffPermission.ExpenseRecord)
         if ((permission == StaffPermission.PaymentReverse || (!own && mutation)) && reason.isNullOrBlank()) return AuthorizationDecision.REASON_REQUIRED
-        if (permission == StaffPermission.ExpenseRecord && !cash.open) return AuthorizationDecision.NOT_FOUND
         return AuthorizationDecision.ALLOW
     }
 }

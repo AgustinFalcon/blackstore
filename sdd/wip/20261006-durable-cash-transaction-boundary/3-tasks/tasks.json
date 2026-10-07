@@ -1,0 +1,16 @@
+{
+  "feature": "durable-cash-transaction-boundary",
+  "status": "implementation_partial",
+  "base_commit": "e6a47a32b5f21b9f020fc1f9f23a73a19e5ed4a7",
+  "stats": { "total": 6, "done": 1 },
+  "review_disposition": "P2 exact-head AUTHORIZATION_DENIED restaurado con procedencia cerrada y auditoría independiente tras rechazo; no audita validación común/Conflict/Unavailable. P2 Security titular elegible corregido ACTIVE + CASHIER exactamente, permiso actor separado. Enfocada final 22 PASS (targets supervisor/owner/inactivo/missing), amplia nativa compatible FINAL 153 PASS sobre source post-fix CASHIER estricto; primer test auditor HTTP 17 PASS/1 FAIL conservado y resuelto mediante cobertura application sin quitar asserts. Review del nuevo source pendiente. Evidencia DCT-authorization-denial-resolution.md; antecedentes de los dos P2 previos en DCT-review-p2-resolution.md. Browser/PG16/CI pendientes.",
+  "last_validation": { "date": "2026-10-07", "focused_tests": 22, "native_compatible_tests": 153, "native_compatible_source": "final_post_exact_cashier_target_fix", "failures": 0, "errors": 0, "skipped": 0, "excluded_docker_classes": 6, "postgres_major": 18, "teardown": "PASS", "browser": "BLOCKED", "final_review": "exact_cashier_target_fix_review_pending" },
+  "tasks": [
+    { "id": "DCT-T01", "title": "Revisar SDD, transacciones, amenazas y schema", "status": "done", "depends_on": [], "requirements": ["DCT-001", "DCT-002", "DCT-003", "DCT-004", "DCT-005", "DCT-006", "DCT-007"] },
+    { "id": "DCT-T02", "title": "Tipos, resultados HTTP, visibilidad SID y puertos atomicos", "status": "in_progress", "depends_on": ["DCT-T01"], "requirements": ["DCT-001", "DCT-002", "DCT-003", "DCT-004", "DCT-005"] },
+    { "id": "DCT-T03", "title": "Apertura y cierre con auditoria atomica", "status": "in_progress", "depends_on": ["DCT-T02"], "requirements": ["DCT-001", "DCT-002", "DCT-004", "DCT-005"] },
+    { "id": "DCT-T04", "title": "Egreso transaccional con lock y revalidacion", "status": "in_progress", "depends_on": ["DCT-T03"], "requirements": ["DCT-003", "DCT-004", "DCT-005"] },
+    { "id": "DCT-T05", "title": "PostgreSQL fallos crash concurrencia reinicio y roles", "status": "in_progress", "depends_on": ["DCT-T04"], "requirements": ["DCT-001", "DCT-002", "DCT-003", "DCT-004", "DCT-005", "DCT-006"] },
+    { "id": "DCT-T06", "title": "Contrato HTTP/UI, browser real, CI y reviews exactas", "status": "in_progress", "depends_on": ["DCT-T05"], "requirements": ["DCT-001", "DCT-002", "DCT-003", "DCT-004", "DCT-005", "DCT-006", "DCT-007"] }
+  ]
+}

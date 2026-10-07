@@ -13,6 +13,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
+    @ExceptionHandler(com.blackstore.domain.cash.CashMutationException::class)
+    fun handleCashMutation(ex: com.blackstore.domain.cash.CashMutationException, request: HttpServletRequest): ResponseEntity<BaseResponse<Nothing>> =
+        ResponseEntity.status(ex.failure.status).header("Cache-Control", "no-store").body(
+            BaseResponse.error(HttpCode.entries.first { it.code == ex.failure.status }, traceId(request), ex.failure.code, ex.failure.label, false))
+
     @ExceptionHandler(com.blackstore.domain.identity.StaffSecurityException::class)
     fun handleStaffSecurity(ex: com.blackstore.domain.identity.StaffSecurityException, request: HttpServletRequest): ResponseEntity<BaseResponse<Nothing>> =
         ResponseEntity.status(ex.status).header("Cache-Control", "no-store").body(BaseResponse.error(HttpCode.entries.first { it.code == ex.status }, traceId(request), ex.errorCode, "Staff operation denied", false))

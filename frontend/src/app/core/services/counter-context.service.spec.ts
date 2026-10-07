@@ -5,6 +5,7 @@ import { API_BASE } from '../api';
 import { CounterContextService } from './counter-context.service';
 import { SessionStore } from './session.store';
 import { authenticateTestSession } from './session-test-helper';
+import { CashSessionStatus, PersistenceMode } from '../domain/pos-types';
 
 describe('CounterContextService', () => {
   let service: CounterContextService;
@@ -18,6 +19,28 @@ describe('CounterContextService', () => {
   });
 
   afterEach(() => http.verify());
+
+  it('invalidates the old context immediately and ignores responses from an earlier load', () => {
+    service.load(); flushLoad(http, CashSessionStatus.Open.wire);
+    expect(service.openSession()).not.toBeNull();
+    service.load();
+    const stale = http.match(request => request.method === 'GET');
+    expect(service.openSession()).toBeNull(); expect(service.loading()).toBeTrue();
+    service.load(); flushLoad(http, CashSessionStatus.Closed.wire);
+    stale.forEach(request => request.flush(envelope(request.request.url.endsWith('/cash-sessions') ?
+      [{ id: 99, terminalId: 10, cashierId: 7, status: CashSessionStatus.Open.wire, openingCash: 0 }] : null)));
+    expect(service.openSession()).toBeNull(); expect(service.loading()).toBeFalse();
+  });
+
+  it('does not restore cash or catalog from requests belonging to another identity', () => {
+    service.load();
+    const identity = TestBed.inject(SessionStore);
+    identity.generation.update(value => value + 1); identity.changed.next();
+    flushLoad(http, CashSessionStatus.Open.wire);
+    expect(service.openSession()).toBeNull(); expect(service.catalog()).toBeNull();
+    expect(service.persistence()).toBe(PersistenceMode.Unknown);
+    expect(service.loading()).toBeFalse();
+  });
 
   it('selects an OPEN session after translating the wire response', () => {
     service.load();

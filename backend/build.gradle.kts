@@ -52,6 +52,7 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty("blackstore.test.classpath", sourceSets.test.get().runtimeClasspath.asPath)
     // Docker Engine 29 rejects API versions below 1.44. Testcontainers' client must negotiate explicitly.
     environment("DOCKER_API_VERSION", "1.44")
 }

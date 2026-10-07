@@ -6,12 +6,14 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
 import com.blackstore.domain.sales.MoneyPolicy
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 
 /**
  * Writes BlackStore-owned rows. Historical tables are insert-only for blackstore_app.
  * Projection updates run as blackstore_projection_worker. No StoreCore database is involved.
  */
 class JdbcBlackStoreWriter {
+    private val jsonMapper = jacksonObjectMapper()
 
     fun insertOpenCashSession(
         connection: Connection,
@@ -30,7 +32,8 @@ class JdbcBlackStoreWriter {
             statement.setLong(1, terminalId)
             statement.setLong(2, cashierId)
             statement.setTimestamp(3, Timestamp.from(openedAt))
-            statement.setBigDecimal(4, openingCash)
+            require(openingCash.signum() >= 0)
+            statement.setBigDecimal(4, MoneyPolicy.normalize(openingCash))
             statement.executeQuery().use { rows ->
                 rows.next()
                 rows.getLong(1)
@@ -51,10 +54,11 @@ class JdbcBlackStoreWriter {
             """.trimIndent(),
         ).use { statement ->
             statement.setTimestamp(1, Timestamp.from(closedAt))
-            statement.setBigDecimal(2, declared)
+            require(declared.signum() >= 0)
+            statement.setBigDecimal(2, MoneyPolicy.normalize(declared))
             statement.setLong(3, sessionId)
             val updated = statement.executeUpdate()
-            check(updated == 1) { "cash session $sessionId was not open" }
+            if (updated != 1) throw com.blackstore.domain.cash.CashMutationException(com.blackstore.domain.cash.CashMutationFailure.Conflict)
         }
     }
 
@@ -277,12 +281,12 @@ class JdbcBlackStoreWriter {
         aggregateId: Long,
         detail: String? = null,
     ) {
-        val payload =
-            if (detail == null) {
-                """{"source":"blackstore"}"""
-            } else {
-                """{"source":"blackstore","detail":${json(detail)}}"""
-            }
+        val payload = jsonMapper.writeValueAsString(
+            buildMap<String, String> {
+                put("source", "blackstore")
+                if (detail != null) put("detail", detail)
+            },
+        )
         connection.prepareStatement(
             """
             INSERT INTO audit_events (actor_id, event_type, aggregate_type, aggregate_id, payload_redacted)
@@ -409,23 +413,24 @@ class JdbcBlackStoreWriter {
         method: String,
         actorId: Long,
         accruedAt: Instant,
-    ) {
+    ): Long {
         connection.prepareStatement(
             """
             INSERT INTO expenses (cash_session_id, category, amount, reason, payment_method, accrued_at, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
             """.trimIndent(),
         ).use { statement ->
             statement.setLong(1, cashSessionId)
             statement.setString(2, category)
-            statement.setBigDecimal(3, amount)
+            require(amount.signum() > 0)
+            statement.setBigDecimal(3, MoneyPolicy.normalize(amount))
             statement.setString(4, reason)
             statement.setString(5, method)
             statement.setTimestamp(6, Timestamp.from(accruedAt))
             statement.setLong(7, actorId)
-            statement.executeUpdate()
+            return statement.executeQuery().use { rows -> rows.next(); rows.getLong(1) }
         }
     }
 
-    private fun json(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    private fun json(value: String): String = jsonMapper.writeValueAsString(value)
 }
