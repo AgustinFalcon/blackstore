@@ -1,5 +1,9 @@
 # Progreso
 
+## 2026-10-07 — incremento browser reproducible, aceptación bloqueada
+
+Harness Playwright Chromium/PG16 efímero/JAR real reiniciable, cash-browser-restart/denials, job dct-browser y docs agregados; scheduler deshabilitado explícitamente sólo en dos tests HTTP PG y fixture. Typechecks/discovery/compileTestKotlin PASS; domain/application54 tests/11 suites/cero failures/errors/skips PASS. Dos HTTP PG compilan, runtime pendiente. Ejecución browser real dos FAIL de setup por acceso Docker denegado, cero assertions/recursos runtime. Build Angular local bloqueado por acceso al ancestro C:\. Review/CI nuevos NOT_RUN; conserva WIP/T05/T06 parciales. Evidencia DCT-browser-harness-20261007.md; resultados actuales no sustituyen la aceptación pendiente ni revisiones del corte mergeado.
+
 ## 2026-10-07 — merge core y aceptación residual
 
 [PR #26](https://github.com/AgustinFalcon/blackstore/pull/26) MERGED: head `caab0a9`, merge `a9887a3` en master. Dos revisiones independientes GPT-6.1 Sol sobre el head exacto (bugs y seguridad/arquitectura) APPROVED. [CI PR 37634224683](https://github.com/AgustinFalcon/blackstore/actions/runs/37634224683) verde; [CI post-merge master 37634797108](https://github.com/AgustinFalcon/blackstore/actions/runs/37634797108) verde (frontend 34 s, backend 3 min 43 s).

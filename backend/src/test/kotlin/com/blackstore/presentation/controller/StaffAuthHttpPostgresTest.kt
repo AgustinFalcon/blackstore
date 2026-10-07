@@ -23,7 +23,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import javax.sql.DataSource
 import java.util.UUID
 
-@SpringBootTest(properties=["blackstore.persistence.enabled=true","blackstore.identity.loopback-http=true","server.address=127.0.0.1"])
+@SpringBootTest(properties=["blackstore.persistence.enabled=true","blackstore.identity.loopback-http=true","server.address=127.0.0.1","blackstore.sales.worker.enabled=false"])
 @AutoConfigureMockMvc
 @Testcontainers
 class StaffAuthHttpPostgresTest {

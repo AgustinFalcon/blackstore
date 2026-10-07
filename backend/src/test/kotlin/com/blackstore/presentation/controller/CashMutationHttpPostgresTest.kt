@@ -19,7 +19,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import java.util.UUID
 import javax.sql.DataSource
 
-@SpringBootTest(properties=["blackstore.persistence.enabled=true","blackstore.identity.loopback-http=true","server.address=127.0.0.1"])
+@SpringBootTest(properties=["blackstore.persistence.enabled=true","blackstore.identity.loopback-http=true","server.address=127.0.0.1","blackstore.sales.worker.enabled=false"])
 @AutoConfigureMockMvc
 class CashMutationHttpPostgresTest {
     @Autowired private lateinit var mvc: MockMvc

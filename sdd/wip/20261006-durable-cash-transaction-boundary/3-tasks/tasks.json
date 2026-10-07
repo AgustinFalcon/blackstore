@@ -123,5 +123,24 @@
     "pr_ci": "37634224683",
     "postmerge_ci": "37634797108",
     "ci_result": "PASS"
+  },
+  "acceptance_increment": {
+    "date": "2026-10-07",
+    "source": "local-uncommitted",
+    "harness": "frontend/e2e/dct",
+    "typecheck": "PASS",
+    "discovery": "PASS",
+    "backend_compile_tests": "PASS",
+    "backend_domain_application_tests": 54,
+    "backend_domain_application_suites": 11,
+    "backend_http_postgres_runtime": "NOT_RUN",
+    "local_attempt": "BLOCKED",
+    "blocker": "Docker Engine pipe permission denied before runtime acquisition and assertions",
+    "postgres16": "NOT_RUN",
+    "browser_restart": "NOT_RUN",
+    "review": "NOT_RUN",
+    "hosted_job": "dct-browser",
+    "hosted_result": "NOT_RUN",
+    "evidence": "evidence/DCT-browser-harness-20261007.md"
   }
 }

@@ -27,6 +27,8 @@ WIP [durable-cash-transaction-boundary](wip/20261006-durable-cash-transaction-bo
 
 Implementation PASS para el corte mergeado; Review APPROVED exact-head; Integration PARTIAL. PostgreSQL 16 y browser real con reinicio DCT siguen pendientes: no se atribuye PASS por CI verde, MockMvc ni aceptación browser de otros cortes. Ver evidence/DCT-T05-postgres.md, DCT-T06-browser-restart.md, DCT-review-p2-resolution.md y DCT-authorization-denial-resolution.md del WIP; fallos y bloqueos históricos preservados.
 
+Incremento de aceptación local 2026-10-07: harness Playwright/PG16/JAR y job separado dct-browser preparados; typechecks/discovery PASS, intento real BLOCKED antes de assertions por Docker pipe denegado. Review/CI sobre este nuevo source NOT_RUN. Ver evidence/DCT-browser-harness-20261007.md; no cambia el gate parcial ni hereda approvals del corte mergeado.
+
 Libro de caja productivo, arqueo/diferencia, fórmulas y períodos SHIFT/DAY, E2E StoreCore+BlackStore con dos PostgreSQL, integración live, fiscal y MP-LIVE-05 permanecen pendientes. Homologation BLOCKED; Publication NOT_RUN. No /sdd.finish ni archivo del WIP.
 
 ## Estrategia de ramas para homologación
