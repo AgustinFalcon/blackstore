@@ -3,11 +3,11 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { API_BASE } from '../../core/api';
-import { PaymentMethod, PersistenceMode } from '../../core/domain/pos-types';
+import { CashMutationOutcome, PaymentMethod, PersistenceMode } from '../../core/domain/pos-types';
 import { StaffPermission } from '../../core/domain/session-types';
 import { SessionStore } from '../../core/services/session.store';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
-import { BaseResponse } from '../../core/models/base-response';
+import { BaseResponse, isSuccessResponse } from '../../core/models/base-response';
 import { CashSessionData, CashSessionWire, WorkspaceWire } from '../../core/models/pos-models';
 import { CounterContextService } from '../../core/services/counter-context.service';
 import { CashSessionSelection } from '../../core/domain/cash-session-selection';
@@ -52,13 +52,13 @@ import { CashSessionSelection } from '../../core/domain/cash-session-selection';
             <form (ngSubmit)="close()">
               <label>Declarado <input name="declared" type="number" [(ngModel)]="declared" min="0" required /></label>
               <label>Motivo de cierre <input name="closeReason" [(ngModel)]="closeReason" required /></label>
-              <button type="submit">Cerrar sesión</button>
+              <button type="submit" [disabled]="loading() || mutationPending() || !!error()">Cerrar sesión</button>
             </form>
             <form (ngSubmit)="addExpense()">
               <label>Categoría <input name="category" [(ngModel)]="expenseCategory" required /></label>
               <label>Gasto <input name="expenseAmount" type="number" [(ngModel)]="expenseAmount" min="0.01" required /></label>
               <label>Motivo <input name="reason" [(ngModel)]="expenseReason" required /></label>
-              <button type="submit">Registrar gasto</button>
+              <button type="submit" [disabled]="loading() || mutationPending() || !!error()">Registrar gasto</button>
             </form>
           }
         </div>
@@ -66,7 +66,7 @@ import { CashSessionSelection } from '../../core/domain/cash-session-selection';
         <p class="empty">{{ selection().state.label }}</p>
       }
       @if (notice()) {
-        <p class="badge ok" role="status">{{ notice() }}</p>
+        <p class="badge" [class.ok]="outcome().isApplied" [class.info]="!outcome().isApplied" role="status">{{ notice() }}</p>
       }
       @if (error()) {
         <div class="retry-row">
@@ -105,23 +105,32 @@ export class CashSessionComponent {
   readonly session = computed(() => this.selection().session);
   readonly error = signal<string | null>(null);
   readonly notice = signal<string | null>(null);
+  readonly outcome = signal(CashMutationOutcome.Applied);
+  readonly mutationPending = signal(false);
+  private reloadEpoch = 0;
 
   constructor() {
     this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.reloadEpoch++; this.loading.set(false); this.mutationPending.set(false);
+      this.outcome.set(CashMutationOutcome.Unknown);
       this.visibleSessions.set([]); this.cashierId = null; this.notice.set(null); this.error.set(null);
     });
     this.reload();
   }
 
   reload(): void {
+    const generation = this.identity.generation();
+    const epoch = ++this.reloadEpoch;
+    const current = () => generation === this.identity.generation() && epoch === this.reloadEpoch;
     this.error.set(null);
     this.loading.set(true);
     this.counter.load();
     let pending = this.identity.can(StaffPermission.WorkspaceRead) ? 2 : 1;
-    const finish = () => { if (--pending === 0) this.loading.set(false); };
+    const finish = () => { if (current() && --pending === 0) this.loading.set(false); };
     if (this.identity.can(StaffPermission.WorkspaceRead)) this.http.get<BaseResponse<WorkspaceWire>>(`${API_BASE}/workspace`).subscribe({
       next: (response) => {
-        if (response.data) {
+        if (!current()) return;
+        if (isSuccessResponse(response)) {
           const workspace = PosWireMapper.workspace(response.data);
           if (!this.initializedWorkstation) { this.requestedTerminal.set(workspace.terminalId); this.initializedWorkstation = true; }
           this.persistence.set(workspace.persistence);
@@ -129,17 +138,19 @@ export class CashSessionComponent {
         finish();
       },
       error: () => {
+        if (!current()) return;
         this.error.set('No se pudo leer el puesto de trabajo');
         finish();
       },
     });
     this.http.get<BaseResponse<CashSessionWire[]>>(`${API_BASE}/cash-sessions`).subscribe({
       next: (response) => {
-        if (response.data) this.visibleSessions.set(PosWireMapper.cashSessions(response.data));
+        if (!current()) return;
+        if (isSuccessResponse(response)) this.visibleSessions.set(PosWireMapper.cashSessions(response.data));
         else { this.visibleSessions.set([]); this.error.set('No se pudieron leer las cajas visibles'); }
         finish();
       },
-      error: () => { this.visibleSessions.set([]); this.error.set('No se pudieron leer las cajas visibles'); finish(); },
+      error: () => { if (!current()) return; this.visibleSessions.set([]); this.error.set('No se pudieron leer las cajas visibles'); finish(); },
     });
   }
 
@@ -147,6 +158,7 @@ export class CashSessionComponent {
     if (!this.canOpen()) return;
     if (this.cashierId !== this.identity.staff()?.id && (!this.canAssignOther() || !this.assignmentReason.trim())) return;
     this.error.set(null);
+    const generation = this.beginMutation();
     this.http
       .post<BaseResponse<CashSessionWire>>(`${API_BASE}/cash-sessions`, {
         terminalId: Number(this.terminalId),
@@ -160,14 +172,15 @@ export class CashSessionComponent {
       })
       .subscribe({
         next: (response) => {
-          if (response.data) {
-            this.recordSession(PosWireMapper.cashSession(response.data));
+          if (!this.completeMutation(response, 200, generation)) return;
+          const session = PosWireMapper.cashMutationSession(response);
+          if (session) {
+            this.recordSession(session);
             this.counter.load();
-          } else this.error.set(response.errorCode ?? 'Sin datos');
+          } else this.rejectMutation(CashMutationOutcome.Unknown);
         },
         error: (err: HttpErrorResponse) => {
-          const body = err.error as BaseResponse<unknown> | undefined;
-          this.error.set(body?.errorCode ?? body?.message ?? 'No se pudo abrir la sesión');
+          this.completeMutation(err.error, err.status, generation);
         },
       });
   }
@@ -175,8 +188,9 @@ export class CashSessionComponent {
   close(): void {
     if (!this.identity.can(StaffPermission.CashSessionClose)) return;
     const opened = this.session();
-    if (!opened || !this.selection().state.permitsMutation || this.loading() || this.error() || !this.closeReason.trim()) return;
+    if (!opened || !this.selection().state.permitsMutation || this.loading() || this.mutationPending() || this.error() || !this.closeReason.trim()) return;
     this.error.set(null);
+    const generation = this.beginMutation();
     this.http
       .post<BaseResponse<CashSessionWire>>(`${API_BASE}/cash-sessions/${opened.id}/close`, {
         declared: Number(this.declared),
@@ -188,16 +202,16 @@ export class CashSessionComponent {
       })
       .subscribe({
         next: (response) => {
-          if (response.data) {
-            const session = PosWireMapper.cashSession(response.data);
+          if (!this.completeMutation(response, 200, generation)) return;
+          const session = PosWireMapper.cashMutationSession(response);
+          if (session) {
             this.recordSession(session);
             this.notice.set(`Sesión ${session.id} ${session.status.label}`);
             this.counter.load();
-          }
+          } else this.rejectMutation(CashMutationOutcome.Unknown);
         },
         error: (err: HttpErrorResponse) => {
-          const body = err.error as BaseResponse<unknown> | undefined;
-          this.error.set(body?.errorCode ?? body?.message ?? 'No se pudo cerrar la sesión');
+          this.completeMutation(err.error, err.status, generation);
         },
       });
   }
@@ -205,8 +219,9 @@ export class CashSessionComponent {
   addExpense(): void {
     if (!this.identity.can(StaffPermission.ExpenseRecord)) return;
     const opened = this.session();
-    if (!opened || !this.selection().state.permitsMutation || this.loading() || this.error() || !this.expenseReason.trim()) return;
+    if (!opened || !this.selection().state.permitsMutation || this.loading() || this.mutationPending() || this.error() || !this.expenseReason.trim()) return;
     this.error.set(null);
+    const generation = this.beginMutation();
     this.http
       .post<BaseResponse<{ id: number; amount: number; category: string }>>(`${API_BASE}/expenses`, {
         cashSessionId: opened.id,
@@ -221,18 +236,19 @@ export class CashSessionComponent {
       })
       .subscribe({
         next: (response) => {
-          this.notice.set(response.data ? `Gasto ${response.data.category} registrado` : 'Gasto registrado');
+          if (!this.completeMutation(response, 200, generation)) return;
+          if (PosWireMapper.cashMutationExpense(response)) this.notice.set('Gasto registrado');
+          else this.rejectMutation(CashMutationOutcome.Unknown);
         },
         error: (err: HttpErrorResponse) => {
-          const body = err.error as BaseResponse<unknown> | undefined;
-          this.error.set(body?.errorCode ?? body?.message ?? 'No se pudo registrar el gasto');
+          this.completeMutation(err.error, err.status, generation);
         },
       });
   }
   canAssignOther(): boolean { return this.identity.staff()?.role.canAssignCashier ?? false; }
 
   canOpen(): boolean {
-    return !this.loading() && !this.error() && CashSessionSelection.canOpen(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId)
+    return !this.loading() && !this.mutationPending() && !this.error() && CashSessionSelection.canOpen(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId)
       && (this.cashierId === this.identity.staff()?.id || !!this.assignmentReason.trim());
   }
 
@@ -245,5 +261,35 @@ export class CashSessionComponent {
 
   private recordSession(session: CashSessionData): void {
     this.visibleSessions.update(sessions => [...sessions.filter(item => item.id !== session.id), session]);
+  }
+
+  private beginMutation(): number {
+    this.mutationPending.set(true); this.notice.set(null);
+    return this.identity.generation();
+  }
+
+  private completeMutation(response: unknown, status: number, generation: number): boolean {
+    if (generation !== this.identity.generation()) return false;
+    this.mutationPending.set(false);
+    const outcome = PosWireMapper.cashMutationOutcome(response, status);
+    this.outcome.set(outcome);
+    if (outcome === CashMutationOutcome.Applied) return true;
+    this.rejectMutation(outcome);
+    return false;
+  }
+
+  private rejectMutation(outcome: CashMutationOutcome): void {
+    this.outcome.set(outcome); this.notice.set(null);
+    if (outcome.clearsSelection || outcome.reloadsContext) {
+      this.visibleSessions.set([]);
+      this.counter.invalidate();
+    }
+    if (outcome.clearsSelection) {
+      this.reloadEpoch++; this.loading.set(false); this.cashierId = null;
+    }
+    if (outcome.reloadsContext) {
+      this.notice.set(outcome.label);
+      this.reload();
+    } else this.error.set(outcome.label);
   }
 }

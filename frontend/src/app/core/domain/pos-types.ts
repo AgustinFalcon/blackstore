@@ -1,3 +1,23 @@
+export class CashMutationOutcome {
+  static readonly Applied = new CashMutationOutcome(null, 200, 'Operación registrada');
+  static readonly NotVisible = new CashMutationOutcome('NOT_FOUND', 404, 'Caja no disponible', true);
+  static readonly Unauthenticated = new CashMutationOutcome('SESSION_INVALID', 401, 'Comprobá tu sesión para continuar');
+  static readonly Forbidden = new CashMutationOutcome('FORBIDDEN', 403, 'Permiso insuficiente para esta operación');
+  static readonly Validation = new CashMutationOutcome('VALIDATION', 400, 'Revisá los datos de la operación');
+  static readonly Conflict = new CashMutationOutcome('CASH_SESSION_CONFLICT', 409, 'La caja cambió. Se actualizará su estado antes de continuar', false, true);
+  static readonly Unavailable = new CashMutationOutcome('PERSISTENCE_UNAVAILABLE', 503, 'Caja temporalmente no disponible. Consultá su estado antes de continuar');
+  static readonly Unknown = new CashMutationOutcome('unknown', 0, 'No se pudo comprobar el resultado. Consultá el estado de la caja');
+  private constructor(readonly wire: string | null, readonly httpStatus: number, readonly label: string,
+    readonly clearsSelection = false, readonly reloadsContext = false) {}
+  get isApplied(): boolean { return this === CashMutationOutcome.Applied; }
+  static fromWire(raw: unknown): CashMutationOutcome {
+    if (raw === 'CSRF_INVALID') return this.Forbidden;
+    if (raw === 'IDENTITY_UNAVAILABLE') return this.Unavailable;
+    return [this.Applied, this.NotVisible, this.Unauthenticated, this.Forbidden, this.Validation, this.Conflict, this.Unavailable]
+      .find(item => item.wire === raw) ?? this.Unknown;
+  }
+}
+
 export class CashSessionStatus {
   static readonly Open = new CashSessionStatus('OPEN', 'abierta', true, false, false);
   static readonly Closed = new CashSessionStatus('CLOSED', 'cerrada', false, true, true);

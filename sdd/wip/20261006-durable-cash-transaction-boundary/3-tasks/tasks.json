@@ -1,0 +1,16 @@
+{
+  "feature": "durable-cash-transaction-boundary",
+  "status": "implementation_partial",
+  "base_commit": "e6a47a32b5f21b9f020fc1f9f23a73a19e5ed4a7",
+  "stats": { "total": 6, "done": 1 },
+  "review_disposition": "Dos P2 corregidos: Jackson audit JSON y paridad de visibilidad en todos los blockers. Enfocada 17 PASS; amplia nativa compatible 148 PASS; run interrumpido 147 PASS/1 FAIL retenido. Reviews Bugbot y Security/Architecture locales APPROVED sin P0-P3; review exact-head y CI hospedado pendientes. Ver evidence/DCT-review-p2-resolution.md.",
+  "last_validation": { "date": "2026-10-07", "focused_tests": 17, "native_compatible_tests": 148, "failures": 0, "errors": 0, "skipped": 0, "excluded_docker_classes": 6, "postgres_major": 18, "teardown": "PASS", "browser": "BLOCKED", "final_review": "local_source_approved_exact_head_pending" },
+  "tasks": [
+    { "id": "DCT-T01", "title": "Revisar SDD, transacciones, amenazas y schema", "status": "done", "depends_on": [], "requirements": ["DCT-001", "DCT-002", "DCT-003", "DCT-004", "DCT-005", "DCT-006", "DCT-007"] },
+    { "id": "DCT-T02", "title": "Tipos, resultados HTTP, visibilidad SID y puertos atomicos", "status": "in_progress", "depends_on": ["DCT-T01"], "requirements": ["DCT-001", "DCT-002", "DCT-003", "DCT-004", "DCT-005"] },
+    { "id": "DCT-T03", "title": "Apertura y cierre con auditoria atomica", "status": "in_progress", "depends_on": ["DCT-T02"], "requirements": ["DCT-001", "DCT-002", "DCT-004", "DCT-005"] },
+    { "id": "DCT-T04", "title": "Egreso transaccional con lock y revalidacion", "status": "in_progress", "depends_on": ["DCT-T03"], "requirements": ["DCT-003", "DCT-004", "DCT-005"] },
+    { "id": "DCT-T05", "title": "PostgreSQL fallos crash concurrencia reinicio y roles", "status": "in_progress", "depends_on": ["DCT-T04"], "requirements": ["DCT-001", "DCT-002", "DCT-003", "DCT-004", "DCT-005", "DCT-006"] },
+    { "id": "DCT-T06", "title": "Contrato HTTP/UI, browser real, CI y reviews exactas", "status": "in_progress", "depends_on": ["DCT-T05"], "requirements": ["DCT-001", "DCT-002", "DCT-003", "DCT-004", "DCT-005", "DCT-006", "DCT-007"] }
+  ]
+}

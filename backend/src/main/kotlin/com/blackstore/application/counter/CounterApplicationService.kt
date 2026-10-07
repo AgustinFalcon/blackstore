@@ -28,6 +28,7 @@ class CounterApplicationService(
     private val saleQuery: SaleOperationQuery,
     private val coordinator: LocalSaleCoordinator,
     private val authorization: AuthorizeStaffAction? = null,
+    private val cashMutations: com.blackstore.domain.port.out.cash.CashMutationCommands? = null,
 ) {
     private val payments = PaymentBook()
     private val roles = RoleAuthorizationPolicy()
@@ -43,8 +44,8 @@ class CounterApplicationService(
         return reverse(identity,paymentId,staff.id.value,staff.role,reason,evidenceRef)
     }
     fun addExpense(staff: AuthenticatedStaff, cashSessionId: Long, category: String, amount: BigDecimal, reason: String, method: PaymentMethod): ExpenseRecord {
-        authority().cash(staff,StaffPermission.ExpenseRecord,cashSessionId,reason)
-        return addExpense(staff.id.value,staff.role,cashSessionId,category,amount,reason,method)
+        val commands = cashMutations ?: throw com.blackstore.domain.cash.CashMutationException(com.blackstore.domain.cash.CashMutationFailure.Unavailable)
+        return commands.expense(staff,ExpenseRecord(0,cashSessionId,category,amount,reason,method,staff.id.value,Instant.now())).recordOrThrow()
     }
     fun shiftReport(staff: AuthenticatedStaff): ShiftReport { authority().permission(staff,StaffPermission.ShiftReportRead); return shiftReport() }
     fun dailyReport(staff: AuthenticatedStaff): ShiftReport { authority().permission(staff,StaffPermission.DailyReportRead); return dailyReport() }
@@ -94,32 +95,6 @@ class CounterApplicationService(
                 evidenceRef = evidenceRef,
             )
         store.savePayment(reversal, identity)
-    }
-
-    fun addExpense(
-        actorId: Long,
-        role: StaffRole,
-        cashSessionId: Long,
-        category: String,
-        amount: BigDecimal,
-        reason: String,
-        method: PaymentMethod,
-        now: Instant = Instant.now(),
-    ): ExpenseRecord {
-        roles.assertAllowed(role, SessionAction.OPERATE, actorId, actorId)
-        val expense =
-            ExpenseRecord(
-                id = ids.getAndIncrement(),
-                cashSessionId = cashSessionId,
-                category = category,
-                amount = amount,
-                reason = reason,
-                paymentMethod = method,
-                actorId = actorId,
-                accruedAt = now,
-            )
-        store.saveExpense(expense)
-        return expense
     }
 
     fun shiftReport(): ShiftReport = report("SHIFT")

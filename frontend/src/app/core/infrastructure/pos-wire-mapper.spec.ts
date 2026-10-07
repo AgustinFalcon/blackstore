@@ -1,5 +1,6 @@
 import {
   CashSessionStatus,
+  CashMutationOutcome,
   PaymentStatus,
   PersistenceMode,
   ReportFormula,
@@ -11,6 +12,27 @@ import { PaymentAttempt, PaymentCoverage, TicketIdentity, TicketMoney } from '..
 import { PaymentMethod } from '../domain/pos-types';
 
 describe('PosWireMapper', () => {
+  it('requires matching status and a valid envelope for cash failures without trusting messages', () => {
+    const failure = { code: 409, traceId: 'trace', data: null, message: 'private database details',
+      errorCode: CashMutationOutcome.Conflict.wire, retryable: false };
+    expect(PosWireMapper.cashMutationOutcome(failure, 409)).toBe(CashMutationOutcome.Conflict);
+    for (const changes of [{ code: 404 }, { traceId: '' }, { data: { id: 42 } }, { retryable: undefined },
+      { errorCode: 'FUTURE_FAILURE' }, { message: {} }]) {
+      expect(PosWireMapper.cashMutationOutcome({ ...failure, ...changes }, 409)).toBe(CashMutationOutcome.Unknown);
+    }
+    expect(PosWireMapper.cashMutationOutcome(failure, 404)).toBe(CashMutationOutcome.Unknown);
+    expect(PosWireMapper.cashMutationOutcome(null, 0)).toBe(CashMutationOutcome.Unknown);
+    expect(CashMutationOutcome.Conflict.label).not.toContain(failure.message);
+  });
+  it('rejects missing success data and unknown session status for cash mutations', () => {
+    const success = (data: unknown) => ({ code: 200, traceId: 'trace', data, message: null, errorCode: null, retryable: null });
+    const session = { id: 1, terminalId: 10, cashierId: 7, status: CashSessionStatus.Open.wire, openingCash: 0 };
+    expect(PosWireMapper.cashMutationSession(success(session))?.status).toBe(CashSessionStatus.Open);
+    expect(PosWireMapper.cashMutationSession(success({ ...session, status: 'FUTURE_STATE' }))).toBeNull();
+    expect(PosWireMapper.cashMutationSession(success(null))).toBeNull();
+    expect(PosWireMapper.cashMutationExpense(success({ id: 3, category: 'insumos', amount: 2 }))).toBeTrue();
+    expect(PosWireMapper.cashMutationExpense(success(null))).toBeFalse();
+  });
   it('translates cash sessions and workspace at the HTTP boundary', () => {
     const session = PosWireMapper.cashSession({
       id: 9,

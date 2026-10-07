@@ -46,8 +46,13 @@ class InMemoryCounterEntryStore : CounterEntryStore {
 
     override fun findPayment(id: Long): PaymentRecord? = payments.firstOrNull { it.id == id }
 
-    override fun saveExpense(expense: ExpenseRecord) {
-        expenses += expense
+    internal fun saveExpense(expense: ExpenseRecord) = synchronized(this) {
+        expenses.add(expense)
+        Unit
+    }
+    internal fun <T> atomicExpenses(action: () -> T): T = synchronized(this) {
+        val previous=expenses.toList()
+        try { action() } catch(error: Exception) { expenses.clear();expenses.addAll(previous);throw error }
     }
 
     override fun figures(): ShiftFigures {

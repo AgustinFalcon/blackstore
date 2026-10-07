@@ -14,14 +14,18 @@ import org.springframework.test.web.servlet.post
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class AuthenticatedCommercialRegressionTest {
     @Autowired private lateinit var context: org.springframework.web.context.WebApplicationContext
     @Autowired @org.springframework.beans.factory.annotation.Qualifier("springSecurityFilterChain") private lateinit var securityChain: jakarta.servlet.Filter
     @org.springframework.boot.test.mock.mockito.MockBean private lateinit var resolver: com.blackstore.application.identity.ResolveStaffSession
     @org.springframework.boot.test.mock.mockito.MockBean private lateinit var authorizer: com.blackstore.application.identity.AuthorizeStaffAction
+    @org.springframework.boot.test.mock.mockito.MockBean private lateinit var staffUsers: com.blackstore.domain.identity.StaffIdentityRepository
     @org.junit.jupiter.api.BeforeEach fun trustedTestSession() {
         val now=java.time.Instant.now()
         val staff=com.blackstore.domain.identity.AuthenticatedStaff(com.blackstore.domain.identity.StaffUserId(7),"Regression Operator",com.blackstore.domain.cash.StaffRole.CASHIER)
+        org.mockito.Mockito.`when`(staffUsers.findById(staff.id)).thenReturn(
+            com.blackstore.domain.identity.StaffUser(staff.id,"fixture-cashier","Regression Operator",staff.role,com.blackstore.domain.identity.StaffAccountState.ACTIVE,"fixture-only"))
         val identity=com.blackstore.domain.model.OperationQuadruple("11111111-1111-1111-1111-111111111111","terminal-1","sale-http-policy","op-http-policy")
         for(permission in listOf(com.blackstore.domain.identity.StaffPermission.SaleCommit,com.blackstore.domain.identity.StaffPermission.SaleRelease)) {
             org.mockito.Mockito.`when`(authorizer.sale(staff,permission,identity,null)).thenReturn(com.blackstore.domain.identity.OwnedCashSession(1,staff.id,com.blackstore.domain.cash.CashSessionStatus.OPEN))

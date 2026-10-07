@@ -34,7 +34,7 @@ data class CashSession(
     }
 }
 
-enum class CashAuditEventType { CASH_SESSION_OPENED, CASH_SESSION_CLOSED, UNKNOWN }
+enum class CashAuditEventType { CASH_SESSION_OPENED, CASH_SESSION_CLOSED, EXPENSE_RECORDED, UNKNOWN }
 
 data class CashAuditEvent(
     val sessionId: Long,

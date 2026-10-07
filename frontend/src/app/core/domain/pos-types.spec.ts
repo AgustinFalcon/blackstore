@@ -1,5 +1,6 @@
 import {
   CashSessionStatus,
+  CashMutationOutcome,
   PaymentMethod,
   PaymentStatus,
   PersistenceMode,
@@ -11,6 +12,18 @@ import {
 } from './pos-types';
 
 describe('POS closed wire types', () => {
+  it('maps cash mutation results to closed cases and keeps recovery rules in the type', () => {
+    for (const outcome of [CashMutationOutcome.Applied, CashMutationOutcome.NotVisible, CashMutationOutcome.Unauthenticated,
+      CashMutationOutcome.Forbidden, CashMutationOutcome.Validation, CashMutationOutcome.Conflict, CashMutationOutcome.Unavailable]) {
+      expect(CashMutationOutcome.fromWire(outcome.wire)).toBe(outcome);
+    }
+    for (const raw of [undefined, {}, 409, '', 'FUTURE_FAILURE']) expect(CashMutationOutcome.fromWire(raw)).toBe(CashMutationOutcome.Unknown);
+    expect(CashMutationOutcome.Conflict.reloadsContext).toBeTrue();
+    expect(CashMutationOutcome.NotVisible.clearsSelection).toBeTrue();
+    expect(CashMutationOutcome.Unknown.reloadsContext).toBeFalse();
+    expect(CashMutationOutcome.fromWire('CSRF_INVALID')).toBe(CashMutationOutcome.Forbidden);
+    expect(CashMutationOutcome.fromWire('IDENTITY_UNAVAILABLE')).toBe(CashMutationOutcome.Unavailable);
+  });
   it('maps every cash-session wire to its singleton and fails closed', () => {
     expect(CashSessionStatus.fromWire('OPEN')).toBe(CashSessionStatus.Open);
     expect(CashSessionStatus.fromWire('CLOSED')).toBe(CashSessionStatus.Closed);

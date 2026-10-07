@@ -1,12 +1,10 @@
 package com.blackstore.infrastructure.persistence
 
-import com.blackstore.domain.cash.CashAuditEvent
 import com.blackstore.domain.cash.CashSession
 import com.blackstore.domain.cash.CashSessionStatus
 import com.blackstore.domain.port.out.cash.CashSessionStore
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
-import java.math.BigDecimal
 import java.sql.ResultSet
 import javax.sql.DataSource
 
@@ -15,8 +13,6 @@ import javax.sql.DataSource
 class JdbcCashSessionStore(
     private val dataSource: DataSource,
 ) : CashSessionStore {
-    private val writer = JdbcBlackStoreWriter()
-
     override fun list(): List<CashSession> =
         asRole("blackstore_app") { connection ->
             connection.createStatement().executeQuery(
@@ -32,50 +28,15 @@ class JdbcCashSessionStore(
             }
         }
 
-    override fun save(session: CashSession): CashSession =
-        if (session.id == 0L) {
-            val id =
-                asRole("blackstore_app") { connection ->
-                    writer.insertOpenCashSession(
-                        connection,
-                        session.terminalId,
-                        session.cashierId,
-                        session.openingCash,
-                        session.openedAt,
-                    )
-                }
-            session.copy(id = id)
-        } else if (session.status != CashSessionStatus.OPEN) {
-            asRole("blackstore_projection_worker") { connection ->
-                writer.closeCashSession(
-                    connection,
-                    session.id,
-                    session.closingCashDeclared ?: BigDecimal.ZERO,
-                    session.closedAt ?: session.openedAt,
-                )
-            }
-            session
-        } else {
-            session
-        }
-
-    override fun appendClosureAudit(event: CashAuditEvent) {
-        asRole("blackstore_app") { connection ->
-            writer.insertAudit(
-                connection,
-                event.actorId,
-                event.eventType.name,
-                "cash_session",
-                event.sessionId,
-                detail = event.reason,
-            )
-        }
-    }
-
     private fun <T> asRole(role: String, block: (java.sql.Connection) -> T): T =
         dataSource.connection.use { connection ->
-            connection.createStatement().execute("SET ROLE $role")
-            block(connection)
+            connection.autoCommit = false
+            try {
+                connection.createStatement().use { it.execute("SET LOCAL ROLE $role") }
+                val result = block(connection)
+                connection.commit()
+                result
+            } catch (error: Exception) { connection.rollback(); throw error }
         }
 
     private fun ResultSet.toSession(): CashSession =
