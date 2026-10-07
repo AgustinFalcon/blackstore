@@ -1,23 +1,17 @@
 # Frontera transaccional durable de caja
 
-Último P2 Security corregido 2026-10-07: titular ACTIVE + CASHIER exactamente, separado de permiso actor SUPERVISOR/OWNER. Enfocada22/amplia FINAL153 PASS sobre source post-fix, cero failures/errors/skips, mismas seis exclusiones Docker; teardown75632/5441/children/launcher PASS. Antecedente151 sustituido; nueva review/PG16/browser/CI pendientes.
-
-Validación final actual 2026-10-07: amplia nativa151 PASS/39 suites/cero fallos/errores/skips sobre source posterior a residual actor/owner; enfocada20 PASS, seis exclusiones Docker. Teardown final5020/5441/children/launcher PASS. Reemplaza antecedente149, no cierra gates PG16/browser/CI/review global.
-
-Última extensión 2026-10-07: actor/owner sin autoridad también llevan procedencia Authorization (paridad con eligibleCashier anterior); enfocada final20 PASS, teardown PID50428/5441 PASS. Amplia149 es antecedente anterior a esta extensión; nueva review/CI/browser/PG16 pendientes.
-
 - Feature: `durable-cash-transaction-boundary`.
-- Fecha: 2026-10-06. Idioma: español.
+- Fecha: 2026-10-06; actualización: 2026-10-07. Idioma: español.
 - Branch: `fix/durable-cash-transaction-boundary`.
 - Base observada: `e6a47a32b5f21b9f020fc1f9f23a73a19e5ed4a7`.
-- Estado: `implementation_partial`; diseño aprobado por GPT-6.1 Sol medium (`/root/blackstore_cash_sdd_review`) sobre la base exacta indicada, tras resolver SID/HTTP y diagnóstico del writer; sin P0–P3. Dos P2 de implementación corregidos y probados: backend local 148 tests PASS el 2026-10-07; suite enfocada 17 PASS; UI typecheck PASS. Browser/reinicio y build/tests UI bloqueados por entorno; PG16/CI y nueva revisión final de implementación pendientes. Recursos propios apagados.
-- Revisión documental R1: corregidos contrato SID/HTTP con visibilidad previa a conflicto y diagnóstico del writer (ya posee condición `OPEN` y rowcount); nueva revisión Sol `APPROVED`, GO de implementación informado por el coordinador.
-- Destino propuesto: `master`, corte core local y fail-closed.
-- Fuentes: `AGENTS.md`, documentos canónicos SDD, WIPs `20261006-blackstore-staff-identity`, `20261006-blackstore-durable-commercial-runtime`, piloto `ADR-004-cash-ledgers` y `TASK-004-cash-sessions`; fuentes de código detalladas en la especificación técnica.
-- Método: Falcon `sdd-workflow`, `e2e-evidence`, política de dominio cerrado y estándares Spring/Angular. Artefactos versionados sin rutas privadas, secretos ni configuración del equipo.
-- Dependencias: identidad staff y runtime durable existentes; este corte no amplía sus aprobaciones.
-- Gates: Implementation `PARTIAL` (backend PASS, UI typecheck PASS; UI build/tests BLOCKED); Integration `BLOCKED` (PG18 local/crash PASS, browser BLOCKED, PG16 pendiente); Review implementación `FAIL` (dos P2 informados, corregidos; nueva revisión pendiente; diseño APPROVED); Homologation `BLOCKED`; Publication `NOT_RUN`.
+- Estado: `merged_partial_acceptance`. [PR #26](https://github.com/AgustinFalcon/blackstore/pull/26) MERGED, head `caab0a9`, merge `a9887a3` en master. El merge core no equivale a aceptación integral ni cierre del WIP.
+- Review: dos revisiones independientes GPT-6.1 Sol sobre el head exacto `caab0a9`, bugs y seguridad/arquitectura, APPROVED; diseño T01 aprobado tras R1. Hallazgos de implementación corregidos antes de estas revisiones.
+- Validación local final: 153 tests / 39 suites / 0 failures / 0 errors / 0 skipped, seis clases Docker-only excluidas; enfocada 22 PASS; PostgreSQL 18 local y teardown PASS. No certifica PostgreSQL 16.
+- CI: [PR run 37634224683](https://github.com/AgustinFalcon/blackstore/actions/runs/37634224683) verde sobre el head; [post-merge master run 37634797108](https://github.com/AgustinFalcon/blackstore/actions/runs/37634797108) verde sobre `a9887a3`, frontend 34 s y backend 3 min 43 s.
+- Fuentes: AGENTS.md, documentos canónicos SDD, WIPs de identidad staff y runtime comercial durable, piloto ADR-004-cash-ledgers y TASK-004-cash-sessions; fuentes de código en la especificación técnica.
+- Dependencias: identidad staff y runtime durable incorporados antes de este corte; DCT no amplía sus aprobaciones.
+- Gates: Implementation PASS para el corte mergeado con regresión local y CI; Integration PARTIAL (PG18/crash/HTTP PASS; PG16 y browser con reinicio DCT pendientes); Review APPROVED sobre head exacto; Homologation BLOCKED; Publication NOT_RUN.
 
-Objetivo: apertura/cierre con auditoría atómicos y egresos serializados con cierre mediante PostgreSQL. Libro de caja, arqueo, fórmulas de reportes, StoreCore live y fiscal permanecen pendientes fuera de este corte. No `/sdd.finish`.
+Apertura/cierre y egresos comparten transacción, auditoría y lock durable con revalidación de autoridad. El titular exige ACTIVE y exactamente CASHIER; el permiso de actor SUPERVISOR/OWNER se conserva por separado. Las denegaciones de autoridad conservan procedencia cerrada y auditoría independiente después del rechazo. Evidencias históricas y fallos previos permanecen en evidence/; la validación de 153 tests sustituye las regresiones anteriores para el source final.
 
-Actualización exact-head 2026-10-07: P2 AUTHORIZATION_DENIED corregido con procedencia cerrada y escritura independiente del comando rechazado. Enfocada18/amplia nativa149 PASS; teardown PID65748/5441 PASS. Nueva review del source corregido pendiente; no supersede gates browser/UI/PG16/CI ni aprobación global. Evidencia `evidence/DCT-authorization-denial-resolution.md`.
+Libro de caja, arqueo, fórmulas de reportes, StoreCore live y fiscal siguen fuera de este corte. Browser/reinicio DCT no ejecutado con aceptación; la evidencia browser de identidad/runtime previo no lo sustituye. No /sdd.finish, archivo, tag, deploy ni publicación.

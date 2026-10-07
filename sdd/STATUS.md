@@ -1,16 +1,8 @@
 # Estado canónico del SDD — BlackStore
 
-DCT último P2 Security 2026-10-07: titular exige ACTIVE y exactamente CASHIER; actor supervisory conserva permiso. Enfocada22/amplia FINAL153 PASS/39 suites/cero failures/errors/skips sobre post-fix, seis exclusiones Docker. Teardown75632/5441/children/launcher PASS; reemplaza151 antecedente. Nueva review/PG16/browser/CI siguen pendientes, sin cierre global.
-
-DCT run amplio FINAL 2026-10-07: source posterior a residual actor/owner validado con151 tests/39 suites/0 failures/errors/skips (seis exclusiones Docker), BUILD SUCCESSFUL1m29. Enfocada20 PASS. Teardown main5020/5441/children/launcher PASS. Antecedente149 debajo reemplazado por151 final; no cambia gates PG16/browser/CI ni cierre global.
-
-DCT extensión residual 2026-10-07: actor durable inactivo/owner inelegible también auditados como autoridad; memoria y PG prueban una denegación independiente y cero mutación. Enfocada final20 PASS; teardown PID50428/5441 PASS. Amplia149 debajo corresponde al source previo a esta extensión, nueva review pendiente.
-
-Actualización DCT 2026-10-07: P2 exact-head `AUTHORIZATION_DENIED` restaurado con procedencia cerrada y auditoría fuera de la transacción rechazada, sin auditar conflictos ni validación común. Enfocada18/amplia nativa149 PASS (39 suites, cero fallos/errores/skips; seis exclusiones Docker); PostgreSQL PID65748/5441 y seis crash children apagados. Nueva review del source corregido, PG16, browser/UI y CI siguen pendientes. Evidencia `wip/20261006-durable-cash-transaction-boundary/evidence/DCT-authorization-denial-resolution.md`; sin cierre global.
-
-**Validado:** 2026-10-06
-**Madurez:** simulador local parcial; identidad, recovery durable, caja contable y E2E real pendientes. Companion live no aprobado.
-**Git:** `https://github.com/AgustinFalcon/blackstore` (privado). `origin/master` en `b9211764f525d723d020c780d4eb62564ffaadf6` (PR #23). CI post-merge `37398297188` verde. Sin tag ni publicación.
+**Validado:** 2026-10-07.
+**Madurez:** core local fail-closed integrado; aceptación DCT aún parcial. Companion live y homologación pendientes.
+**Git:** [BlackStore](https://github.com/AgustinFalcon/blackstore) privado. PR #26 MERGED, head `caab0a9`, merge master `a9887a3`. [CI PR 37634224683](https://github.com/AgustinFalcon/blackstore/actions/runs/37634224683) verde y [CI post-merge master 37634797108](https://github.com/AgustinFalcon/blackstore/actions/runs/37634797108) verde (frontend 34 s, backend 3 min 43 s). Sin tag ni publicación.
 
 ## Precedencia
 
@@ -25,19 +17,17 @@ Actualización DCT 2026-10-07: P2 exact-head `AUTHORIZATION_DENIED` restaurado c
 
 ## Gate actual
 
-En `origin/master`, PRs #1–#8, #11, #13, #15 y #17 mergearon con sus pares Grok `APPROVED`. PR #9 mergeó a `integration/blackstore` (`531731f`) y no está en este `master`; no hay par Grok para #9. #10, #12 y #16 son issues. El perfil `loopback` es opt-in. Issue [#10](https://github.com/AgustinFalcon/blackstore/issues/10): el dispatch HTTP local usa coroutines (`delay`), no `Thread.sleep`. Issue [#12](https://github.com/AgustinFalcon/blackstore/issues/12): el hilo IO llega por `DispatcherProvider` (como GoodLife Android); no se inyecta en dominio ni en workers `@Scheduled`. Issue [#16](https://github.com/AgustinFalcon/blackstore/issues/16): reutilizar el mismo provider si aparece otro HTTP bloqueante; sin código ahora. No es un dispatcher remoto de Mercado Libre.
+PR #24 incorporó identidad staff fail-closed (`4055b28`): sesión opaca persistida, cookie/CSRF, RBAC/ownership y /sesion; elimina autoridad desde X-Actor-Id/X-Role. El corte runtime comercial durable (`e6a47a3`) incorporó PostgreSQL autoritativo, recovery y consulta de ventas tras reinicio. La auditoría anterior de memoria/identidad describe el estado previo a esos merges; no es el estado actual. Las evidencias browser/PostgreSQL de esos WIPs no sustituyen aceptación DCT.
 
-PR #19 cerró los vocabularios wire de las cinco rutas existentes. PR #22 agregó fixtures de catálogo seguros. PR #23 incorporó política local fail-closed de ticket/pago, dinero exacto, correlación y coordinación en una instancia; sus reviews de bugs, seguridad y SDD aprobaron el HEAD exacto y el CI post-merge `37398297188` quedó verde.
+[PR #26](https://github.com/AgustinFalcon/blackstore/pull/26) incorporó apertura/cierre/egresos de caja con transacción, auditoría y lock durable compartidos. Titular ACTIVE y exactamente CASHIER; autoridad de actor separada, denegaciones con auditoría independiente. Dos revisiones independientes GPT-6.1 Sol (bugs y seguridad/arquitectura) APPROVED sobre el head exacto `caab0a9`; ambos CI hospedados verdes.
 
-Ese CI no acredita producto completo. La auditoría funcional posterior confirmó que el runtime normal sigue con memoria/fixture, la saga consultable no se rehidrata tras reinicio, reportes no separan correctamente turno/día y no existe E2E browser→backends→PostgreSQL. El bloqueo inmediato es identidad: varios endpoints confían en `X-Actor-Id`/`X-Role` y otros no exigen actor. El WIP activo `20261006-blackstore-staff-identity` reemplaza esa frontera; no habilita companion live, fiscal, MP-LIVE-05 ni `/sdd.finish`.
+## Corte DCT integrado — 2026-10-07
 
-## Siguiente corte de caja — 2026-10-06
+WIP [durable-cash-transaction-boundary](wip/20261006-durable-cash-transaction-boundary/meta.md), base `e6a47a32b5f21b9f020fc1f9f23a73a19e5ed4a7`, branch `fix/durable-cash-transaction-boundary`: `merged_partial_acceptance`. Regresión local final 153 tests / 39 suites / 0 failures/errors/skips; enfocada 22 PASS, PostgreSQL 18 local/crash/HTTP y teardown PASS, seis clases Docker-only excluidas. Las regresiones de 143/148/149/151 y revisiones pendientes son antecedentes conservados en el WIP, sustituidos por este resultado sobre el source final.
 
-Actualización 2026-10-07: dos P2 corregidos (Jackson para audit JSON y 404 de memoria independiente del orden de blockers). Suite enfocada 17 PASS; amplia nativa compatible final 148 PASS, 0 failures/errors/skips; run suspendido 147 PASS/1 FAIL retenido con disposición de teardown y repetición sin cambios de código. Evidencia `DCT-review-p2-resolution.md`. PG propios apagados y listener5441 ausente. Nueva review independiente pendiente; los gates globales parciales/bloqueados permanecen.
+Implementation PASS para el corte mergeado; Review APPROVED exact-head; Integration PARTIAL. PostgreSQL 16 y browser real con reinicio DCT siguen pendientes: no se atribuye PASS por CI verde, MockMvc ni aceptación browser de otros cortes. Ver evidence/DCT-T05-postgres.md, DCT-T06-browser-restart.md, DCT-review-p2-resolution.md y DCT-authorization-denial-resolution.md del WIP; fallos y bloqueos históricos preservados.
 
-Resultado actualizado del corte local: `implementation_partial`. Backend 143 tests PASS, 0 failures/errors/skips, PostgreSQL18 real con seis crash y roles/locks/HTTP; seis clases Docker anteriores excluidas por acceso al pipe denegado. UI typecheck PASS; UI build/tests y browser/reinicio BLOCKED por entorno. La creación IAB oculta no retornó y fue abortada antes de assertions; no backend/frontend iniciado. PostgreSQL DCT PID70556 detenido, puerto5441 y procesos hijos ausentes. Evidencia en `evidence/DCT-T05-postgres.md` y `evidence/DCT-T06-browser-restart.md`. PG16, CI hospedado y reviews finales pendientes; sin commit/push/publicación.
-
-WIP [durable-cash-transaction-boundary](wip/20261006-durable-cash-transaction-boundary/meta.md), base `e6a47a32b5f21b9f020fc1f9f23a73a19e5ed4a7`, branch `fix/durable-cash-transaction-boundary`: `implementation_in_progress`. T01 aprobada por GPT-6.1 Sol medium después de R1, sin P0–P3; T02–T06 en validación. Código local implementa comandos de apertura/cierre/egreso con auditoría en la misma conexión/transacción, lock común y revalidación durable. Primera validación enfocada: 17 tests PASS, incluido PostgreSQL 18 local, seis crash de proceso y matriz SID/HTTP; regresión final en progreso. Browser, PostgreSQL 16/CI y revisiones finales aún pendientes. La base anterior y sus CI son historia, no evidencia del diff actual. Libro/arqueo/reportes y live/fiscal permanecen pendientes; no `/sdd.finish` ni publicación.
+Libro de caja productivo, arqueo/diferencia, fórmulas y períodos SHIFT/DAY, E2E StoreCore+BlackStore con dos PostgreSQL, integración live, fiscal y MP-LIVE-05 permanecen pendientes. Homologation BLOCKED; Publication NOT_RUN. No /sdd.finish ni archivo del WIP.
 
 ## Estrategia de ramas para homologación
 
