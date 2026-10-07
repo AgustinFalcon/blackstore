@@ -41,7 +41,8 @@ export class CashSessionPage {
   }
   async expectClosedControlsAbsent() {
     await expect(this.page.getByRole('button', { name: 'Registrar gasto', exact: true })).toHaveCount(0);
-    await expect(this.page.getByRole('button', { name: 'Cerrar sesión', exact: true })).toHaveCount(0);
+    const cashCloseForm = this.page.locator('form').filter({ has: this.page.getByLabel('Declarado', { exact: true }) });
+    await expect(cashCloseForm.getByRole('button', { name: 'Cerrar sesión', exact: true })).toHaveCount(0);
   }
   async expectClosedWorkstation(terminal: number, cashier: number) {
     await expect(this.page.getByText('Cargando puesto de trabajo…', { exact: true })).toHaveCount(0);

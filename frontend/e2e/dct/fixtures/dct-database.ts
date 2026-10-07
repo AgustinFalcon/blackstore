@@ -5,7 +5,7 @@ import { hash } from 'bcryptjs';
 import { CashSessionStatus, StaffRole } from '../../../src/app/core/domain/pos-types';
 import { DctAuditEvent } from './dct-audit-event';
 
-export interface TestStaff { id: number; login: string; password: string; role: StaffRole }
+export interface TestStaff { id: number; login: string; password: string; displayName: string; role: StaffRole }
 
 /** Owns exactly one disposable container, never a pre-existing database. */
 export class DctDatabase {
@@ -49,9 +49,10 @@ export class DctDatabase {
   async seed(role: StaffRole): Promise<TestStaff> {
     const login = `dct-${randomUUID()}`;
     const password = randomUUID();
+    const displayName = 'DCT browser staff';
     const rows = await this.query('INSERT INTO staff_users(login,display_name,password_hash,role_code,active) VALUES($1,$2,$3,$4,true) RETURNING id',
-      [login, 'DCT browser staff', await hash(password, 10), role.wire]);
-    return { id: Number(rows[0].id), login, password, role };
+      [login, displayName, await hash(password, 10), role.wire]);
+    return { id: Number(rows[0].id), login, password, displayName, role };
   }
   async terminal(): Promise<number> {
     return Number((await this.query('INSERT INTO terminals(terminal_code) VALUES($1) RETURNING id', [`DCT-${randomUUID()}`]))[0].id);

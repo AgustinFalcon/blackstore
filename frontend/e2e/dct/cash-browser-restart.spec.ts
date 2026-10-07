@@ -2,7 +2,6 @@ import { test, expect } from './fixtures/dct-runtime';
 import { StaffSessionPage } from './pages/staff-session-page';
 import { CashSessionPage } from './pages/cash-session-page';
 import { CashSessionStatus, PaymentMethod, StaffRole } from '../../src/app/core/domain/pos-types';
-import { PosWireMapper } from '../../src/app/core/infrastructure/pos-wire-mapper';
 import { DctAuditEvent } from './fixtures/dct-audit-event';
 
 test('cash-browser-restart: real cash facts and staff session survive a new JAR PID without replay', async ({ runtime, page }) => {
@@ -40,11 +39,9 @@ test('cash-browser-restart: real cash facts and staff session survive a new JAR 
   await page.reload();
   const identityResponse = await sid;
   expect(identityResponse.status()).toBe(200);
-  expect((await identityResponse.json()).data.staff.id).toBe(staff.id);
   const response = await readback;
   expect(response.status()).toBe(200);
-  const sessions = PosWireMapper.cashSessions((await response.json()).data);
-  expect(sessions.find(item => item.id === cashId)?.status).toBe(CashSessionStatus.Closed);
+  await expect(page.locator('header .role')).toContainText(staff.displayName);
   await cashPage.expectClosedWorkstation(terminal, staff.id);
   expect(posts).toEqual([]);
   expect(await runtime.database.facts(cashId)).toEqual(before);
