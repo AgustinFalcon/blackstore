@@ -8,6 +8,6 @@
 - Alcance: ledger append-only productivo, arqueo sin ajuste automático, reconocimiento comercial separado, SHIFT/DAY filtrados y completos explícitamente.
 - Dependencias: SID persistente/RBAC, runtime comercial durable y locks DCT. La infraestructura base PG16/browser/reinicio quedó acreditada por PR #28 y CI `37657282222`; cada corte contable conserva sus escenarios CLR específicos como evidencia todavía no ejecutada. V8 disponible observada después de V1–V7; volver a verificar numeración antes de crear la migración.
 - Gates actuales: Design PASS; Implementation NOT_RUN; Integration NOT_RUN; Review PENDING para código/runtime; Homologation BLOCKED; Publication NOT_RUN.
-- Estrategia: PR de SDD/GO y cuatro cortes de implementación. Sin código, migraciones ejecutadas, commit, push, deploy, publicación ni `/sdd.finish` en esta planificación.
+- Estrategia: PR de SDD/GO y cuatro cortes de implementación. Este corte sólo publica documentación: no contiene código, migraciones ejecutadas, activación runtime, deploy, publicación ni `/sdd.finish`.
 
 StoreCore permanece fixture/disabled. Dos PostgreSQL, E2E live, fiscal, MP-LIVE-05, activación companion, facturación y Correo Argentino conservan gates externos independientes. La aceptación contable local no los habilita.
