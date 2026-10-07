@@ -4,6 +4,7 @@ import com.blackstore.domain.port.out.sales.DurableSaleStore
 import com.blackstore.domain.sales.*
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.model.StoreCoreOperationReceipt
+import com.blackstore.domain.accounting.AccountingRuntimeState
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.sql.Connection
 import java.time.Duration
@@ -15,6 +16,9 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
  private val json = jacksonObjectMapper()
  private val writer = JdbcBlackStoreWriter()
  private val aggregateLocks = JdbcAccountingAggregateLocks()
+ private val lifecycleAdmission = JdbcAccountingLifecycleAdmission()
+ private val terminalEvidence = TerminalRemoteEvidenceTranslator()
+ private val commercialRecognition = JdbcCommercialRecognitionStep()
  internal fun <T> transaction(block: (Connection) -> T): T = dataSource.connection.use { c ->
   c.autoCommit=false
   try { c.createStatement().execute("SET LOCAL ROLE blackstore_app"); val result=block(c); c.commit(); result }
@@ -51,8 +55,11 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
    val lines=c.prepareStatement("SELECT * FROM sale_lines WHERE sale_id=? ORDER BY id").use { q ->
     q.setLong(1,id);q.executeQuery().use { rows -> buildList { while(rows.next()) add(TicketLine(rows.getString("sku"),json.readTree(rows.getString("product_snapshot")).path("name").asText(),rows.getInt("quantity"),rows.getBigDecimal("original_unit_price"),rows.getBigDecimal("discount_amount"))) } }
    }
-   val evidence=r.getString("storecore_reservation_ref")?.let { ref -> runCatching { RemoteEvidence(ref,r.getString("reservation_receipt"),r.getString("contract_version"),r.getString("openapi_digest"),json.readTree(r.getString("accepted_price_versions")).map { it.asText() },r.getTimestamp("reservation_expires_at")?.toInstant()) }.getOrNull() }
-   val mapped=mapper.state(r.getString("status")); val state=if(legacy || commands.isEmpty()) DurableSaleState.LEGACY_INCOMPLETE else mapped
+   val reservation=r.getString("storecore_reservation_ref")?.let { ref -> runCatching { RemoteEvidence(ref,r.getString("reservation_receipt"),r.getString("contract_version"),r.getString("openapi_digest"),json.readTree(r.getString("accepted_price_versions")).map { it.asText() },r.getTimestamp("reservation_expires_at")?.toInstant()) }.getOrNull() }
+   val mapped=mapper.state(r.getString("status"))
+   val terminal=mapped in setOf(DurableSaleState.COMMITTED,DurableSaleState.RELEASED)
+   val evidence=if(terminal) reservation?.let { loadTerminalEvidence(c,identity,SaleStatus.fromWire(mapped.name),commands,it) } else reservation
+   val state=if(legacy || commands.isEmpty()) DurableSaleState.LEGACY_INCOMPLETE else if(terminal && evidence==null) DurableSaleState.UNKNOWN else mapped
    val status=if(state==DurableSaleState.LEGACY_INCOMPLETE || state==DurableSaleState.UNKNOWN || (mapped.name in SaleSaga.SUCCESS_STATES.map { it.name } && evidence==null)) SaleStatus.UNKNOWN else SaleStatus.fromWire(mapped.name)
    StoredSale(SaleSaga(identity,r.getLong("cash_session_id"),status,evidence,r.getString("reconciliation_reason"),commands,
     grossSales=lines.fold(java.math.BigDecimal.ZERO) { a,l -> a+l.originalUnitPrice.multiply(l.quantity.toBigDecimal()) },
@@ -69,8 +76,23 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
    ClaimAttempt.Quarantined -> Unit // The transaction committed; the next aggregate starts without retained locks.
   }
  }
+ private fun loadTerminalEvidence(c: Connection, identity: OperationQuadruple, status: SaleStatus, commands: List<OutboxCommand>, reservation: RemoteEvidence): RemoteEvidence? = runCatching {
+  val kind=when(status) { SaleStatus.COMMITTED -> com.blackstore.domain.model.StoreCoreOperationKind.COMMIT; SaleStatus.RELEASED -> com.blackstore.domain.model.StoreCoreOperationKind.RELEASE; else -> error("terminal sale required") }
+  val command=commands.single { it.kind==kind }
+  val facts=c.prepareStatement("SELECT e.evidence_json,e.evidence_hash,e.client_instance_id,e.device_id,e.sale_id,e.operation_id,e.operation_kind,e.state,e.contract_version,e.openapi_digest FROM storecore_inbox_events e JOIN storecore_inbox_applications a ON a.inbox_id=e.id JOIN storecore_outbox_commands o ON o.id=a.command_id JOIN storecore_command_delivery d ON d.command_id=o.id WHERE o.client_instance_id=? AND o.device_id=? AND o.sale_id=? AND o.operation_id=? AND o.operation_kind=? AND a.state='APPLIED' AND d.state='APPLIED' AND e.state<>'PENDING'").use { q ->
+   q.setObject(1,UUID.fromString(identity.clientInstanceId));q.setString(2,identity.deviceId);q.setString(3,identity.saleId);q.setObject(4,UUID.fromString(identity.operationId));q.setString(5,kind.name)
+   q.executeQuery().use { rows -> buildList { while(rows.next()) {
+    require(OperationQuadruple(rows.getString(3),rows.getString(4),rows.getString(5),rows.getString(6))==identity)
+    require(mapper.kind(rows.getString(7)).name==kind.name && mapper.state(rows.getString(8)).name==status.name)
+    require(rows.getString(9)==command.contractVersion && rows.getString(10)==command.openapiDigest)
+    add(terminalEvidence.translate(rows.getString(1),rows.getString(2),command,status,reservation))
+   } } }
+  }
+  facts.distinct().single()
+ }.getOrNull()
  private fun claimOne(operationId: String?,kind: CommandKind?,lease: Duration): ClaimAttempt = transaction { c ->
   require(lease.seconds in 1..300 && kind!=CommandKind.UNKNOWN)
+  lifecycleAdmission.requireWorker(c)
   val filter=if(operationId==null) "" else " AND o.operation_id=? AND o.operation_kind=?"
   val candidate=c.prepareStatement("SELECT o.id,o.client_instance_id,o.device_id,o.sale_id,o.operation_id FROM storecore_command_delivery d JOIN storecore_outbox_commands o ON o.id=d.command_id WHERE ((d.state IN ('PENDING','UNCERTAIN') AND d.next_attempt_at<=now()) OR (d.state='IN_FLIGHT' AND d.lease_until<=now()))$filter ORDER BY o.id LIMIT 1").use { s ->
    if(operationId!=null) {s.setObject(1,UUID.fromString(operationId));s.setString(2,kind!!.name)}
@@ -97,6 +119,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
   }
  }
  override fun reconcileClaimEvidence(claim: ClaimedSaleCommand,receipt: StoreCoreOperationReceipt,reason: RecoveryReason): AttemptOutcome = transaction { c ->
+  lifecycleAdmission.requireWorker(c)
   val stored=lock(c,claim.command.quadruple.operationId)
   aggregateLocks.lockDelivery(c,claim.id)
   val current=c.prepareStatement("SELECT state,claim_token,claim_epoch,lease_until>now() AS active FROM storecore_command_delivery WHERE command_id=? FOR UPDATE").use { s ->s.setLong(1,claim.id);s.executeQuery().use { r ->check(r.next());r.getString(1)==DeliveryState.IN_FLIGHT.name && r.getObject(2)==claim.claimToken && r.getLong(3)==claim.claimEpoch && r.getBoolean(4) } }
@@ -121,6 +144,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
  }
  override fun deferClaim(claim: ClaimedSaleCommand,reason: RecoveryReason,delay: Duration,reconciliation: Boolean): Boolean = transaction { c ->
   require(delay.seconds in 0..3600)
+  lifecycleAdmission.requireWorker(c)
   val stored=lock(c,claim.command.quadruple.operationId)
   aggregateLocks.lockDelivery(c,claim.id)
   val updated=c.prepareStatement("UPDATE storecore_command_delivery SET state=?,last_error_code=?,next_attempt_at=now()+(? * interval '1 second'),lease_until=NULL,updated_at=now() WHERE command_id=? AND claim_token=? AND claim_epoch=? AND state='IN_FLIGHT' AND lease_until>now()").use { s ->
@@ -136,6 +160,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
   require(saga.quadruple==claim.command.quadruple)
   require(receipt==null || (receipt.quadruple==claim.command.quadruple && receipt.state.name==remoteState))
   require(remoteState!="PENDING" || receipt!=null) { "pending evidence requires the received receipt" }
+  lifecycleAdmission.requireWorker(c)
   val stored=lock(c,saga.quadruple.operationId)
   aggregateLocks.lockDelivery(c,claim.id)
   val current=c.prepareStatement("SELECT state,claim_token,claim_epoch,lease_until>now() AS active FROM storecore_command_delivery WHERE command_id=? FOR UPDATE").use { s -> s.setLong(1,claim.id);s.executeQuery().use { r -> check(r.next());r.getString(1)==DeliveryState.IN_FLIGHT.name && r.getObject(2)==claim.claimToken && r.getLong(3)==claim.claimEpoch && r.getBoolean(4) } }
@@ -149,9 +174,18 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
   c.prepareStatement("INSERT INTO storecore_inbox_applications(inbox_id,command_id,claim_token,state,late_reason) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING").use { s ->s.setLong(1,inbox);s.setLong(2,claim.id);s.setObject(3,claim.claimToken);s.setString(4,if(current) "APPLIED" else "LATE_IGNORED");s.setString(5,if(current) null else RecoveryReason.LEASE_EXPIRED.name);s.executeUpdate() }
   if(!current) AttemptOutcome.LATE_IGNORED else {
    val projection=findId(c,saga.quadruple.operationId)
-   if(stored.saga.status!=saga.status) when(saga.status) {
+   val statusChanged = stored.saga.status != saga.status
+   val accountingState = lifecycleAdmission.state(c)
+   if(statusChanged) when(saga.status) {
     SaleStatus.RESERVED -> { require(e!=null && e.expiresAt!=null); writer.markReserved(c,projection,e.reservationRef,e.receipt,e.contractVersion,e.openapiDigest,e.expiresAt,json.writeValueAsString(e.acceptedPriceVersions)) }
-    SaleStatus.COMMITTED,SaleStatus.RELEASED -> check(writer.advanceSaleStatus(c,projection,stored.saga.status.name,saga.status.name)==1)
+    SaleStatus.COMMITTED -> if(accountingState==AccountingRuntimeState.Active) {
+     val gross=saga.lines.fold(java.math.BigDecimal.ZERO) { total,line -> total+line.originalUnitPrice.multiply(line.quantity.toBigDecimal()) }
+     val discounts=saga.lines.fold(java.math.BigDecimal.ZERO) { total,line -> total+line.discountAmount.multiply(line.quantity.toBigDecimal()) }
+     c.prepareStatement("UPDATE sale_state_projection SET status='COMMITTED',gross_sales=?,discounts=?,updated_at=now() WHERE id=? AND status=?").use { s ->
+      s.setBigDecimal(1,MoneyPolicy.normalize(gross));s.setBigDecimal(2,MoneyPolicy.normalize(discounts));s.setLong(3,projection);s.setString(4,stored.saga.status.name);check(s.executeUpdate()==1)
+     }
+    } else check(writer.advanceSaleStatus(c,projection,stored.saga.status.name,saga.status.name)==1)
+    SaleStatus.RELEASED -> check(writer.advanceSaleStatus(c,projection,stored.saga.status.name,saga.status.name)==1)
     SaleStatus.RECONCILIATION_REQUIRED -> { require(e!=null); writer.markReconciliationRequired(c,projection,requireNotNull(saga.reconciliationReason),e.reservationRef,e.receipt,e.contractVersion,e.openapiDigest,json.writeValueAsString(e.acceptedPriceVersions)) }
     else -> require(saga.status==SaleStatus.PENDING_RESERVATION)
    }
@@ -159,6 +193,8 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
    val delivery=if(remoteState=="PENDING") DeliveryState.UNCERTAIN else DeliveryState.APPLIED
    c.prepareStatement("UPDATE storecore_command_delivery SET state=?,lease_until=NULL,next_attempt_at=now()+interval '1 second',updated_at=now() WHERE command_id=? AND claim_token=? AND claim_epoch=? AND state='IN_FLIGHT'").use { s ->s.setString(1,delivery.name);s.setLong(2,claim.id);s.setObject(3,claim.claimToken);s.setLong(4,claim.claimEpoch);check(s.executeUpdate()==1) }
    c.prepareStatement("INSERT INTO outbox_delivery_attempts(command_id,attempt_no,state,started_at,completed_at) VALUES(?,?,'SENT',now(),now()) ON CONFLICT DO NOTHING").use { s ->s.setLong(1,claim.id);s.setInt(2,claim.attempts);s.executeUpdate() }
+   if(statusChanged && saga.status==SaleStatus.COMMITTED && delivery==DeliveryState.APPLIED && accountingState==AccountingRuntimeState.Active)
+    commercialRecognition.record(c, stored, saga, claim, requireNotNull(receipt))
    writer.insertAudit(c,claim.actorId,"REMOTE_EVIDENCE_APPLIED","sale",projection)
    if(delivery==DeliveryState.APPLIED) AttemptOutcome.APPLIED else AttemptOutcome.WAIT_AND_GET
   }

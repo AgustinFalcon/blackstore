@@ -19,6 +19,13 @@ class AccountingV2Controller(private val accounting: AccountingApplicationServic
     fun open(request: HttpServletRequest, @RequestBody body: CashSessionOpenV2Request) =
         mutate(request) { AccountingV2RequestTranslator.translate(body) }
 
+    @PostMapping("/cash-sessions/{cashSessionId}/close")
+    fun close(request: HttpServletRequest, @PathVariable cashSessionId: Long, @RequestBody body: CashSessionCloseV2Request) =
+        mutate(request) {
+            require(cashSessionId == body.cashSessionId)
+            AccountingV2RequestTranslator.translate(body)
+        }
+
     @PostMapping("/expenses")
     fun expense(request: HttpServletRequest, @RequestBody body: ExpenseRecordV2Request) =
         mutate(request) { AccountingV2RequestTranslator.translate(body) }

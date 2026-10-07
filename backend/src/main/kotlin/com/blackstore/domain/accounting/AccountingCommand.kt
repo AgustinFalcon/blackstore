@@ -33,12 +33,14 @@ data class AccountingCommandReceipt(
     val paymentId: Long? = null,
     val expenseId: Long? = null,
     val settlementId: Long? = null,
+    val closeSnapshot: CashCloseSnapshot? = null,
 ) {
     init {
         require(actorId > 0 && cashSessionId > 0 && kind != AccountingCommandKind.Unknown)
         require(payloadHash.length == 64 && payloadHash.all { it in '0'..'9' || it in 'a'..'f' })
         require(ledgerEventIds.all { it > 0 } && ledgerEventIds.distinct().size == ledgerEventIds.size)
         require(listOfNotNull(saleId, paymentId, expenseId, settlementId).all { it > 0 })
+        require(closeSnapshot == null || kind == AccountingCommandKind.CASH_SESSION_CLOSE)
     }
 }
 

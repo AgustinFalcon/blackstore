@@ -37,6 +37,10 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
     private val authorityStep = CurrentAuthorityStep()
     private val replayStep = ReceiptReplayStep()
     private val lifecycleStep = RuntimeAdmissionStep()
+    private val closeTerminality = VerifyCashCloseTerminality()
+    private val closeCoverage = ResolveCashCloseCoverage()
+    private val closeLedger = LoadCashCloseLedger()
+    private val lifecycleFence = JdbcAccountingLifecycleAdmission()
 
     override fun execute(staff: AuthenticatedStaff, command: AccountingCommandDraft): AccountingMutationOutcome = outcome(staff) {
         val scope = when (command) {
@@ -44,7 +48,7 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
             is AccountingCommandDraft.ExpenseRecord -> Scope(command.commandId, AccountingCommandKind.EXPENSE_RECORD, command.cashSessionId, null, command.reason)
             is AccountingCommandDraft.PaymentCapture -> Scope(command.commandId, AccountingCommandKind.PAYMENT_CAPTURE, null, command.identity, command.reason)
             is AccountingCommandDraft.PaymentReverse -> Scope(command.commandId, AccountingCommandKind.PAYMENT_REVERSE, null, command.identity, command.reason)
-            is AccountingCommandDraft.CashSessionClose -> reject(AccountingCommandFailure.Validation)
+            is AccountingCommandDraft.CashSessionClose -> Scope(command.commandId, AccountingCommandKind.CASH_SESSION_CLOSE, command.cashSessionId, null, command.reason)
             is AccountingCommandDraft.FeeRecord -> reject(AccountingCommandFailure.Validation)
         }
         val fingerprint = AccountingCommandFingerprint()
@@ -61,7 +65,7 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
                 is AccountingCommandDraft.PaymentCapture -> capture(c, actor, requireNotNull(cash), requireNotNull(sale), command, hash)
                 is AccountingCommandDraft.PaymentReverse -> reverse(c, actor, requireNotNull(cash), requireNotNull(sale), command, hash)
                 is AccountingCommandDraft.ExpenseRecord -> expense(c, actor, requireNotNull(cash), command, hash)
-                is AccountingCommandDraft.CashSessionClose -> reject(AccountingCommandFailure.Validation)
+                is AccountingCommandDraft.CashSessionClose -> close(c, actor, requireNotNull(cash), command, hash)
                 is AccountingCommandDraft.FeeRecord -> reject(AccountingCommandFailure.Validation)
             }
         }
@@ -101,6 +105,7 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
     private fun mutate(staff: AuthenticatedStaff, scope: Scope, hash: String, replayHash: (Long) -> String,
         authorizeDeclared: (Connection, AuthenticatedStaff) -> Unit,
         write: (Connection, AuthenticatedStaff, CashSession?, StoredSale?, String) -> AccountingCommandReceipt): AccountingCommandReceipt = transaction { c ->
+        lifecycleFence.lock(c)
         serializationStep.acquire(c, scope.id)
         val saved = receiptHeader(c, scope.id)
         val locked = aggregateStep.lock(c, scope, saved)
@@ -182,6 +187,33 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
         return receipt
     }
 
+    /** Coordinates close-specific steps after the shared authority/replay/admission boundary. */
+    private fun close(c: Connection, actor: AuthenticatedStaff, cash: CashSession,
+        draft: AccountingCommandDraft.CashSessionClose, hash: String): AccountingCommandReceipt {
+        requireEligibleOwner(c, cash.cashierId)
+        closeTerminality.verify(c, cash.id, durable)
+        val coverage = closeCoverage.resolve(c, cash)
+        val ledger = closeLedger.load(c, cash.id, coverage)
+        val calculated = ReconciliationPolicy().calculate(draft.declaredCash, coverage, ledger.postings)
+        val now = clock(c)
+        val lowerBound = listOfNotNull(cash.openedAt, ledger.lastOccurredAt).maxOrNull()!!
+        val cutoff = if (now > lowerBound) now else lowerBound.plusNanos(1_000)
+        val snapshot = CashCloseSnapshot(calculated.declaredCash, calculated.expectedCash, calculated.difference,
+            calculated.outcome, coverage, cutoff, ledger.watermark)
+        val receipt = receipt(c, Scope(draft.commandId, AccountingCommandKind.CASH_SESSION_CLOSE, cash.id, null, draft.reason),
+            actor, cash.id, null, hash, emptyList(), cutoff, closeSnapshot = snapshot)
+        role(c, AccountingJdbcRole.Projection)
+        writer.closeCashSession(c, cash.id, snapshot.declaredCash, cutoff)
+        role(c, AccountingJdbcRole.Application)
+        execute(c, """
+            INSERT INTO cash_reconciliations(cash_session_id,command_id,actor_id,declared_cash,expected_cash,difference,
+                outcome,coverage,cutoff,local_watermark,accounting_version,recorded_at) VALUES(?,?,?,?,?,?,?,?,?,?,2,?)
+        """.trimIndent(), cash.id, draft.commandId, actor.id.value, snapshot.declaredCash, snapshot.expectedCash,
+            snapshot.difference, snapshot.outcome.wire, snapshot.coverage.wire, cutoff, snapshot.localWatermark, cutoff)
+        audit(c, receipt, cash.id, draft.reason)
+        return receipt
+    }
+
     private fun capture(c: Connection, actor: AuthenticatedStaff, cash: CashSession, sale: StoredSale,
         draft: AccountingCommandDraft.PaymentCapture, hash: String): AccountingCommandReceipt {
         allowed(PaymentTransitionPolicy(PaymentLedgerSemantics.NetCapturedAndRefunded).capture(sale.saga, paymentLedger(c, sale), draft.method, draft.amount, BigDecimal.ZERO))
@@ -258,11 +290,15 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
     }
 
     private fun receipt(c: Connection, scope: Scope, actor: AuthenticatedStaff, cashId: Long, saleId: Long?, hash: String,
-        ids: List<Long>, at: Instant, paymentId: Long? = null, expenseId: Long? = null, settlementId: Long? = null): AccountingCommandReceipt {
-        val result = json.writeValueAsString(mapOf("ledgerEventIds" to ids, "saleId" to saleId, "paymentId" to paymentId, "expenseId" to expenseId, "settlementId" to settlementId, "committedAt" to at.toString()))
+        ids: List<Long>, at: Instant, paymentId: Long? = null, expenseId: Long? = null, settlementId: Long? = null,
+        closeSnapshot: CashCloseSnapshot? = null): AccountingCommandReceipt {
+        val result = json.writeValueAsString(mapOf("ledgerEventIds" to ids, "saleId" to saleId, "paymentId" to paymentId, "expenseId" to expenseId, "settlementId" to settlementId, "committedAt" to at.toString(),
+            "closeSnapshot" to closeSnapshot?.let { mapOf("declaredCash" to it.declaredCash, "expectedCash" to it.expectedCash,
+                "difference" to it.difference, "outcome" to it.outcome.wire, "coverage" to it.coverage.wire,
+                "cutoff" to it.cutoff.toString(), "localWatermark" to it.localWatermark, "accountingVersion" to it.accountingVersion) }))
         execute(c, "INSERT INTO accounting_command_receipts(command_id,actor_id,command_kind,payload_hash,cash_session_id,sale_id,outcome,result,accounting_version,recorded_at) VALUES(?,?,?,?,?,?,'COMMITTED',?::jsonb,2,?)",
             scope.id, actor.id.value, scope.kind, hash, cashId, saleId, result, at)
-        return AccountingCommandReceipt(scope.id, actor.id.value, scope.kind, cashId, hash, ids, at, saleId, paymentId, expenseId, settlementId)
+        return AccountingCommandReceipt(scope.id, actor.id.value, scope.kind, cashId, hash, ids, at, saleId, paymentId, expenseId, settlementId, closeSnapshot)
     }
 
     private fun posting(c: Connection, receipt: AccountingCommandReceipt, id: Long, posting: LedgerPosting, at: Instant, sequence: Long,
@@ -287,7 +323,16 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
         AccountingCommandReceipt(header.id, header.actorId, header.kind, header.cashSessionId,
             header.payloadHash, result.path("ledgerEventIds").map { node -> require(node.isIntegralNumber); node.asLong() }, Instant.parse(result.path("committedAt").asText()),
             result.path("saleId").takeIf { node -> node.isNumber }?.asLong(), result.path("paymentId").takeIf { node -> node.isNumber }?.asLong(),
-            result.path("expenseId").takeIf { node -> node.isNumber }?.asLong(), result.path("settlementId").takeIf { node -> node.isNumber }?.asLong())
+            result.path("expenseId").takeIf { node -> node.isNumber }?.asLong(), result.path("settlementId").takeIf { node -> node.isNumber }?.asLong(),
+            result.path("closeSnapshot").takeIf { it.isObject }?.let { snapshot ->
+                fun amount(key: String): BigDecimal? = snapshot.path(key).takeUnless { it.isNull }?.let {
+                    require(it.isNumber)
+                    MoneyPolicy.normalize(it.decimalValue())
+                }
+                CashCloseSnapshot(requireNotNull(amount("declaredCash")), amount("expectedCash"), amount("difference"),
+                    ReconciliationOutcome.fromWire(snapshot.path("outcome").asText()), AccountingCoverage.fromWire(snapshot.path("coverage").asText()),
+                    Instant.parse(snapshot.path("cutoff").asText()), snapshot.path("localWatermark").let { require(it.isIntegralNumber); it.asLong() }, snapshot.path("accountingVersion").asInt())
+            })
       }.getOrElse { reject(AccountingCommandFailure.Unavailable) }
 
     private fun paymentLedger(c: Connection, sale: StoredSale): OperationLedger = OperationLedger.Known(query(c, "SELECT * FROM payments WHERE sale_id=? ORDER BY id", sale.projectionId) {
@@ -333,6 +378,7 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
         }
         val permission = when (kind) {
             AccountingCommandKind.CASH_SESSION_OPEN -> StaffPermission.CashSessionOpen
+            AccountingCommandKind.CASH_SESSION_CLOSE -> StaffPermission.CashSessionClose
             AccountingCommandKind.EXPENSE_RECORD -> StaffPermission.ExpenseRecord
             AccountingCommandKind.PAYMENT_CAPTURE -> StaffPermission.PaymentCapture
             AccountingCommandKind.PAYMENT_REVERSE -> StaffPermission.PaymentReverse
@@ -355,6 +401,7 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
         catch (error: Exception) { c.rollback(); throw error }
     }
     private fun outcome(staff: AuthenticatedStaff, block: () -> AccountingCommandReceipt): AccountingMutationOutcome = try { AccountingMutationOutcome.Applied(block()) }
+        catch (error: CashCloseRejected) { AccountingMutationOutcome.Rejected(error.failure) }
         catch (error: MutationRejected) { denial(staff,error.failure); AccountingMutationOutcome.Rejected(error.failure) }
         catch (error: OpenCashConflict) {
             val failure = resolveOpenConflict(staff, error)

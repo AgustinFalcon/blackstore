@@ -13,6 +13,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
+    @ExceptionHandler(com.blackstore.domain.accounting.AccountingAdmissionException::class)
+    fun handleAccountingAdmission(ex: com.blackstore.domain.accounting.AccountingAdmissionException, request: HttpServletRequest): ResponseEntity<BaseResponse<Nothing>> {
+        val failure = com.blackstore.application.dto.accounting.AccountingCommandFailureV2.fromWire(ex.failure.wire)
+        return ResponseEntity.status(failure.status).header("Cache-Control", "no-store").body(
+            BaseResponse.error(HttpCode.entries.first { it.code == failure.status }, traceId(request), failure.wire, "Accounting operation unavailable or denied", false))
+    }
+
     @ExceptionHandler(com.blackstore.domain.cash.CashMutationException::class)
     fun handleCashMutation(ex: com.blackstore.domain.cash.CashMutationException, request: HttpServletRequest): ResponseEntity<BaseResponse<Nothing>> =
         ResponseEntity.status(ex.failure.status).header("Cache-Control", "no-store").body(

@@ -25,6 +25,7 @@ class JdbcCounterEntryStore(
     private val writer = JdbcBlackStoreWriter()
     private val durable = JdbcDurableSaleRepository(dataSource)
     private val sales = JdbcSaleRecordStore(dataSource)
+    private val lifecycle = JdbcAccountingLifecycleAdmission()
 
     override fun savePayment(payment: PaymentRecord, operationId: String): PaymentRecord {
         val identity = asRole("blackstore_app") { connection -> resolveIdentity(connection, operationId) }
@@ -33,6 +34,7 @@ class JdbcCounterEntryStore(
 
     override fun savePayment(payment: PaymentRecord, identity: OperationQuadruple): PaymentRecord =
         asRole("blackstore_app") { connection ->
+            lifecycle.lock(connection)
             MoneyPolicy.normalize(payment.amount)
             MoneyPolicy.normalize(payment.feeAmount)
             val stored=durable.lock(connection,identity)
@@ -40,6 +42,7 @@ class JdbcCounterEntryStore(
             val projectionId = findProjection(connection, identity)
             val trustedActor = payment.actorId ?: error("trusted payment actor is required")
             sales.authorize(connection,stored.saga,trustedActor,payment.reason)
+            lifecycle.requireLegacy(connection)
             val ledger=sales.ledger(connection,stored.saga)
             when(payment.status) {
                 PaymentStatus.CAPTURED -> PaymentTransitionPolicy().capture(stored.saga,ledger,payment.method,payment.amount,payment.feeAmount).assertAllowed()
