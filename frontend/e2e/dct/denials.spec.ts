@@ -35,7 +35,8 @@ test('denials: real authority/CSRF/unknown method and stale UI conflict never cr
   async function denied(actorPage: Page, path: string, body: object, outcome: CashMutationOutcome, invalidCsrf = false) {
     const response = await mutate(actorPage, path, body, invalidCsrf);
     expect(response.status).toBe(outcome.httpStatus);
-    expect(response.cacheControl).toBe('no-store');
+    const cacheDirectives = new Set((response.cacheControl ?? '').split(',').map(value => value.trim()).filter(Boolean));
+    expect(cacheDirectives).toEqual(new Set(['no-store']));
     expect(PosWireMapper.cashMutationOutcome(response.body, response.status)).toBe(outcome);
     expect(response.body.data).toBeNull();
     return response;

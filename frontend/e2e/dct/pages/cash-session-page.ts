@@ -33,7 +33,8 @@ export class CashSessionPage {
   async close(cashId: number, amount: string) {
     await this.page.getByLabel('Declarado', { exact: true }).fill(amount);
     const pending = this.response(`/api/v1/cash-sessions/${cashId}/close`);
-    await this.page.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
+    const closeForm = this.page.locator('form').filter({ has: this.page.getByLabel('Declarado', { exact: true }) });
+    await closeForm.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
     const response = await pending;
     expect(response.status()).toBe(CashMutationOutcome.Applied.httpStatus);
     await expect(this.page.getByText(`Sesión ${cashId} cerrada`, { exact: true })).toBeVisible();
