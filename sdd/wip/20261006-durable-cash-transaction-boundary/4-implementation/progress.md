@@ -1,5 +1,11 @@
 # Progreso
 
+## 2026-10-07 — merge core y aceptación residual
+
+[PR #26](https://github.com/AgustinFalcon/blackstore/pull/26) MERGED: head `caab0a9`, merge `a9887a3` en master. Dos revisiones independientes GPT-6.1 Sol sobre el head exacto (bugs y seguridad/arquitectura) APPROVED. [CI PR 37634224683](https://github.com/AgustinFalcon/blackstore/actions/runs/37634224683) verde; [CI post-merge master 37634797108](https://github.com/AgustinFalcon/blackstore/actions/runs/37634797108) verde (frontend 34 s, backend 3 min 43 s).
+
+La regresión local final de este source sigue siendo 153 tests / 39 suites / 0 failures/errors/skips, con seis clases Docker-only excluidas y PostgreSQL 18; enfocada 22 PASS, teardown PASS. Las entradas siguientes conservan la historia y los fallos con su disposición; sus menciones de review/CI pendientes describen aquel momento y quedan sustituidas por esta entrada. Implementation PASS para el corte integrado, Review APPROVED; T02–T04 done. T05 y T06 siguen parciales: PostgreSQL 16 y browser real con reinicio DCT pendientes. El CI verde no convierte esos escenarios en PASS ni amplía homologación. WIP `merged_partial_acceptance`, sin archivo, /sdd.finish, tag ni publicación.
+
 ## 2026-10-07 — P2 Security titular CASHIER estricto
 
 JDBC/memory dejan de usar permiso CashSessionOpen como elegibilidad de titular: exige ACTIVE y rol exactamente CASHIER, conservando permiso de actor aparte y NotVisible/Authorization con una auditoría independiente. Matriz memory/HTTP/PG supervisor/owner/inactivo/missing más positivos actor supervisor/owner sobre cajero activo. Enfocada22 PASS; amplia FINAL post-fix153 PASS/39 suites/0 failures/errors/skips, BUILD SUCCESSFUL1m33, mismas seis exclusiones Docker. Antecedente151 sustituido; PG18, PG16/browser/CI pendientes. Teardown main75632/5441/six children/launcher PASS tras completion explícita. Nueva review pendiente; sin commit/push ni schema/grants nuevos. Evidencia DCT-authorization-denial-resolution.md.
