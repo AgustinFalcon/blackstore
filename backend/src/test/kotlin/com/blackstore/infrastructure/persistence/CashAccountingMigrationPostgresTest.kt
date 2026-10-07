@@ -101,14 +101,20 @@ class CashAccountingMigrationPostgresTest {
             rejected(connection, openingSql().replace("'CASH','", "'CARD','"))
             rejected(connection, "INSERT INTO cash_ledger_events(cash_session_id,event_type,amount_delta,actor_id,reason,evidence_ref,payment_method,command_id,origin_kind,origin_id,component,accounting_version,evidence_json,local_sequence,recorded_at) VALUES(1,'FEE',-1,1,'','','CASH','${command(2)}','OPERATION','${command(2)}','FEE_PAID',2,'{}',2,clock_timestamp())")
             connection.exec(openingSql())
-            connection.exec("INSERT INTO cash_accounting_coverage(cash_session_id,coverage,command_id) VALUES(1,'COMPLETE_FROM_OPENING','${command(1)}')")
+            rejected(connection, "INSERT INTO cash_accounting_coverage(cash_session_id,coverage,command_id) VALUES(1,'COMPLETE_FROM_OPENING','${command(1)}')")
+            connection.exec("RESET ROLE")
+            connection.exec("INSERT INTO cash_session_projection(terminal_id,cashier_id,opened_at,opening_cash) VALUES(1,1,clock_timestamp(),10)")
+            connection.exec("SET ROLE blackstore_app")
+            connection.exec(receiptSql(3, cashSessionId = 2))
+            connection.exec(openingSql(3, 2))
+            connection.exec("INSERT INTO cash_accounting_coverage(cash_session_id,coverage,command_id) VALUES(2,'COMPLETE_FROM_OPENING','${command(3)}')")
             rejected(connection, openingSql())
             rejected(connection, "INSERT INTO cash_reconciliations(cash_session_id,command_id,actor_id,declared_cash,expected_cash,outcome,coverage,cutoff,local_watermark,accounting_version) VALUES(1,'${command(1)}',1,10,10,'BALANCED','COMPLETE_FROM_OPENING',clock_timestamp(),1,2)")
             connection.exec("RESET ROLE")
             connection.exec("UPDATE accounting_runtime SET state='PAUSED'")
             connection.exec("SET ROLE blackstore_app")
             rejected(connection, receiptSql(2))
-            assertEquals("2", connection.scalar("SELECT count(*) FROM accounting_command_receipts"))
+            assertEquals("3", connection.scalar("SELECT count(*) FROM accounting_command_receipts"))
         }
     }
 
@@ -126,6 +132,7 @@ class CashAccountingMigrationPostgresTest {
             connection.exec(receiptSql(1, "PAYMENT_CAPTURE", 1))
             connection.exec(receiptSql(3, "PAYMENT_CAPTURE", 1))
             connection.exec("INSERT INTO payments(sale_id,payment_method,amount,status,accounting_command_id,accounting_version) VALUES(1,'CASH',10,'CAPTURED','${command(1)}',2)")
+            rejected(connection, "INSERT INTO payments(sale_id,payment_method,amount,status,accounting_command_id,accounting_version) VALUES(1,'CASH',10,'CAPTURED','${command(1)}',2)")
             val capturePaymentId = connection.scalar("SELECT id::text FROM payments WHERE accounting_version=2 AND status='CAPTURED'")
             val capture = "INSERT INTO cash_ledger_events(cash_session_id,event_type,amount_delta,sale_id,payment_id,actor_id,payment_method,command_id,origin_kind,origin_id,component,accounting_version,evidence_json,local_sequence,recorded_at) VALUES(1,'PAYMENT',10,1,$capturePaymentId,1,'CASH','${command(1)}','PAYMENT','$capturePaymentId','PAYMENT_CAPTURE',2,'{}',1,clock_timestamp())"
             rejected(connection, capture.replace(command(1), command(3)))
@@ -173,8 +180,8 @@ class CashAccountingMigrationPostgresTest {
         connection.exec("UPDATE accounting_runtime SET state='ACTIVE', accounting_activation_at=clock_timestamp()")
     }
 
-    private fun receiptSql(number: Int, kind: String = "CASH_SESSION_OPEN", saleId: Long? = null) = "INSERT INTO accounting_command_receipts(command_id,actor_id,command_kind,payload_hash,cash_session_id,sale_id,outcome,result,accounting_version) VALUES('${command(number)}',1,'$kind',repeat('a',64),1,${saleId ?: "NULL"},'COMMITTED','{}',2)"
-    private fun openingSql() = "INSERT INTO cash_ledger_events(cash_session_id,event_type,amount_delta,actor_id,payment_method,command_id,origin_kind,origin_id,component,accounting_version,evidence_json,local_sequence,recorded_at) VALUES(1,'OPENING',10,1,'CASH','${command(1)}','CASH_SESSION','1','OPENING',2,'{}',1,clock_timestamp())"
+    private fun receiptSql(number: Int, kind: String = "CASH_SESSION_OPEN", saleId: Long? = null, cashSessionId: Long = 1) = "INSERT INTO accounting_command_receipts(command_id,actor_id,command_kind,payload_hash,cash_session_id,sale_id,outcome,result,accounting_version) VALUES('${command(number)}',1,'$kind',repeat('a',64),$cashSessionId,${saleId ?: "NULL"},'COMMITTED','{}',2)"
+    private fun openingSql(commandNumber: Int = 1, cashSessionId: Long = 1) = "INSERT INTO cash_ledger_events(cash_session_id,event_type,amount_delta,actor_id,payment_method,command_id,origin_kind,origin_id,component,accounting_version,evidence_json,local_sequence,recorded_at) VALUES($cashSessionId,'OPENING',10,1,'CASH','${command(commandNumber)}','CASH_SESSION','$cashSessionId','OPENING',2,'{}',1,clock_timestamp())"
     private fun command(number: Int) = "00000000-0000-0000-0000-${number.toString().padStart(12, '0')}"
     private fun Connection.exec(sql: String) = createStatement().use { it.execute(sql) }
     private fun Connection.scalar(sql: String): String = createStatement().use { statement -> statement.executeQuery(sql).use { rows -> rows.next(); rows.getString(1) } }

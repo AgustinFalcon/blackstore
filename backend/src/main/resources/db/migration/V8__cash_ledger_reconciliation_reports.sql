@@ -53,6 +53,8 @@ ALTER TABLE payments
  );
 CREATE UNIQUE INDEX payment_one_full_refund ON payments(original_payment_id)
  WHERE accounting_version=2 AND status='REFUNDED';
+CREATE UNIQUE INDEX payment_one_per_accounting_command ON payments(accounting_command_id)
+ WHERE accounting_version=2;
 CREATE FUNCTION enforce_accounting_payment_insert() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE runtime_state VARCHAR(24); original payments%ROWTYPE; receipt accounting_command_receipts%ROWTYPE; BEGIN
  SELECT state INTO runtime_state FROM accounting_runtime WHERE singleton;
@@ -271,10 +273,11 @@ CREATE CONSTRAINT TRIGGER paid_expense_settlement AFTER INSERT ON cash_ledger_ev
 
 CREATE FUNCTION enforce_complete_cash_coverage() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
  IF NEW.coverage='COMPLETE_FROM_OPENING' AND
-  ((SELECT state FROM accounting_runtime WHERE singleton) IS DISTINCT FROM 'ACTIVE' OR NOT EXISTS
-   (SELECT 1 FROM cash_ledger_events WHERE cash_session_id=NEW.cash_session_id AND event_type='OPENING'
-    AND accounting_version=2 AND command_id=NEW.command_id)) THEN
-  RAISE EXCEPTION 'complete coverage requires its accounting opening';
+   ((SELECT state FROM accounting_runtime WHERE singleton) IS DISTINCT FROM 'ACTIVE' OR NOT EXISTS
+    (SELECT 1 FROM cash_ledger_events l JOIN cash_session_projection s ON s.id=l.cash_session_id
+     CROSS JOIN accounting_runtime r WHERE l.cash_session_id=NEW.cash_session_id AND l.event_type='OPENING'
+     AND l.accounting_version=2 AND l.command_id=NEW.command_id AND s.opened_at>=r.accounting_activation_at)) THEN
+   RAISE EXCEPTION 'complete coverage requires its accounting opening';
  END IF;
  RETURN NEW;
 END $$;

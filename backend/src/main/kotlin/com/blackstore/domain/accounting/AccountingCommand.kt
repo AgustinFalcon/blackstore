@@ -72,18 +72,9 @@ sealed interface AccountingCommandDraft {
         }
     }
 
-    data class ExpenseRecord(
-        override val commandId: UUID,
-        val cashSessionId: Long,
-        val category: String,
-        val amount: BigDecimal,
-        val reason: String,
-        val method: PaymentMethod,
-    ) : AccountingCommandDraft {
+    data class ExpenseRecord(override val commandId: UUID, val cashSessionId: Long, val reason: String, val instruction: ExpenseInstruction) : AccountingCommandDraft {
         init {
-            require(cashSessionId > 0 && category.isNotBlank() && amount.signum() > 0 && reason.isNotBlank())
-            require(method != PaymentMethod.UNKNOWN)
-            MoneyPolicy.normalize(amount)
+            require(cashSessionId > 0 && reason.isNotBlank())
         }
     }
 
@@ -107,5 +98,18 @@ sealed interface AccountingCommandDraft {
         val evidenceRef: String,
     ) : AccountingCommandDraft {
         init { require(originalPaymentId > 0 && reason.isNotBlank() && evidenceRef.isNotBlank()) }
+    }
+}
+
+/** A deferred settlement is not confused with a new accrual or an immediate cash expense. */
+sealed interface ExpenseInstruction {
+    data class Accrue(val category: String, val amount: BigDecimal) : ExpenseInstruction {
+        init { require(category.isNotBlank() && amount.signum() > 0); MoneyPolicy.normalize(amount) }
+    }
+    data class AccrueAndSettle(val category: String, val amount: BigDecimal, val method: PaymentMethod) : ExpenseInstruction {
+        init { require(category.isNotBlank() && amount.signum() > 0 && method != PaymentMethod.UNKNOWN); MoneyPolicy.normalize(amount) }
+    }
+    data class SettleExisting(val expenseId: Long, val method: PaymentMethod) : ExpenseInstruction {
+        init { require(expenseId > 0 && method != PaymentMethod.UNKNOWN) }
     }
 }
