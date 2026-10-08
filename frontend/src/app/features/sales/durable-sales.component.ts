@@ -31,6 +31,10 @@ import { DurableSalesStore } from '../../core/services/durable-sales.store';
         }
       </div>
       @if (store.notice()) { <p class="banner warn" role="alert">{{ store.notice() }}</p> }
+      @if (store.commands.unresolved(); as command) {
+        <p>Comando {{ command.commandId }} pendiente de comprobación.</p>
+        <button type="button" (click)="store.consultReceipt()" [disabled]="store.busy()">Consultar recibo</button>
+      }
       @if (store.busy()) { <p role="status">Comprobando operación…</p> }
       @if (store.detail(); as sale) {
         <div class="card">
@@ -52,7 +56,7 @@ import { DurableSalesStore } from '../../core/services/durable-sales.store';
           <label>Motivo de operación <input [(ngModel)]="reason" /></label>
           @if (store.can(actions.CapturePayment)) {
             <label>Importe a completar <input type="number" min="0.01" [(ngModel)]="amount" /></label>
-            <label>Comisión <input type="number" min="0" [(ngModel)]="fee" /></label>
+            <p>Las comisiones pagadas se registran por el circuito operativo del titular.</p>
             <label>Medio <select [(ngModel)]="method">@for (option of methods; track option.wire) { <option [ngValue]="option">{{ option.label }}</option> }</select></label>
             <button type="button" (click)="store.execute(actions.CapturePayment, reason, amount, fee, method)">Completar pago</button>
           }

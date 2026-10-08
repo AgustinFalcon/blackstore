@@ -6,6 +6,7 @@ import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 export interface TicketFlowPort {
   reserve(body: Readonly<Record<string, unknown>>): Observable<unknown>;
   capture(attempt: PaymentAttempt): Observable<unknown>;
+  capturePayment?(attempt: PaymentAttempt): Observable<CapturedPayment>;
   refresh(identity: TicketIdentity): Observable<unknown>;
 }
 
@@ -71,6 +72,7 @@ export class CapturePaymentStep {
   execute(snapshot: TicketSnapshot, attempt: PaymentAttempt): Observable<CapturedPayment> {
     const decision = TicketTransitionPolicy.decide(snapshot, SaleAction.Capture, attempt);
     if (!decision.permitsWrite) return throwError(() => new Error(decision.label));
+    if (this.port.capturePayment) return this.port.capturePayment(attempt);
     return this.port.capture(attempt).pipe(map((response) => {
       const payment = PosWireMapper.capturedPayment(response, attempt);
       if (!payment) throw new Error('No se pudo comprobar el pago. Consultá el estado antes de continuar.');

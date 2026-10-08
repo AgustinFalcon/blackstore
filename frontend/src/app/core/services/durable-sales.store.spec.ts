@@ -1,11 +1,14 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { API_BASE } from '../api';
+import { AccountingCoverage, CommandFailure, CommandOutcome, ExpenseOperation } from '../domain/accounting-command';
+import { ReconciliationOutcome } from '../domain/accounting-report';
+import { ACCOUNTING_API_BASE, API_BASE } from '../api';
 import { AllowedAction, DurableSaleState } from '../domain/durable-sale';
 import { PaymentMethod, PaymentStatus, StaffRole } from '../domain/pos-types';
 import { PaymentCoverage } from '../domain/ticket-transition';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
+import { commandEnvelope } from '../infrastructure/accounting-command-test-helper';
 import { DurableSalesStore } from './durable-sales.store';
 import { SessionStore } from './session.store';
 import { authenticateTestSession } from './session-test-helper';
@@ -125,12 +128,26 @@ describe('DurableSalesStore existing sale entry', () => {
     open(); store.execute(AllowedAction.CapturePayment, 'completar', '8', '0');
     store.execute(AllowedAction.CapturePayment, 'completar', '8', '0');
     http.expectOne(url).flush(envelope(detail()));
-    const capture = http.expectOne(`${API_BASE}/payments`);
+    const capture = http.expectOne(`${ACCOUNTING_API_BASE}/payments`);
     expect(capture.request.body.saleId).toBe(identity.saleId); expect(capture.request.body.operationId).toBe(identity.operationId);
     capture.flush(null, { status: 503, statusText: 'Unavailable' });
+    http.expectOne(`${ACCOUNTING_API_BASE}/accounting/commands/${capture.request.body.commandId}`).flush({ code: 404, traceId: 'trace',
+      data: { outcome: CommandOutcome.NotFound.wire, commandId: null, failure: null } }, { status: 404, statusText: 'Missing' });
     expect(store.detail()).toBeNull(); expect(store.busy()).toBeFalse();
     http.expectNone(request => request.method === 'POST');
   });
+  for (const [reason, expected] of [['', null], [' \t\n ', null], ['  completar caja ajena  ', 'completar caja ajena']] as const) {
+    it(`sends a DTO-valid capture reason from durable input ${JSON.stringify(reason)}`, () => {
+      open(); store.execute(AllowedAction.CapturePayment, reason, '8', '0');
+      http.expectOne(url).flush(envelope(detail()));
+      const capture = http.expectOne(`${ACCOUNTING_API_BASE}/payments`);
+      expect(capture.request.body.reason).toBe(expected);
+      capture.flush(commandEnvelope(capture.request.body.commandId, { paymentId: 42 }));
+      http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid)));
+      expect(store.busy()).toBeFalse();
+      expect(store.can(AllowedAction.Commit)).toBeTrue();
+    });
+  }
   it('fresh GET revokes a stale authorization before a terminal POST', () => {
     open(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid); store.execute(AllowedAction.Commit, 'confirmar');
     http.expectOne(url).flush(envelope(detail(DurableSaleState.Reserved, PaymentCoverage.Partial)));
