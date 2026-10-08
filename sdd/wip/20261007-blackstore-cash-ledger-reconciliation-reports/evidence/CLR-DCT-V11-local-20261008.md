@@ -23,3 +23,13 @@ Los tres casos opacos (caja ajena abierta, inexistente, ajena cerrada) ahora ver
 Fixture/spec parametrizan SQL de activación/pausa con `AccountingLifecycleState.Active.wire` y `.Paused.wire`, reutilizando el tipo cerrado de dominio sin importar infrastructure/UI.
 
 Validación sobre el refuerzo: `npm run typecheck:dct`, `npm run test:dct -- --list` (2 tests), compilación tsc del harness y `git diff --check` PASS. PG16/browser continúa NOT_RUN por el bloqueo Docker ya registrado; no se repitió adquisición ni se iniciaron servicios. Nuevo commit separado, sin amend/push/PR; worktree entregado limpio.
+
+## CI PR #45 — lectura determinista del receipt durable
+
+El CI remoto reportó `Network.getResponseBody: No data found` en `cash-session-page.ts:20`, al pedir `response.json()` después del auto-wait de click y los refresh de Angular. Falló el mecanismo CDP de lectura del body, sin evidencia de rechazo del comando de negocio.
+
+El helper captura status y commandId del POST al evento response; nunca lee su body mediante CDP. Exige POST 200 y commandId UUID, luego Chromium realiza GET read-only `/api/v2/accounting/commands/{commandId}` con su SID real y consume JSON dentro de `page.evaluate`. Exige GET 200/no-store, receipt Committed/failure None y commandId exacto; apertura/cierre correlacionan cashSessionId con UI, gasto exige expenseId/settlementId y cierre snapshot. Las assertions PostgreSQL de receipts/ledger/settlements/journal conservan su correlación y hechos íntegros. GET no ejecuta, reenvía ni sustituye un POST; no se añade polling/fallback/retry ni se altera timeout/contrato.
+
+Revisados los helpers análogos: apertura/egreso/cierre usaban response.json tardío y ahora comparten la misma lectura durable; login/reload sólo observan status y no dependen de body CDP. Denials ya consumía JSON dentro de Chromium y permanece intacto. No se añadió un test HTTP simulado: los dos escenarios reales existentes exigen el receipt autoritativo por comando; una doble falsa que devolviera receipt no acreditaría la retención de Chrome.
+
+Validación final local: typecheck:dct, discovery 2 tests, compilación tsc del harness y diff-check PASS. Browser/PG16 local NOT_RUN por Docker ya bloqueado; nuevo CI remoto y revisión exact-head pendientes. Sin servicios adquiridos ni push/PR; commit nuevo separado.

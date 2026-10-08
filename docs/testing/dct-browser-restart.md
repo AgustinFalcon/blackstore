@@ -30,6 +30,8 @@ Antes de levantar Angular, un primer JAR aplica Flyway/seed y se detiene. La con
 
 Estados/métodos/roles/outcomes reutilizan tipos cerrados y mappers; eventos DB se traducen en DctAuditEvent con Unknown. Fixture/base/login/caja tienen responsabilidades separadas.
 
+El helper de mutaciones captura status/commandId del POST y exige receipt Committed correlacionado por GET v2 read-only. Consume el JSON del GET en Chromium con SID real; evita `response.json()` tardío de Playwright/CDP (CI #45: Network.getResponseBody No data found). También conserva validación de UI y hechos PostgreSQL. No repite POST ni convierte un fallo de lectura en éxito.
+
 ## Evidencia y teardown
 
 JSON en `frontend/work/dct-browser-results/results.json`, ignorado; CI publica sólo ese JSON por SHA durante siete días. Trace/video/screenshot apagados. No publicar cookies/CSRF/passwords/dumps staff_sessions. Logs registran owner/revisión/IDs/PIDs; finally detiene árboles propios y remueve sólo el container adquirido. Reinicio espera exit. SIGKILL del job puede impedir finally; runner hospedado desechable limita ese residual, no copiar teardown global a máquinas compartidas.
