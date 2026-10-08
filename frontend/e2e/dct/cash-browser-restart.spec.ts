@@ -3,10 +3,15 @@ import { StaffSessionPage } from './pages/staff-session-page';
 import { CashSessionPage } from './pages/cash-session-page';
 import { CashSessionStatus, PaymentMethod, StaffRole } from '../../src/app/core/domain/pos-types';
 import { DctAuditEvent } from './fixtures/dct-audit-event';
+import { CommandOutcome, AccountingCoverage } from '../../src/app/core/domain/accounting-command';
+import { ReconciliationOutcome } from '../../src/app/core/domain/accounting-report';
+import { JournalPhase } from '../../src/app/core/domain/command-journal';
+import { DctLedgerKind } from './fixtures/dct-ledger-kind';
+import { journal } from './fixtures/dct-journal';
 
 test('cash-browser-restart: real cash facts and staff session survive a new JAR PID without replay', async ({ runtime, page }) => {
   const staff = await runtime.database.seed(StaffRole.Cashier);
-  const terminal = await runtime.database.terminal();
+  const terminal = runtime.terminalId;
   await new StaffSessionPage(page).login(staff);
   const cashPage = new CashSessionPage(page);
   await cashPage.visit(terminal);
@@ -20,7 +25,7 @@ test('cash-browser-restart: real cash facts and staff session survive a new JAR 
   expect(Number(before.cash.cashier_id)).toBe(staff.id);
   expect(Number(before.cash.terminal_id)).toBe(terminal);
   expect((await runtime.database.query("SELECT active FROM staff_users WHERE login='cashier'"))[0].active).toBe(false);
-  expect((await runtime.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(7);
+  expect((await runtime.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(11);
   expect(before.expenses).toHaveLength(1);
   expect(before.expenses[0].amount).toBe('7.25');
   expect(Number(before.expenses[0].created_by)).toBe(staff.id);
@@ -31,9 +36,27 @@ test('cash-browser-restart: real cash facts and staff session survive a new JAR 
   expect(before.audit.map(row => Number(row.aggregate_id))).toEqual([cashId, Number(before.expenses[0].id), cashId]);
   expect(before.audit.every(row => row.occurred_at instanceof Date)).toBe(true);
   expect(new Date(before.cash.closed_at).getTime()).toBeGreaterThanOrEqual(new Date(before.cash.opened_at).getTime());
+  expect(before.receipts).toHaveLength(3);
+  expect(before.receipts.every(row => row.outcome === CommandOutcome.Committed && row.accounting_version === 2 && Number(row.actor_id) === staff.id)).toBe(true);
+  expect(before.ledger.map(row => row.event_type)).toEqual([DctLedgerKind.Opening, DctLedgerKind.Accrual, DctLedgerKind.Paid]);
+  expect(before.ledger.map(row => row.amount_delta)).toEqual(['100.00', '7.25', '-7.25']);
+  expect(before.ledger.every(row => row.accounting_version === 2 && before.receipts.some(receipt => receipt.command_id === row.command_id))).toBe(true);
+  expect(before.receipts.flatMap(row => row.result.ledgerEventIds).map(Number).sort((a,b) => a-b))
+    .toEqual(before.ledger.map(row => Number(row.id)).sort((a,b) => a-b));
+  expect(before.settlements).toHaveLength(1);
+  expect(before.settlements[0].amount).toBe('7.25');
+  expect(Number(before.settlements[0].expense_id)).toBe(Number(before.expenses[0].id));
+  expect(before.reconciliation).toHaveLength(1);
+  expect(before.reconciliation[0]).toMatchObject({ outcome: ReconciliationOutcome.Balanced, coverage: AccountingCoverage.Complete,
+    expected_cash: '92.75', declared_cash: '92.75', difference: '0.00', accounting_version: 2 });
+  await expect.poll(async () => (await journal(page)).every(entry => entry?.phase === JournalPhase.Resolved)).toBe(true);
+  const intents = await journal(page);
+  expect(intents).toHaveLength(3);
+  expect(intents.every(entry => entry?.actorId === staff.id && entry.scope.terminalId === terminal && entry.scope.clientInstanceId === runtime.clientInstanceId)).toBe(true);
+  expect(intents.map(entry => entry!.command.commandId).sort()).toEqual(before.receipts.map(row => row.command_id).sort());
   await runtime.restartBackend();
   const posts: string[] = [];
-  page.on('request', request => { if (request.method() === 'POST' && /\/api\/v1\/(cash-sessions|expenses)/.test(request.url())) posts.push(request.url()); });
+  page.on('request', request => { if (request.method() === 'POST' && /\/api\/v[12]\/(cash-sessions|expenses)/.test(request.url())) posts.push(request.url()); });
   const readback = page.waitForResponse(r => r.url().endsWith('/api/v1/cash-sessions') && r.request().method() === 'GET');
   const sid = page.waitForResponse(r => r.url().endsWith('/api/v1/auth/session'));
   await page.reload();
@@ -45,4 +68,5 @@ test('cash-browser-restart: real cash facts and staff session survive a new JAR 
   await cashPage.expectClosedWorkstation(terminal, staff.id);
   expect(posts).toEqual([]);
   expect(await runtime.database.facts(cashId)).toEqual(before);
+  expect(await journal(page)).toEqual(intents);
 });
