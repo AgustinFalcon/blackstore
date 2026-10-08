@@ -31,7 +31,8 @@ class AccountingReportPostgresTest {
             Flyway.configure().dataSource(source).load().migrate()
             fun sql(statement: String) = source.connection.use { c -> c.createStatement().use { it.execute(statement) } }
             sql("INSERT INTO roles(code) VALUES('CASHIER'),('OWNER')")
-            sql("INSERT INTO staff_users(login,password_hash,role_code,display_name) VALUES('cashier','test','CASHIER','Cashier'),('owner','test','OWNER','Owner'),('cashier2','test','CASHIER','Second')")
+            val fixtureHash = org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(4).encode("report-test-fixture-only")
+            sql("INSERT INTO staff_users(login,password_hash,role_code,display_name) VALUES('cashier','$fixtureHash','CASHIER','Cashier'),('owner','$fixtureHash','OWNER','Owner'),('cashier2','$fixtureHash','CASHIER','Second')")
             sql("INSERT INTO terminals(terminal_code) VALUES('OLD'),('NEW')")
             sql("INSERT INTO cash_session_projection(terminal_id,cashier_id,opened_at,opening_cash) VALUES(1,1,clock_timestamp()-interval '1 hour',100)")
             val legacySale = pendingSaleWithTwoLines(source, 1)

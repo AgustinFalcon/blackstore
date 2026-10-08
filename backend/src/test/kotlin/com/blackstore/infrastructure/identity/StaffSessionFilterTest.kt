@@ -23,6 +23,7 @@ class StaffSessionFilterTest {
             "POST /api/v2/payments" to StaffPermission.PaymentCapture,
             "POST /api/v2/payments/3/reversals" to StaffPermission.PaymentReverse,
             "GET /api/v2/accounting/commands/command" to StaffPermission.AccountingCommandRead,
+            "GET /api/v2/expenses/commands/command/projection" to StaffPermission.AccountingCommandRead,
             "GET /api/v2/accounting/runtime" to StaffPermission.AccountingRuntimeRead,
             "GET /api/v2/sales/commands/command" to StaffPermission.SaleCommandRead,
             "POST /api/v2/sales/reservations" to StaffPermission.SaleReserve,
