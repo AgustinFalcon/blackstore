@@ -1,5 +1,11 @@
 # Progreso inicial
 
+## Corte T08-B — backend/schema local, 2026-10-07
+
+Base exacta `6a8a32473f60cd1ab5f9bed33868a07f0f35e918`, branch `feat/cash-ledger-backend-t08b`. Implementa dominio cerrado de comandos y recibos de admisión, fingerprint versionado, puertos/application, admisión JDBC propia de reserve/commit/release v2 con conexión física compartida y sin dispatch HTTP; GET de recibo read-only, query lifecycle separada, permisos y rutas SID/CSRF. V10 es aditiva, append-only, sin backfill, con correspondencia intención/outbox y grants mínimos. Captura rechaza explícitamente campos no soportados, incluido feeAmount null/cero. Recibos contables revalidan permiso del kind original; FEE conserva replay interno OWNER y no se publica.
+
+T08-B `implemented_pending_pg16_ci_review`; T08 sigue parcial, T08-C/T09 pendientes, sin activar runtime ni homologación. [Evidencia y límites T08-B](../evidence/CLR-T08-B-backend-local-20261007.md). Fixtures PG16 compilados, no ejecutados: PG16 no está instalado, PG18 anterior está detenido; no se levantan servicios ni fuerzan sockets. Clean/upgrade reales, concurrencia/crash/reinicio, CI y reviews finales exact-head permanecen NOT_RUN/PENDING. Aprobaciones del SDD no acreditan implementación.
+
 ## Estado agregado T08-A — 2026-10-07
 
 Documentación preparada en worktree `blackstore-clr-contracts-t08a`, branch `feat/cash-ledger-contracts-t08a`, desde exact `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`. [ADR-002](../2-technical/adr/ADR-002-sale-v2-lifecycle-command-journal.md) propone saga v2/recibo Accepted separado de COMMITTED, lifecycle GET y permiso de lectura cerrado, journal durable previo al POST con rehidratación por actor/ámbito/tab, rechazo explícito de feeAmount y pruebas de autoridad/replay/crash. Se actualizaron specs, plan, tareas, metadatos y trazabilidad. Sin código productivo ni migración nueva; backend/frontend actuales conservan las brechas documentadas.

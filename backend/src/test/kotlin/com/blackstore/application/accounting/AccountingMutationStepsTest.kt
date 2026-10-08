@@ -15,6 +15,13 @@ import java.math.BigDecimal
 import java.time.Instant
 
 class AccountingMutationStepsTest {
+    @Test fun `fee replay authorization is internal owner only and original permission is mandatory`() {
+        val policy=AccountingReceiptAccessPolicy()
+        assertNull(policy.authorize(staff(2,StaffRole.OWNER),cash(1),com.blackstore.domain.accounting.AccountingCommandKind.FEE_RECORD))
+        assertEquals(AccountingCommandFailure.Forbidden,policy.authorize(staff(2,StaffRole.SUPERVISOR),cash(1),com.blackstore.domain.accounting.AccountingCommandKind.FEE_RECORD))
+        assertEquals(AccountingCommandFailure.Forbidden,policy.authorize(staff(2,StaffRole.CASHIER),cash(2),com.blackstore.domain.accounting.AccountingCommandKind.FEE_RECORD))
+        assertEquals(AccountingCommandFailure.Forbidden,policy.authorize(staff(1,StaffRole.CASHIER),cash(1),com.blackstore.domain.accounting.AccountingCommandKind.Unknown))
+    }
     private val openedAt = Instant.parse("2026-10-07T12:00:00Z")
     private fun staff(id: Long, role: StaffRole) = AuthenticatedStaff(StaffUserId(id), "staff-$id", role)
     private fun cash(owner: Long, status: CashSessionStatus = CashSessionStatus.OPEN) =

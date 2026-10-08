@@ -16,7 +16,11 @@ import java.util.UUID
 data class CashSessionOpenV2Request(val commandId: UUID, val terminalId: Long, val cashierId: Long, val openingCash: BigDecimal, val reason: String? = null)
 data class CashSessionCloseV2Request(val commandId: UUID, val cashSessionId: Long, val declaredCash: BigDecimal, val reason: String)
 data class ExpenseRecordV2Request(val commandId: UUID, val cashSessionId: Long, val operation: String?, val category: String? = null, val amount: BigDecimal? = null, val expenseId: Long? = null, val reason: String, val paymentMethod: String? = null)
-data class PaymentCaptureV2Request(val commandId: UUID, val clientInstanceId: String, val deviceId: String, val saleId: String, val operationId: String, val paymentMethod: String?, val amount: BigDecimal, val reason: String? = null)
+data class PaymentCaptureV2Request(val commandId: UUID, val clientInstanceId: String, val deviceId: String, val saleId: String, val operationId: String, val paymentMethod: String?, val amount: BigDecimal, val reason: String? = null) {
+    /** Presence is rejected even when feeAmount is null or zero; no silent Jackson discard. */
+    @com.fasterxml.jackson.annotation.JsonAnySetter
+    fun rejectUnsupported(name: String, value: Any?) { throw IllegalArgumentException("Unsupported capture field") }
+}
 data class PaymentReverseV2Request(val commandId: UUID, val clientInstanceId: String, val deviceId: String, val saleId: String, val operationId: String, val originalPaymentId: Long, val reason: String, val evidenceRef: String)
 
 /** The only v2 request-edge translator. Unknown wire values fail before domain/application use. */
