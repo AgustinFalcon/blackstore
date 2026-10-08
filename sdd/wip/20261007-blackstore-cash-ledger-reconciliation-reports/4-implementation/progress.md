@@ -1,5 +1,13 @@
 # Progreso inicial
 
+## Estado integrado local T08-D — vigente
+
+2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
+
+Ver [evidencia local](../evidence/CLR-T08-D-frontend-local-20261008.md).
+
+## Antecedentes conservados — no son estado vigente
+
 ## 2026-10-08 — CLR-T08-D documental preparado
 
 Worktree `blackstore-clr-evidence-sdd`, branch `feat/cash-ledger-evidence-sdd`, base backend POS exacta `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) registra las brechas comprobadas y el contrato: originalPaymentId nullable, refund→capture íntegro/correlacionado, proyección de gasto por commandId cerrada, autoridad/visibilidad actuales y snapshot read-only de receipt/fuentes/postings. Specs/meta/plan/tasks/evidence sincronizados. Sólo SDD; código productivo y migraciones intactos.
