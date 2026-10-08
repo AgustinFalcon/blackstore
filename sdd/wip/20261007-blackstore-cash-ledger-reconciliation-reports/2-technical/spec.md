@@ -1,5 +1,7 @@
 # Especificación técnica
 
+Estado vigente tras review 0a6bb36: T08-C `blocked_on_authoritative_read_models`, T08 parcial. C no es totalmente usable: cualquier refund bloquea nuevas reversas hasta linkage autoritativo por pago; egreso/liquidación permanece ReceiptVerifiedAwaitingRefresh hasta read model T08-D. Addendum backend separado, sin backend en este corte. Fingerprint contractual sale-admission-v1 y guard de entrega por actor/generación corrigen frontend; tests nuevos NOT_RUN. [Evidencia vigente](../evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estados actuales anteriores; PASS 161/161 aplica sólo a source 8227177.
+
 Incremento T08-C 2026-10-08 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: tipos/traductores contexto/lifecycle/admission, journal IndexedDB común y clientes internos v2 implementados. `implemented_pending_pg16_browser_ci_review`; T08 sigue parcial. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md) documenta límites y validación local exacta del source 82271775df12d79554aacbfc67030db3843f1445 (161/161 unitarios, typecheck/build PASS). Los estados blocked/planned de C en antecedentes siguientes quedan sustituidos para implementación; no cambian aprobación ADR-003 ni aceptación runtime.
 
 ## Addendum T08-B-POS — contexto verificado

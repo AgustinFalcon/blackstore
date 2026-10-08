@@ -286,7 +286,8 @@
     {
       "id": "CLR-T08-C",
       "title": "Clientes saga v2 lifecycle preventivo y journal durable UI",
-      "status": "implemented_pending_pg16_browser_ci_review",
+      "status": "blocked_on_authoritative_read_models",
+      "followup_dependency": "T08-D authoritative refund linkage and expense settlement read models; separate addendum pending integration",
       "pr_cut": "DURABLE_COMMAND_UI",
       "depends_on": [
         "CLR-T08-B-POS"
@@ -357,6 +358,7 @@
     "pos_context": "BACKEND_FRONTEND_IMPLEMENTED_PG16_BROWSER_CI_REVIEW_PENDING"
   },
   "evidence": {
+    "frontend_t08c_review_corrections": "SOURCE_TESTS_ADDED_NOT_RUN_COORDINATOR_VALIDATION_PENDING_BLOCKED_ON_T08_D_READ_MODELS",
     "frontend_t08c_source_head": "82271775df12d79554aacbfc67030db3843f1445",
     "frontend_t08c_install_typecheck_build": "PASS_LOCAL_LOCKFILE_SOURCE_8227177",
     "frontend_t08c_unit_tests": "161_161_PASS_BUILTIN_CHROME_HEADLESS_NO_SANDBOX_TEMPORARY_T_DRIVE_REMOVED",

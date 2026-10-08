@@ -1,7 +1,9 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject, of } from 'rxjs';
-import { AccountingCommand, AccountingCommandKind, CommandOutcome } from '../domain/accounting-command';
+import { AccountingCommand, AccountingCommandKind, CommandOutcome,ExpenseOperation } from '../domain/accounting-command';
+import {SaleCommand,SaleCommandKind,SaleAdmissionOutcome} from '../domain/sale-command';
+import {SaleAdmissionFingerprint} from '../infrastructure/sale-admission-fingerprint';
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
 import { JournalEntry, JournalPhase } from '../domain/command-journal';
 import { SessionState } from '../domain/session-types';
@@ -98,5 +100,23 @@ describe('CommandRuntimeStore durable admission and recovery', () => {
     api.post.and.returnValue(of(null));const c=command();await store.execute(c);
     const response=new Subject<unknown>();api.receipt.and.returnValue(response);const one=store.consult();const two=store.consult();
     expect(api.receipt.calls.count()).toBe(1);response.next(commandEnvelope(c.commandId));await Promise.all([one,two]);expect(api.post.calls.count()).toBe(1);
+  });
+  it('pre-journal reference denial prevents another reversal intent or POST',async()=>{
+    api.references.and.returnValue(of(false));
+    await store.execute(AccountingCommand.create(AccountingCommandKind.Reverse,{originalPaymentId:41,reason:'refund',evidenceRef:'ref'},41));
+    expect(journal.prepare).not.toHaveBeenCalled();expect(api.post).not.toHaveBeenCalled();
+  });
+  it('expense receipt remains awaiting authoritative evidence with no resolved journal',async()=>{
+    api.references.and.returnValue(of(2));api.post.and.callFake((c:AccountingCommand)=>of(commandEnvelope(c.commandId,{expenseId:5,settlementId:6})));api.refresh.and.returnValue(of(false));
+    const c=AccountingCommand.create(AccountingCommandKind.Expense,{cashSessionId:2,amount:'10',operation:ExpenseOperation.AccrueAndSettle.wire,category:'supplies'});
+    await store.execute(c);expect(entries[0].phase).toBe(JournalPhase.ReceiptVerifiedAwaitingRefresh);expect(store.canWrite()).toBeFalse();expect(store.notice()).toContain('T08-D');
+  });
+  it('quarantines a sale receipt with a syntactically valid mismatched hash',async()=>{
+    const identity={...context,saleId:'22222222-2222-2222-2222-222222222222',operationId:'33333333-3333-3333-3333-333333333333'};
+    const c=SaleCommand.create(SaleCommandKind.Commit,identity,2,{reason:'frozen'});api.references.and.returnValue(of(2));
+    const expected=await SaleAdmissionFingerprint.hash(c,7);
+    api.post.and.returnValue(of(envelope({outcome:SaleAdmissionOutcome.Accepted.wire,failure:null,receipt:{...identity,commandId:c.commandId,kind:c.kind.wire,actorId:7,cashSessionId:2,payloadHash:'f'.repeat(64),intentId:1,outboxId:2,acceptedAt:'2026-10-08T00:00:00Z'}})));
+    await store.execute(c);expect(entries[0].expectedPayloadHash).toBe(expected);expect(entries[0].phase).toBe(JournalPhase.Quarantined);
+    expect(api.refresh).not.toHaveBeenCalled();expect(store.canWrite()).toBeFalse();await store.consult();expect(api.receipt).not.toHaveBeenCalled();
   });
 });

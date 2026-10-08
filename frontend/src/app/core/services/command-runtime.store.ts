@@ -1,14 +1,15 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { AccountingCommand, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
+import { AccountingCommand, AccountingCommandKind, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
 import { JournalEntry, JournalFamily, JournalPhase, JournalScope, sameScope } from '../domain/command-journal';
 import { PosContextState, PosExecutionContext } from '../domain/pos-execution-context';
-import { SaleAdmission, SaleAdmissionOutcome, SaleCommand } from '../domain/sale-command';
+import { SaleAdmission, SaleAdmissionOutcome, SaleCommand,SaleAdmissionVerification } from '../domain/sale-command';
 import { IndexedDbCommandJournal } from '../infrastructure/indexed-db-command-journal';
 import { CommandHttp } from '../infrastructure/command-http';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
 import { SessionStore } from './session.store';
+import { SaleAdmissionFingerprint } from '../infrastructure/sale-admission-fingerprint';
 
 /** Shared coordinator: evidence is durable; a session generation only owns visible observations. */
 @Injectable({ providedIn: 'root' })
@@ -75,8 +76,10 @@ export class CommandRuntimeStore {
       const cashSessionId = await firstValueFrom(this.api.references(command,scope.terminalId));
       if (cashSessionId === false || !this.current(epoch,generation,actor)) return unknown;
       if (body['terminalId'] != null && body['terminalId'] !== scope.terminalId) return unknown;
+      const fingerprint=command instanceof SaleCommand ? {expectedPayloadHash:await SaleAdmissionFingerprint.hash(command,actor),fingerprintVersion:SaleAdmissionFingerprint.version} : {};
+      if(!this.current(epoch,generation,actor))return unknown;
       const entry: JournalEntry = Object.freeze({ version: 1, scope, family: command instanceof SaleCommand ? JournalFamily.Sale : JournalFamily.Accounting,
-        command, actorId: actor, cashSessionId, phase: JournalPhase.Prepared, tabId: this.tabId });
+        command, actorId: actor, cashSessionId, phase: JournalPhase.Prepared, tabId: this.tabId,...fingerprint });
       await this.journal.prepare(entry); // oncomplete, not request success, is the send barrier.
       if (!this.current(epoch,generation,actor)) return unknown;
       this.pending.set(entry); this.notice.set('Intención conservada. Esperando recibo…');
@@ -88,7 +91,7 @@ export class CommandRuntimeStore {
   }
   async consult(): Promise<CommandReceipt | SaleAdmission | null> {
     const entry = this.pending(); const actor = this.session.staff()?.id;
-    return entry && actor ? this.recover(entry,this.epoch,this.session.generation(),actor) : null;
+    return entry && actor && entry.phase!==JournalPhase.Quarantined ? this.recover(entry,this.epoch,this.session.generation(),actor) : null;
   }
   private recover(entry: JournalEntry, epoch: number,generation: number,actor: number): Promise<CommandReceipt | SaleAdmission> {
     if (!this.current(epoch,generation,actor) || entry.actorId !== actor || !this.session.can(entry.command.kind.permission)) return Promise.resolve(this.unknown(entry.command));
@@ -101,14 +104,28 @@ export class CommandRuntimeStore {
   private async record(entry: JournalEntry,raw: unknown,epoch: number,generation: number,actor: number): Promise<CommandReceipt | SaleAdmission> {
     const command = entry.command; const unknown = this.unknown(command);
     if (!this.current(epoch,generation,actor) || this.pending()?.command.commandId !== command.commandId || !this.session.can(command.kind.permission)) return unknown;
-    const result = command instanceof SaleCommand ? PosWireMapper.saleAdmission(raw,command,actor) : PosWireMapper.commandReceipt(raw,command.commandId);
+    if(command instanceof SaleCommand && (entry.fingerprintVersion!==SaleAdmissionFingerprint.version || !entry.expectedPayloadHash ||
+      await SaleAdmissionFingerprint.hash(command,entry.actorId)!==entry.expectedPayloadHash)){
+      this.neutralBlock.set(true);this.notice.set('Fingerprint de evidencia local incompatible. Cuarentena; requiere conciliación.');return unknown;
+    }
+    if(!this.current(epoch,generation,actor))return unknown;
+    const result = command instanceof SaleCommand ? PosWireMapper.saleAdmission(raw,command,actor,entry.expectedPayloadHash??null) : PosWireMapper.commandReceipt(raw,command.commandId);
+    if(command instanceof SaleCommand && (result as SaleAdmission).verification===SaleAdmissionVerification.PayloadMismatch){
+      await this.journal.transition(entry,JournalPhase.Quarantined);
+      if(this.current(epoch,generation,actor)){this.pending.set({...entry,phase:JournalPhase.Quarantined});this.neutralBlock.set(true);this.notice.set('Fingerprint de recibo incompatible con intención congelada. Cuarentena; requiere conciliación.');}
+      return unknown;
+    }
     const valid = command instanceof SaleCommand ? (result as SaleAdmission).outcome === SaleAdmissionOutcome.Accepted : (result as CommandReceipt).outcome === CommandOutcome.Committed && command.accepts(result as CommandReceipt);
     if (!valid) { this.notice.set(`${result.outcome.label}. Sin reenvío automático.`); return unknown; }
     await this.journal.transition(entry,JournalPhase.ReceiptVerifiedAwaitingRefresh);
     if (!this.current(epoch,generation,actor)) return unknown;
     this.pending.set({ ...entry, phase: JournalPhase.ReceiptVerifiedAwaitingRefresh }); this.notice.set('Recibo comprobado. Falta refresh autoritativo.');
     const refreshed = await firstValueFrom(this.api.refresh(command, command instanceof AccountingCommand ? result as CommandReceipt : undefined));
-    if (!this.current(epoch,generation,actor) || !refreshed) return unknown;
+    if (!this.current(epoch,generation,actor) || !refreshed) {
+      if(this.current(epoch,generation,actor) && command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense)
+        this.notice.set('Egreso admitido; falta evidencia autoritativa de egreso/liquidación. Operación bloqueada hasta T08-D.');
+      return unknown;
+    }
     await this.journal.transition(entry,JournalPhase.Resolved);
     if (this.current(epoch,generation,actor) && this.pending()?.command.commandId === command.commandId) { this.pending.set(null); this.neutralBlock.set(false); this.notice.set(this.lifecycle().label); }
     return result;

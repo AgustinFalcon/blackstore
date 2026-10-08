@@ -21,7 +21,19 @@ export interface SaleAdmissionReceipt extends TicketIdentity {
   readonly commandId: string; readonly kind: SaleCommandKind; readonly payloadHash: string;
   readonly actorId: number; readonly cashSessionId: number; readonly intentId: number; readonly outboxId: number; readonly acceptedAt: string;
 }
-export interface SaleAdmission { readonly outcome: SaleAdmissionOutcome; readonly receipt: SaleAdmissionReceipt | null; }
+export class SaleAdmissionVerification {
+  static readonly Verified=new SaleAdmissionVerification();
+  static readonly PayloadMismatch=new SaleAdmissionVerification();
+  static readonly Unknown=new SaleAdmissionVerification();
+  private constructor(){}
+}
+export interface SaleAdmission { readonly outcome: SaleAdmissionOutcome; readonly receipt: SaleAdmissionReceipt | null; readonly verification?:SaleAdmissionVerification; }
+export class SaleFingerprintVersion {
+  static readonly AdmissionV1=new SaleFingerprintVersion('sale-admission-v1');
+  static readonly Unknown=new SaleFingerprintVersion('Unknown');
+  private constructor(readonly wire:string){}
+  static fromWire(raw:unknown):SaleFingerprintVersion{return raw===this.AdmissionV1.wire?this.AdmissionV1:this.Unknown;}
+}
 export class SaleCommand {
   private constructor(readonly kind: SaleCommandKind, readonly commandId: string, readonly identity: TicketIdentity,
     readonly cashSessionId: number, readonly body: Readonly<Record<string, unknown>>) {}
@@ -35,8 +47,8 @@ export class SaleCommand {
   static fromJournal(kind: SaleCommandKind, commandId: string, identity: TicketIdentity, cashSessionId: number, body: Readonly<Record<string, unknown>>): SaleCommand {
     return new SaleCommand(kind, commandId, Object.freeze({ ...identity }), cashSessionId, Object.freeze({ ...body }));
   }
-  accepts(receipt: SaleAdmissionReceipt, actorId: number): boolean {
+  accepts(receipt: SaleAdmissionReceipt, actorId: number,expectedPayloadHash:string|null): boolean {
     return receipt.commandId === this.commandId && receipt.kind === this.kind && receipt.actorId === actorId &&
-      receipt.cashSessionId === this.cashSessionId && sameTicketIdentity(this.identity, receipt);
+      receipt.cashSessionId === this.cashSessionId && sameTicketIdentity(this.identity, receipt) && !!expectedPayloadHash && receipt.payloadHash===expectedPayloadHash;
   }
 }

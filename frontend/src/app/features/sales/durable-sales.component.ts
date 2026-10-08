@@ -53,7 +53,8 @@ import { DurableSalesStore } from '../../core/services/durable-sales.store';
           @for (line of sale.lines; track $index) { <p>{{ line.sku }} · {{ line.productName }} · {{ line.quantity }} · {{ line.total?.decimal ?? 'No comprobado' }}</p> }
           @for (payment of sale.payments; track payment.paymentId) {
             <p>Pago {{ payment.paymentId }} · {{ payment.method.label }} · {{ payment.status.label }} · {{ payment.amount?.decimal ?? 'No comprobado' }} · comisión {{ payment.fee?.decimal ?? 'No comprobado' }}</p>
-            @if (payment.status === captured && store.can(actions.ReversePayment)) {
+            <p>{{ payment.reversibility.label }}. Tras una devolución, las nuevas reversas requieren evidencia por pago del backend.</p>
+            @if (payment.reversibility.permitsReverse && store.can(actions.ReversePayment)) {
               <button type="button" (click)="store.execute(actions.ReversePayment, reason, undefined, method, payment.paymentId)" [disabled]="!reason.trim()">Reversar pago {{ payment.paymentId }}</button>
             }
           }

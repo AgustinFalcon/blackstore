@@ -32,6 +32,8 @@ export class CommandHttp {
       : this.http.get(`${API_BASE}/sales/operations/${encodeURIComponent(identity.operationId)}`).pipe(map(raw => {
         const detail = PosWireMapper.durableDetail(raw,identity.operationId);
         if (!detail?.valid || !importIdentity(detail.identity,identity)) throw new Error('Venta no comprobada');
+        if(command instanceof AccountingCommand && command.kind===AccountingCommandKind.Reverse &&
+          !detail.payments.some(p=>p.paymentId===command.body['originalPaymentId'] && p.reversibility.permitsReverse)) throw new Error('Pago no reversible');
         return detail.cashSessionId;
       }));
     return sale.pipe(importConcatMap(cashSessionId => this.http.get<import('../models/base-response').BaseResponse<import('../models/pos-models').CashSessionWire[]>>(`${API_BASE}/cash-sessions`).pipe(map(raw => {
@@ -40,6 +42,8 @@ export class CommandHttp {
     }))),catchError(() => of(false as const)));
   }
   refresh(command: AccountingCommand | SaleCommand, receipt?: CommandReceipt): Observable<boolean> {
+    // Current API has no authoritative expense/settlement read. Keep the journal unresolved.
+    if(command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense) return of(false);
     if (command instanceof SaleCommand || command.kind === AccountingCommandKind.Capture || command.kind === AccountingCommandKind.Reverse) {
       const identity = command instanceof SaleCommand ? command.identity : command.body as unknown as import('../domain/ticket-transition').TicketIdentity;
       return this.http.get(`${API_BASE}/sales/operations/${encodeURIComponent(identity.operationId)}`).pipe(map(raw => {
@@ -61,7 +65,7 @@ export class CommandHttp {
       if (!session || session.terminalId < 1 || session.cashierId < 1) return false;
       if (command.kind === AccountingCommandKind.Open) return session.status.isOpen && session.terminalId === command.body['terminalId'] && session.cashierId === command.body['cashierId'];
       if (command.kind === AccountingCommandKind.Close) return session.status.isClosed;
-      return session.status.isOpen && !!receipt?.expenseId;
+      return false;
     }), catchError(() => of(false)));
   }
   private safe(request: Observable<unknown>): Observable<unknown> { return request.pipe(catchError(error => of(error instanceof HttpErrorResponse ? error.error : null))); }

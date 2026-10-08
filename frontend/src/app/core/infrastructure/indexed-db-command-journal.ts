@@ -1,10 +1,11 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { AccountingCommand, AccountingCommandKind, ExpenseOperation } from '../domain/accounting-command';
-import { CommandJournal, JournalEntry, JournalFamily, JournalPhase, JournalSnapshot } from '../domain/command-journal';
-import { SaleCommand, SaleCommandKind } from '../domain/sale-command';
+import { CommandJournal, JournalEntry, JournalFamily, JournalPhase, JournalSnapshot,sameScope } from '../domain/command-journal';
+import { SaleCommand, SaleCommandKind,SaleFingerprintVersion } from '../domain/sale-command';
 import { PosWireMapper } from './pos-wire-mapper';
 import { TicketMoney } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
+import { SaleAdmissionFingerprint } from './sale-admission-fingerprint';
 
 /** Storage is untrusted evidence. This decoder is the only storage-to-domain boundary. */
 export class JournalDecoder {
@@ -39,6 +40,7 @@ export class JournalDecoder {
         if (kind === AccountingCommandKind.Reverse && (!id(r['cashSessionId']) || !identityValid() || !id(body['originalPaymentId']) || body['originalPaymentId'] !== command['aggregateId'] || !text('reason') || !text('evidenceRef'))) return null;
         decoded = AccountingCommand.fromJournal(kind, command['commandId'], frozen, command['aggregateId'] as number | undefined);
       } else {
+        if(SaleFingerprintVersion.fromWire(r['fingerprintVersion'])!==SaleAdmissionFingerprint.version || typeof r['expectedPayloadHash']!=='string' || !/^[0-9a-f]{64}$/.test(r['expectedPayloadHash']))return null;
         const kind = SaleCommandKind.fromWire(command['kind']);
         const identity = { clientInstanceId: body['clientInstanceId'], deviceId: body['deviceId'], saleId: body['saleId'], operationId: body['operationId'] };
         if (kind === SaleCommandKind.Unknown || !id(r['cashSessionId']) || !PosWireMapper.uuid(identity.clientInstanceId) || !PosWireMapper.uuid(identity.saleId) || !PosWireMapper.uuid(identity.operationId) ||
@@ -48,11 +50,12 @@ export class JournalDecoder {
         decoded = SaleCommand.fromJournal(kind, command['commandId'], identity as import('../domain/ticket-transition').TicketIdentity, r['cashSessionId'], frozen);
       }
       return Object.freeze({ version: 1, scope: Object.freeze({ ...scope }) as unknown as JournalEntry['scope'], command: decoded,
-        family, phase, actorId: r['actorId'], cashSessionId: r['cashSessionId'] as number | null, tabId: r['tabId'] as string });
+        family, phase, actorId: r['actorId'], cashSessionId: r['cashSessionId'] as number | null, tabId: r['tabId'] as string,
+        ...(family===JournalFamily.Sale?{expectedPayloadHash:r['expectedPayloadHash'] as string,fingerprintVersion:SaleFingerprintVersion.fromWire(r['fingerprintVersion'])}:{}) });
     } catch { return null; }
   }
   static encode(entry: JournalEntry): unknown {
-    return { ...entry, family: entry.family.wire, phase: entry.phase.wire,
+    return { ...entry, family: entry.family.wire, phase: entry.phase.wire,fingerprintVersion:entry.fingerprintVersion?.wire,
       command: { ...entry.command, kind: entry.command.kind.wire } };
   }
 }
@@ -78,14 +81,20 @@ export class IndexedDbCommandJournal extends CommandJournal {
     });
   }
   list(): Promise<JournalSnapshot> {
-    return this.transaction(false, (store,done) => {
+    return this.transaction<JournalSnapshot>(false, (store,done) => {
       const request = store.getAll(); request.onsuccess = () => {
         const entries = request.result.map(raw => JournalDecoder.decode(raw));
         done({ entries: entries.filter((entry): entry is JournalEntry => entry !== null), quarantined: entries.some(entry => entry === null) });
       };
+    }).then(async snapshot=>{
+      const verified=await Promise.all(snapshot.entries.map(async entry=>entry.command instanceof SaleCommand &&
+        await SaleAdmissionFingerprint.hash(entry.command,entry.actorId)!==entry.expectedPayloadHash ? null : entry));
+      return {entries:verified.filter((entry):entry is JournalEntry=>entry!==null),quarantined:snapshot.quarantined||verified.some(entry=>entry===null)};
     });
   }
-  prepare(entry: JournalEntry): Promise<void> {
+  async prepare(entry: JournalEntry): Promise<void> {
+    if(entry.command instanceof SaleCommand && (entry.fingerprintVersion!==SaleAdmissionFingerprint.version ||
+      await SaleAdmissionFingerprint.hash(entry.command,entry.actorId)!==entry.expectedPayloadHash))throw new Error('Fingerprint incompatible');
     return this.transaction(true, (store,done,fail) => {
       const request = store.getAll(); request.onsuccess = () => {
         // The read and insert share one readwrite transaction: two tabs cannot both claim.
@@ -99,7 +108,8 @@ export class IndexedDbCommandJournal extends CommandJournal {
     return this.transaction(true, (store,done,fail) => {
       const request = store.get(entry.command.commandId); request.onsuccess = () => {
         const saved = JournalDecoder.decode(request.result);
-        if (!saved || saved.family !== entry.family || saved.actorId !== entry.actorId || JSON.stringify(saved.command.body) !== JSON.stringify(entry.command.body)) { fail(new Error('Evidencia cambió')); return; }
+        if (!saved || saved.family !== entry.family || saved.actorId !== entry.actorId || !sameScope(saved.scope,entry.scope) || saved.cashSessionId!==entry.cashSessionId ||
+          saved.expectedPayloadHash!==entry.expectedPayloadHash || saved.fingerprintVersion!==entry.fingerprintVersion || JSON.stringify(saved.command.body) !== JSON.stringify(entry.command.body)) { fail(new Error('Evidencia cambió')); return; }
         store.put(JournalDecoder.encode({ ...saved, phase })); done(undefined);
       };
     });

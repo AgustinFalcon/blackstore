@@ -1,5 +1,7 @@
 # Plan y cortes revisables
 
+Vigente tras review 0a6bb36: C `blocked_on_authoritative_read_models`; T08 parcial. T08-D backend en addendum separado debe aportar refund→capture y lectura de egreso/liquidación antes de integrar funcionalidad completa/cerrar C. Este corte sólo corrige frontend y bloquea explícitamente lo no comprobable. [Evidencia](../evidence/CLR-T08-C-review-corrections-20261008.md). Nueva validación exact-head pendiente, sin npm en este turno; no hereda PASS previo.
+
 Estado actual C 2026-10-08: source frontend implementado sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; `implemented_pending_pg16_browser_ci_review`. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). JSON fija el DAG vigente y conserva T08 parcial. La secuencia/reviews específicos B-POS/ADR-003 y PG16/browser/CI no se consideran aprobados por este corte.
 
 ## Addendum de contexto POS — precedencia vigente

@@ -1,5 +1,7 @@
 # CLR-T08-C — frontend v2 y journal
 
+Registro histórico de source `82271775df12d79554aacbfc67030db3843f1445`. El estado vigente posterior a review es [C blocked_on_authoritative_read_models](CLR-T08-C-review-corrections-20261008.md): egreso no resuelto y nuevas reversas tras refund bloqueadas hasta T08-D. Este PASS no valida las correcciones nuevas ni acredita usable completo.
+
 Base exacta `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; branch `feat/cash-ledger-frontend-t08c-v2`, worktree nuevo `blackstore-clr-frontend-t08c-v2`. El worktree previo sucio se conservó intacto; sus seis archivos se consultaron selectivamente, sin copiar su recoveryScope inventado ni rutas dentro del dominio.
 
 ## Source implementado

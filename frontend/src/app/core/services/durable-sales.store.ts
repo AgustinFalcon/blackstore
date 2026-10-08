@@ -89,7 +89,7 @@ export class DurableSalesStore {
     if (!original || !this.can(action)) return;
     const requestedAmount = TicketMoney.fromDecimal(amount);
     if (action === AllowedAction.CapturePayment && (!requestedAmount || requestedAmount.cents <= 0n || method === PaymentMethod.Unknown)) return;
-    if (action === AllowedAction.ReversePayment && (!reason.trim() || !original.payments.some(payment => payment.paymentId === paymentId && payment.status === PaymentStatus.Captured))) return;
+    if (action === AllowedAction.ReversePayment && (!reason.trim() || !original.payments.some(payment => payment.paymentId === paymentId && payment.reversibility.permitsReverse))) return;
     const generation = this.generation;
     const request = ++this.detailGeneration;
     this.busy.set(true); this.detail.set(null); this.notice.set(null);
@@ -106,7 +106,7 @@ export class DurableSalesStore {
           return receipt;
         }));
       } else if (action === AllowedAction.ReversePayment) {
-        if (!current.payments.some(payment => payment.paymentId === paymentId && payment.status === PaymentStatus.Captured)) return throwError(() => new Error('Pago no disponible'));
+        if (!current.payments.some(payment => payment.paymentId === paymentId && payment.reversibility.permitsReverse)) return throwError(() => new Error('Pago no disponible'));
         mutation = this.commands.execute(AccountingCommand.create(AccountingCommandKind.Reverse, {
           ...current.identity, originalPaymentId: paymentId, reason, evidenceRef: `rev-${paymentId}`,
         }, paymentId)).pipe(map(receipt => {

@@ -17,13 +17,13 @@ import { ReportFormula, ReportPeriod } from '../domain/pos-types';
 import { BaseResponse } from '../models/base-response';
 import { CapturedPayment, PaymentAttempt, PaymentCoverage, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, sameTicketIdentity } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
-import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary } from '../domain/durable-sale';
+import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary, PaymentReversibility } from '../domain/durable-sale';
 import { AccountingFormula, AccountingMetric, AccountingReport, AccountingReportRequest, CompletenessCause, CoveredValue, DataCompleteness, FormulaVersion, MetricCoverage, Reconciliation, ReconciliationOutcome, ReportFailure } from '../domain/accounting-report';
 
 import { AccountingCommand, AccountingCommandKind, AccountingCoverage, CommandFailure, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
 import { PosContextObservation, PosContextState } from '../domain/pos-execution-context';
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
-import { SaleAdmission, SaleAdmissionOutcome, SaleCommand, SaleCommandKind } from '../domain/sale-command';
+import { SaleAdmission, SaleAdmissionOutcome, SaleCommand, SaleCommandKind,SaleAdmissionVerification } from '../domain/sale-command';
 
 export class PosWireMapper {
   private constructor() {}
@@ -45,7 +45,7 @@ export class PosWireMapper {
     const state = AccountingLifecycleState.fromWire(data['state']);
     return (state === AccountingLifecycleState.PreActivation ? data['activationAt'] === null : instant(data['activationAt'])) ? state : AccountingLifecycleState.Unknown;
   }
-  static saleAdmission(response: unknown, command: SaleCommand, actorId: number): SaleAdmission {
+  static saleAdmission(response: unknown, command: SaleCommand, actorId: number,expectedPayloadHash:string|null=null): SaleAdmission {
     const unknown = { outcome: SaleAdmissionOutcome.Unknown, receipt: null };
     const envelope = this.record(response); const data = this.record(envelope?.['data']);
     if (!envelope || !this.nonempty(envelope['traceId']) || !data) return unknown;
@@ -61,7 +61,9 @@ export class PosWireMapper {
     const receipt = Object.freeze({ ...identity, kind, commandId: raw['commandId'] as string, actorId: raw['actorId'] as number,
       cashSessionId: raw['cashSessionId'] as number, payloadHash: raw['payloadHash'] as string, intentId: raw['intentId'] as number,
       outboxId: raw['outboxId'] as number, acceptedAt: raw['acceptedAt'] });
-    return command.accepts(receipt, actorId) ? { outcome, receipt } : unknown;
+    if(expectedPayloadHash && command.accepts(receipt,actorId,receipt.payloadHash) && receipt.payloadHash!==expectedPayloadHash)
+      return {outcome:SaleAdmissionOutcome.Unknown,receipt:null,verification:SaleAdmissionVerification.PayloadMismatch};
+    return command.accepts(receipt, actorId,expectedPayloadHash) ? { outcome, receipt,verification:SaleAdmissionVerification.Verified } : unknown;
   }
   static uuid(raw: unknown): raw is string { return typeof raw === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw); }
   static commandPath(command: AccountingCommand): string {
@@ -343,12 +345,14 @@ export class PosWireMapper {
       return Object.freeze({ sku: PosWireMapper.nonempty(line?.['sku']) ?? '—', productName: PosWireMapper.nonempty(line?.['productName']) ?? 'Sin descripción',
         quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0, total: TicketMoney.fromDecimal(line?.['totalAmount']) });
     }) : [];
-    const payments = Array.isArray(raw['payments']) ? raw['payments'].map(value => {
+    const paymentRows = Array.isArray(raw['payments']) ? raw['payments'].map(value => {
       const payment = PosWireMapper.record(value);
       return Object.freeze({ paymentId: PosWireMapper.positiveId(payment?.['paymentId']) ? payment!['paymentId'] as number : 0,
         status: PaymentStatus.fromWire(payment?.['status']), method: PaymentMethod.fromWire(payment?.['method']),
+        originalPaymentId: PosWireMapper.positiveId(payment?.['originalPaymentId']) ? payment!['originalPaymentId'] as number : null,
         amount: TicketMoney.fromDecimal(payment?.['amount']), fee: TicketMoney.fromDecimal(payment?.['feeAmount']) });
     }) : [];
+    const payments = paymentRows.map(payment=>Object.freeze({...payment,reversibility:PaymentReversibility.forPayment(payment,paymentRows)}));
     const allowedActions = Array.isArray(raw['allowedActions']) ? raw['allowedActions'].map(AllowedAction.fromWire) : [AllowedAction.Unknown];
     const command = raw['pendingCommand'] == null ? null : DurableCommandKind.fromWire(PosWireMapper.record(raw['pendingCommand'])?.['kind']);
     const receipt = PosWireMapper.nonempty(raw['receipt']);

@@ -1,5 +1,7 @@
 # RTM — `blackstore-pilot`
 
+CLR-003/004/010 → correcciones C sobre 0a6bb36: reversibilidad cerrada/fail-closed tras refund, egreso awaitingRefresh hasta evidencia T08-D, delivery actor/generación por suscriptor y fingerprint contractual versionado antes de journal/receipt. C `blocked_on_authoritative_read_models`; T08 parcial, sin usable completo. [Evidencia vigente](wip/20261007-blackstore-cash-ledger-reconciliation-reports/evidence/CLR-T08-C-review-corrections-20261008.md); tests/typecheck/build de este corte NOT_RUN, PASS previo sólo source 8227177; PG16/browser CLR/crash/CI/re-review pendientes.
+
 CLR-T08-C validación local externa source `82271775df12d79554aacbfc67030db3843f1445`: lockfile/npm ci, typecheck y build PASS; unitarios 161/161 PASS en ChromeHeadlessNoSandbox built-in desde T: temporal desmontada, sin cambios source/CI. [Evidencia](wip/20261007-blackstore-cash-ledger-reconciliation-reports/evidence/CLR-T08-C-frontend-local-20261008.md). T08 parcial; PG16/browser CLR/crash/CI/reviews pendientes, 7 high preexistentes pendientes security triage.
 
 CLR-T08-C 2026-10-08: source v2/journal/contexto/lifecycle implementado sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, con validación local PASS sobre source 82271775df12d79554aacbfc67030db3843f1445 y aceptación CLR/reviews exact-head pendientes. [Evidencia](wip/20261007-blackstore-cash-ledger-reconciliation-reports/evidence/CLR-T08-C-frontend-local-20261008.md). Sustituye el bloqueo de implementación C del corte B-POS siguiente; no sustituye los gates pendientes ni cierra T08.

@@ -1,5 +1,9 @@
 # Progreso inicial
 
+## Correcciones de review C — 2026-10-08
+
+Sobre 0a6bb36: reversibilidad cerrada y fallback tras refund antes de journal; Expense/Settle awaitingRefresh sin falso Resolved; guard por actor/generación después de shareReplay y antes de defer; fingerprint exacto sale-admission-v1 persistido/recalculado/correlacionado y cuarentena. Tests fuente de mapper/store/HTTP/IDB/DOM añadidos, ejecución NOT_RUN por instrucción del coordinador, sin npm. C `blocked_on_authoritative_read_models`; T08 parcial, no usable completo. T08-D read-models backend se formaliza aparte. [Evidencia vigente](../evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estado C previo; validación histórica 161/161 pertenece sólo a source 8227177.
+
 ## Validación frontend externa — 2026-10-08
 
 Commit source exacto `82271775df12d79554aacbfc67030db3843f1445`: npm ci local desde lockfile PASS; typecheck PASS; build PASS (main 438.69 kB, initial 476.19 kB); ng test completo PASS 161/161 desde unidad temporal T: con launcher built-in ChromeHeadlessNoSandbox. Primer intento estándar bloqueado por sandbox/GPU; resuelto sin cambios de código/CI y unidad desmontada. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). C implemented_pending_pg16_browser_ci_review; T08 parcial. Browser CLR/PG16/crash/CI/reviews pendientes; npm audit 7 high preexistentes pendiente security triage, sin audit fix.

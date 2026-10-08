@@ -9,7 +9,7 @@ import { TestBed } from '@angular/core/testing';
 import { AccountingCoverage, CommandFailure, CommandOutcome, ExpenseOperation } from '../domain/accounting-command';
 import { ReconciliationOutcome } from '../domain/accounting-report';
 import { ACCOUNTING_API_BASE, API_BASE } from '../api';
-import { AllowedAction, DurableSaleState } from '../domain/durable-sale';
+import { AllowedAction, DurableSaleState,PaymentReversibility } from '../domain/durable-sale';
 import { PaymentMethod, PaymentStatus, StaffRole } from '../domain/pos-types';
 import { PaymentCoverage } from '../domain/ticket-transition';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
@@ -99,5 +99,25 @@ describe('DurableSalesStore v2 existing sale entry',()=>{
     accounting.execute.and.returnValue(of(PosWireMapper.commandReceipt(null,'')));
     open();store.execute(AllowedAction.CapturePayment,'motivo','8',PaymentMethod.Card);http.expectOne(url).flush(envelope(detail()));
     const command=accounting.execute.calls.mostRecent().args[0];expect(command.body['feeAmount']).toBeUndefined();expect(command.body['paymentMethod']).toBe(PaymentMethod.Card.wire);
+  });
+  it('blocks every new reverse after a refund even while another capture remains',()=>{
+    const payments=[
+      {paymentId:41,status:PaymentStatus.Captured.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
+      {paymentId:42,status:PaymentStatus.Captured.wire,method:PaymentMethod.Card.wire,amount:'8',feeAmount:'0'},
+      {paymentId:43,status:PaymentStatus.Refunded.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0',originalPaymentId:41},
+    ];
+    store.open(identity.operationId);http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured,PaymentCoverage.Partial,{pendingAmount:'10',payments})));
+    expect(store.detail()?.valid).toBeTrue();expect(store.detail()?.payments[2].originalPaymentId).toBe(41);
+    for(const payment of store.detail()!.payments.filter(p=>p.status===PaymentStatus.Captured))expect(payment.reversibility).toBe(PaymentReversibility.Unknown);
+    expect(store.can(AllowedAction.ReversePayment)).toBeFalse();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
+    store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Card,42);
+    expect(accounting.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST'||r.url===url);
+  });
+  it('checks newly refunded evidence again before handing a reverse to the journal',()=>{
+    open();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
+    const payments=[{paymentId:41,status:PaymentStatus.Captured.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
+      {paymentId:42,status:PaymentStatus.Refunded.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'}];
+    http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured,PaymentCoverage.Unpaid,{hasPaymentHistory:true,payments})));
+    expect(accounting.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
   });
 });

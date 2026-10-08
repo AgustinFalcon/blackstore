@@ -12,7 +12,7 @@ describe('AccountingCommandsStore typed journal facade',()=>{
   let runtime:any;let session:any;let store:AccountingCommandsStore;
   beforeEach(()=>{
     runtime={pending:signal(null),canWrite:signal(true),execute:jasmine.createSpy(),consult:jasmine.createSpy()};
-    session={changed:new Subject<void>()};
+    session={changed:new Subject<void>(),staff:signal({id:7}),generation:signal(1)};
     TestBed.configureTestingModule({providers:[{provide:CommandRuntimeStore,useValue:runtime},{provide:SessionStore,useValue:session}]});store=TestBed.inject(AccountingCommandsStore);
   });
   for(const kind of [AccountingCommandKind.Open,AccountingCommandKind.Close,AccountingCommandKind.Expense,AccountingCommandKind.Capture,AccountingCommandKind.Reverse]){
