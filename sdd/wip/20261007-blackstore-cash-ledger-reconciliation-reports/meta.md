@@ -1,5 +1,9 @@
 # Libro de caja, arqueo y reportes por período
 
+## Estado vigente del addendum de evidencia T08-D
+
+2026-10-08: corte exclusivamente documental desde backend POS exacto `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, branch `feat/cash-ledger-evidence-sdd`. [ADR-004](2-technical/adr/ADR-004-accounting-command-projection-evidence.md) proposed fija originalPaymentId nullable en lectura durable, validación refund→capture y GET de proyección de gasto por commandId con resultados cerrados/snapshot/autoridad actual. CLR-T08-D `prepared_pending_specific_review`; CLR-T08-D-BACKEND planned. Revisión y GO específicos pendientes, sin heredar aprobación ni acreditar implementación. C queda `blocked_on_pos_context_and_evidence` hasta B-POS y D-BACKEND integrados/revisados; T08 parcial y T09 planned. [Evidencia documental](evidence/CLR-T08-D-sdd-20261008.md). PG16/browser/CI/reviews de implementación siguen pendientes; no código productivo, migración, activación, homologación ni publicación.
+
 ## Estado vigente del addendum POS
 
 2026-10-08: CLR-T08-B-POS implementado por encargo explícito del coordinador sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, branch `feat/cash-ledger-pos-context-backend`. Dominio/query/HTTP, V11, provisión administrativa documentada y validación transaccional Reserve/replay preparados. Estado `implemented_pending_pg16_ci_review`; ADR-003 conserva revisión específica pendiente y no hereda aprobación. [Evidencia del backend](evidence/CLR-T08-B-POS-backend-local-20261008.md) registra pruebas y límites. T08-C sigue `blocked_on_pos_context` hasta integración/reviews; T08 parcial, T09 planned. PG16/browser/CI/reviews no se declaran PASS por implementación.

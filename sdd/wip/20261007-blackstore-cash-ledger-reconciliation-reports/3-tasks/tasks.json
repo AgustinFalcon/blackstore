@@ -11,7 +11,7 @@
     "scope": "design_only_no_implementation_runtime_activation_homologation_approval"
   },
   "stats": {
-    "total": 13,
+    "total": 15,
     "done": 2
   },
   "tasks": [
@@ -284,12 +284,48 @@
       ]
     },
     {
+      "id": "CLR-T08-D",
+      "title": "SDD evidencia originalPaymentId refund capture y proyección de gastos",
+      "status": "prepared_pending_specific_review",
+      "pr_cut": "SDD_EVIDENCE_CONTRACTS",
+      "depends_on": ["CLR-T08-B-POS"],
+      "requirements": ["CLR-001", "CLR-003", "CLR-004", "CLR-009", "CLR-010"],
+      "acceptance": [
+        "ADR-004 proposed desde backend POS exact fc858de42a5e021aab2f47ab68794a2519ff2cb5 sin código productivo",
+        "originalPaymentId nullable y relación refund capture íntegra misma venta medio importe sin heurísticas",
+        "GET /api/v2/expenses/commands/{commandId}/projection Found NotFound Unavailable Unknown",
+        "Autoridad actual opacidad closed histórico snapshot único evidencia correlacionada y no POST automático",
+        "JSON DAG stats links y diff coherentes",
+        "Revisión y GO específicos pendientes sin heredar aprobación ni afirmar implementación"
+      ]
+    },
+    {
+      "id": "CLR-T08-D-BACKEND",
+      "title": "Backend lectura durable de referencia y proyección autoritativa de gasto",
+      "status": "planned",
+      "pr_cut": "ACCOUNTING_EVIDENCE_BACKEND",
+      "depends_on": ["CLR-T08-D", "CLR-T08-B-POS"],
+      "requirements": ["CLR-001", "CLR-003", "CLR-004", "CLR-009", "CLR-010"],
+      "acceptance": [
+        "Revisión y GO específicos ADR-004 antes de implementar",
+        "Propagar originalPaymentId persistido nullable y validar refund capture sin duplicar política de dominio",
+        "Tipo cerrado puerto query pasos SOLID traductor único y GET SID no-store sin writes ni dispatch",
+        "AccountingCommandRead más permiso actual ExpenseRecord y ownership con 404 opaco sin grants nuevos",
+        "Lectura histórica de caja cerrada y PreActivation Paused sin permitir nueva mutación",
+        "Found sólo con receipt gasto settlement postings coherentes snapshot REPEATABLE READ read-only único",
+        "Accrue AccrueAndSettle SettleExisting y evidencia de comando inmutable ante settlement posterior",
+        "PG16 real HTTP Unknown opacidad snapshot concurrente barreras historia sin backfill y teardown",
+        "CI y reviews bugs seguridad SDD exact-head sin activación"
+      ]
+    },
+    {
       "id": "CLR-T08-C",
       "title": "Clientes saga v2 lifecycle preventivo y journal durable UI",
-      "status": "blocked_on_pos_context",
+      "status": "blocked_on_pos_context_and_evidence",
       "pr_cut": "DURABLE_COMMAND_UI",
       "depends_on": [
-        "CLR-T08-B-POS"
+        "CLR-T08-B-POS",
+        "CLR-T08-D-BACKEND"
       ],
       "requirements": [
         "CLR-001",
@@ -310,7 +346,10 @@
         "Recibo validado más refresh autoritativo antes del siguiente paso",
         "NotFound conserva bloqueo y no POST automático",
         "Types mapper store componentes build productivo y reviews exact-head",
-        "Contexto servidor verificado antes de journal y Reserve sin IDs fixture ni SID como dispositivo"
+        "Contexto servidor verificado antes de journal y Reserve sin IDs fixture ni SID como dispositivo",
+        "Refund capture correlacionado por originalPaymentId nullable misma venta medio importe íntegro",
+        "Receipt más proyección Found del gasto mismo commandId snapshot actor ámbito generación",
+        "NotFound Unavailable Unknown de proyección preservan journal bloqueo y cero POST automático"
       ]
     },
     {
@@ -320,7 +359,8 @@
       "pr_cut": "UI_ACCEPTANCE",
       "depends_on": [
         "CLR-T08",
-        "CLR-T08-C"
+        "CLR-T08-C",
+        "CLR-T08-D-BACKEND"
       ],
       "requirements": [
         "CLR-001",
@@ -342,7 +382,8 @@
         "Journal actor SID tab lifecycle y fee acreditados en browser real",
         "Rollback kill switch restore compatible sin reactivar legacy",
         "Reviews independientes bugs seguridad SDD exact-head",
-        "Gates externos siguen pendientes"
+        "Gates externos siguen pendientes",
+        "Browser PG16 restart refund capture y expense projection snapshots exactos autoridad opaca y sin duplicación"
       ]
     }
   ],
@@ -354,7 +395,8 @@
     "review": "T07_T08_PENDING",
     "homologation": "BLOCKED",
     "publication": "NOT_RUN",
-    "pos_context": "LOCAL_BACKEND_205_TESTS_PASS_PG16_BLOCKED_BROWSER_CI_REVIEW_PENDING_T08_C_BLOCKED"
+    "pos_context": "LOCAL_BACKEND_205_TESTS_PASS_PG16_BLOCKED_BROWSER_CI_REVIEW_PENDING_T08_C_BLOCKED",
+    "accounting_evidence_contract": "T08_D_PREPARED_SPECIFIC_REVIEW_GO_PENDING_BACKEND_UI_PG16_BROWSER_CI_NOT_RUN"
   },
   "evidence": {
     "postgres16_clean": "NOT_RUN",
@@ -364,5 +406,13 @@
     "browser_restart": "NOT_RUN",
     "rollback_kill_switch": "PARTIAL_T06_PASS"
   },
-  "pos_context_design": "proposed_pending_specific_review"
+  "pos_context_design": "proposed_pending_specific_review",
+  "accounting_evidence_design": {
+    "status": "proposed_pending_specific_review",
+    "base_head": "fc858de42a5e021aab2f47ab68794a2519ff2cb5",
+    "documentary_review": "PENDING",
+    "security_review": "PENDING",
+    "specific_go": "PENDING",
+    "scope": "documentation_only_no_implementation_runtime_activation_homologation_approval"
+  }
 }

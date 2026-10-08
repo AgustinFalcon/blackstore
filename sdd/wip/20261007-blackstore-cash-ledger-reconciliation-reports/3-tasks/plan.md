@@ -1,5 +1,13 @@
 # Plan y cortes revisables
 
+## Addendum T08-D — precedencia y DAG vigente
+
+Base exacta backend POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) proposed; documentación preparada sin GO/review heredado ni código productivo. El DAG JSON es fuente vigente: B-POS → D documental/review/GO específico → D-BACKEND → C → T09. C depende explícitamente de B-POS y D-BACKEND, queda `blocked_on_pos_context_and_evidence`; las menciones anteriores de bloqueo sólo POS debajo son antecedentes. T08 sigue parcial, T09 planned y B-POS conserva PG16/browser/CI/reviews pendientes.
+
+CLR-T08-D / SDD_EVIDENCE_CONTRACTS prepara contrato de originalPaymentId nullable/refund→capture y query de proyección de gasto con Found/NotFound/Unavailable/Unknown, autoridad/opacidad, snapshot y evidencia contable. Estado prepared_pending_specific_review, no done. CLR-T08-D-BACKEND / ACCOUNTING_EVIDENCE_BACKEND planned depende D y B-POS: dominio/puerto/query/pasos SOLID, propagación DTO durable, traductores y GET read-only SID/no-store, PG16/HTTP/snapshot/recovery, CI y reviews exact-head. No nueva migración salvo necesidad demostrada y revisión propia; las fuentes ya persistidas no autorizan backfill.
+
+C incorpora consumo de ambos contratos, correlación receipt/proyección, refund→capture, journal y generación/actor/ámbito; Unknown/NotFound/Unavailable conservan bloqueo sin POST automático. T09 acredita esos escenarios con browser/PG16/reinicio propios y evidencia sanitizada de snapshots/IDs, build y teardown. Documentación, fixtures y CI de otros cortes no cierran estos gates. No activación/live/fiscal/homologación/publicación ni /sdd.finish.
+
 ## Addendum de contexto POS — precedencia vigente
 
 2026-10-08: B-POS implementado por encargo explícito sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, estado `implemented_pending_pg16_ci_review`. [Evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md) registra el runner y las pruebas reales. La revisión específica de ADR-003/implementación permanece pendiente, sin heredar GO; C conserva `blocked_on_pos_context` hasta integración/reviews y T08 sigue parcial. Ningún gate PG16/browser/CI se acredita por fixtures preparados.
