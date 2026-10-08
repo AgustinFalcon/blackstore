@@ -1,5 +1,11 @@
 # Progreso inicial
 
+## 2026-10-08 — CLR-T08-D documental preparado
+
+Worktree `blackstore-clr-evidence-sdd`, branch `feat/cash-ledger-evidence-sdd`, base backend POS exacta `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) registra las brechas comprobadas y el contrato: originalPaymentId nullable, refund→capture íntegro/correlacionado, proyección de gasto por commandId cerrada, autoridad/visibilidad actuales y snapshot read-only de receipt/fuentes/postings. Specs/meta/plan/tasks/evidence sincronizados. Sólo SDD; código productivo y migraciones intactos.
+
+T08-D prepared_pending_specific_review, D-BACKEND planned; no GO ni aprobación heredada. C blocked_on_pos_context_and_evidence, T08 parcial, T09 planned. B-POS conserva sus gates previos; PG16/browser/CI/reviews de implementación de este addendum NOT_RUN/PENDING. [Validación documental y límites](../evidence/CLR-T08-D-sdd-20261008.md). Sin activación/deploy/push/PR/homologación/publicación/archivo.
+
 ## 2026-10-08 — implementación CLR-T08-B-POS
 
 Base exacta `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, branch `feat/cash-ledger-pos-context-backend`, implementación encargada explícitamente por el coordinador. Contexto cerrado y traductor único, query read-only/GET SID WorkspaceRead no-store, V11 vacío con provisión explícita/evidencia/inmutabilidad/grants, validación nueva Reserve en la misma conexión y lock terminal después de caja antes de venta. Replay autorizado conserva receipt antes de binding actual, incluso cerrado/Paused; comandos históricos no requieren identidad nueva. Fixtures PG16 incluyen upgrade V10 sin backfill, rechazos sin efectos, grants y carreras terminal en ambos órdenes con barreras. [Evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md) conserva comandos/resultados reales y bloqueos.

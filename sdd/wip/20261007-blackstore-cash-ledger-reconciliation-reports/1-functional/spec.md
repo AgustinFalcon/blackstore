@@ -1,5 +1,11 @@
 # Especificación funcional
 
+## Addendum T08-D — evidencia de pagos y gastos
+
+Precedencia 2026-10-08: [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) proposed sobre backend POS exacto `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, revisión/GO propios pendientes. Amplía CLR-001/003/004/009/010: la lectura durable publica originalPaymentId nullable y valida refund→capture de la misma venta/medio/importe exacto, una reversión íntegra por captura; relación ausente/contradictoria/Unknown bloquea decisiones dependientes. La evidencia de gasto se recupera con GET /api/v2/expenses/commands/{commandId}/projection: Found completo y correlacionado al receipt del comando, NotFound opaco, Unavailable o Unknown conservan bloqueo/journal y nunca generan POST automático. Devengo, pago inmediato y liquidación total de gasto previo permanecen distintos; una liquidación posterior no reescribe la evidencia de un comando anterior.
+
+SID/permisos/ownership actuales se revalidan antes de exponer existencia o completitud. Caja cerrada admite lectura histórica autorizada sin conceder nuevo egreso; revocación/actor inactivo/caja ajena/rol Unknown fallan cerrados. Snapshot read-only único acredita receipt/gasto/settlement/postings y cutoff/asOf/version/completitud; Found no equivale a período/caja completos ni habilita siguiente mutación sin refresh autoritativo. Sólo documentación preparada: D-BACKEND planned, C `blocked_on_pos_context_and_evidence`, T08 parcial y T09 planned. Aprobaciones y evidencias anteriores no acreditan este contrato ni implementación.
+
 ## Addendum POS — CLR-004/009/010
 
 [ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) fija contexto de instalación/terminal lógica provisionado por servidor antes de nueva intención. SID autentica al actor, no identifica dispositivo. Contexto ausente/contradictorio bloquea; journal conserva evidencia ante nuevo SID, cambio de actor/contexto o pérdida de respuesta. No inventar IDs de instalación en browser ni reinterpretar historia. IndexedDB sólo coordina mismo origen/perfil, no acredita identidad física ni exclusión entre perfiles. T08-C `blocked_on_pos_context`; T08 parcial. Backend addendum/reviews y aceptación browser/PG16 pendientes.

@@ -1,5 +1,11 @@
 # Especificación técnica
 
+## Addendum T08-D — contrato de evidencia autoritativa
+
+[ADR-004](adr/ADR-004-accounting-command-projection-evidence.md) proposed desde `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; revisión/GO específicos pendientes. Propone originalPaymentId nullable en DurableSalePaymentResponse desde PaymentLedgerEntry y validación refund→capture en política de dominio/traductor único, sin heurística ni backfill. Propone GET /api/v2/expenses/commands/{commandId}/projection con ExpenseCommandProjectionResult cerrado Found/NotFound/Unavailable/Unknown, BaseResponse/no-store, permisos AccountingCommandRead + permiso actual ExpenseRecord/ownership de caja; closed no impide lectura histórica. 404 opaco precede toda revelación de receipt/kind/existencia. No privilegio nuevo para AUDITOR/Unknown.
+
+Puerto/query, pasos de autoridad/carga/validación y adaptador REPEATABLE READ read-only en una conexión; correlación exacta commandId/expenseId/settlementId/ledgerEventIds, operación cerrada y evidence snapshot cutoff/asOf/accountingVersion/completitud. Devengo/pago inmediato/settlement total se acreditan con fuentes originales y postings propios del comando; incoherencia degrada a Unavailable y unknown wire a Unknown. No writes/dispatch/POST automático. Contrato y matriz completos en ADR-004. D sólo SDD; D-BACKEND planned y gate adicional de C `blocked_on_pos_context_and_evidence`; B-POS conserva su aceptación pendiente, T08 parcial y T09 planned. Las menciones previas de bloqueo exclusivo POS debajo son antecedentes, sustituidos por este estado y el DAG JSON.
+
 ## Addendum T08-B-POS — contexto verificado
 
 Implementación 2026-10-08 sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`: V11 vacío/inmutable, referencias de provisión/evidencia obligatorias, app SELECT-only; terminal FOR SHARE mediante función definer estrecha sin UPDATE runtime. Configuración explícita de terminal/conector capturada al iniciar, sin inferencia de seed/companion. Query read-only y validación nueva Reserve con misma conexión después de autoridad/replay, caja→terminal→venta→delivery. [Runbook](../../../../backend/POS-CONTEXT-PROVISIONING.md) y [evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md). Estado implementado con aceptación PG16/browser/CI/reviews pendiente; C bloqueado y ADR-003 proposed sin aprobación heredada.
