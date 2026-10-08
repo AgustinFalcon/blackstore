@@ -1,5 +1,7 @@
 import { Page, expect } from '@playwright/test';
 import { CashMutationOutcome } from '../../../src/app/core/domain/pos-types';
+import { CommandOutcome, CommandFailure } from '../../../src/app/core/domain/accounting-command';
+import { PosWireMapper } from '../../../src/app/core/infrastructure/pos-wire-mapper';
 
 export class CashSessionPage {
   constructor(readonly page: Page) {}
@@ -11,10 +13,11 @@ export class CashSessionPage {
   private response(path: string) { return this.page.waitForResponse(r => r.url().endsWith(path) && r.request().method() === 'POST'); }
   async open(amount: string): Promise<number> {
     await this.page.getByLabel('Apertura', { exact: true }).fill(amount);
-    const pending = this.response('/api/v1/cash-sessions');
+    const pending = this.response('/api/v2/cash-sessions');
     await this.page.getByRole('button', { name: 'Abrir sesión', exact: true }).click();
     const response = await pending;
     expect(response.status()).toBe(200);
+    expect(PosWireMapper.commandReceipt(await response.json(), response.request().postDataJSON().commandId).outcome).toBe(CommandOutcome.Committed);
     const session = this.page.getByText(/^\s*Sesión\s+\d+\s+en\s+terminal\s+\d+/);
     await expect(session).toBeVisible();
     const rendered = ((await session.textContent()) ?? '').replace(/\s+/g, ' ').trim();
@@ -22,22 +25,26 @@ export class CashSessionPage {
     expect(match).not.toBeNull();
     return Number(match![1]);
   }
-  async expense(amount: string, outcome = CashMutationOutcome.Applied) {
+  async expense(amount: string, failure = CommandFailure.None) {
     await this.page.getByLabel('Gasto', { exact: true }).fill(amount);
-    const pending = this.response('/api/v1/expenses');
+    const pending = this.response('/api/v2/expenses');
     await this.page.getByRole('button', { name: 'Registrar gasto', exact: true }).click();
     const response = await pending;
-    expect(response.status()).toBe(outcome.httpStatus);
-    await expect(this.page.getByText(outcome === CashMutationOutcome.Applied ? 'Gasto registrado' : outcome.label, { exact: true })).toBeVisible();
+    expect(response.status()).toBe(failure === CommandFailure.None ? 200 : 409);
+    const receipt = PosWireMapper.commandReceipt(await response.json(), response.request().postDataJSON().commandId);
+    expect(receipt.failure).toBe(failure);
+    if (failure === CommandFailure.None) expect(receipt.outcome).toBe(CommandOutcome.Committed);
+    await expect(this.page.getByText(failure === CommandFailure.None ? CommandOutcome.Committed.label : failure.label, { exact: true }).first()).toBeVisible();
   }
   async close(cashId: number, amount: string) {
     await this.page.getByLabel('Declarado', { exact: true }).fill(amount);
-    const pending = this.response(`/api/v1/cash-sessions/${cashId}/close`);
+    const pending = this.response(`/api/v2/cash-sessions/${cashId}/close`);
     const closeForm = this.page.locator('form').filter({ has: this.page.getByLabel('Declarado', { exact: true }) });
     await closeForm.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
     const response = await pending;
     expect(response.status()).toBe(CashMutationOutcome.Applied.httpStatus);
-    await expect(this.page.getByText(`Sesión ${cashId} cerrada`, { exact: true })).toBeVisible();
+    expect(PosWireMapper.commandReceipt(await response.json(), response.request().postDataJSON().commandId).outcome).toBe(CommandOutcome.Committed);
+    await this.expectClosedControlsAbsent();
   }
   async expectClosedControlsAbsent() {
     await expect(this.page.getByRole('button', { name: 'Registrar gasto', exact: true })).toHaveCount(0);

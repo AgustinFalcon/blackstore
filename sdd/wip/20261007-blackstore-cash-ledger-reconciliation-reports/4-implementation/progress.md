@@ -1,5 +1,9 @@
 # Progreso inicial
 
+## 2026-10-08 — harness DCT v2/V11 preparado
+
+Base frontend T08-D `9f4d29ef98c2fb6101f385e83dcf985d0827529f`, rama `feat/cash-ledger-dct-v11`. Fixture PG16 aislada con activación/provisión explícita antes de Angular, configuración terminal/conector exacta, POST v2 y assertions receipts/ledger/settlement/arqueo/journal/reinicio/denials. Typecheck/compilación/discovery PASS; Docker local BLOCKED antes de adquirir DB, PG16/browser NOT_RUN, CI/reviews PENDING. [Evidencia y teardown](../evidence/CLR-DCT-V11-local-20261008.md). Sin cambio de aceptación/homologación ni activación productiva.
+
 ## 2026-10-08 — corrección P2 de carrera IndexedDB
 
 Source `c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c`: política JournalPhase.nextPhase de avance/retroceso idempotente/Resolved terminal/Unknown y cuarentena fail-closed, evaluada contra fase persistida dentro de la transacción de transition. Dos conexiones reales y recovery tardío prueban A Resolved, B único unresolved, hydrate normal y cero rePOST. Focused 20/20, full 234/234, typecheck/build/audit productivo 0/diff-check PASS. [Evidencia](../evidence/CLR-T08-D-frontend-local-20261008.md). Sin aceptación DCT/browser PG16 ni aprobación heredada.

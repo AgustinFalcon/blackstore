@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { DctDatabase } from './dct-database';
 
 async function requireFreePort(port: number) {
@@ -53,12 +54,23 @@ export class DctRuntime {
   private readonly frontendRoot = resolve(__dirname, '../../..');
   private readonly backendRoot = resolve(this.frontendRoot, '../backend');
   private jar = '';
+  readonly clientInstanceId = randomUUID();
+  terminalId = 0;
   async start() {
     await requireFreePort(8081); await requireFreePort(4201);
     const jars = readdirSync(resolve(this.backendRoot, 'build/libs')).filter(name => name.endsWith('.jar') && !name.endsWith('-plain.jar'));
     if (jars.length !== 1) throw new Error('Build exactly one current bootJar before running DCT');
     this.jar = resolve(this.backendRoot, 'build/libs', jars[0]);
     await this.database.start();
+    // First boot applies migrations only. Provision before any browser can run.
+    await this.startBackend();
+    await this.backend.stop();
+    this.terminalId = await this.database.terminal();
+    await this.database.provision(this.terminalId, this.clientInstanceId);
+    expect((await this.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(11);
+    expect(await this.database.query('SELECT terminal_id,client_instance_id,device_id FROM pos_terminal_context')).toEqual([
+      { terminal_id: String(this.terminalId), client_instance_id: this.clientInstanceId, device_id: 'dct-browser-device' },
+    ]);
     await this.startBackend();
     this.frontend.start(process.execPath, ['node_modules/@angular/cli/bin/ng.js', 'serve', '--host', 'localhost', '--port', '4201'], this.frontendRoot);
     await this.frontend.ready('http://localhost:4201');
@@ -78,6 +90,8 @@ export class DctRuntime {
       BLACKSTORE_PERSISTENCE_USERNAME: 'dct_admin', BLACKSTORE_PERSISTENCE_PASSWORD: this.database.password,
       BLACKSTORE_IDENTITY_LOOPBACK_HTTP: 'true', BLACKSTORE_IDENTITY_ALLOWED_ORIGIN: 'http://localhost:4201',
       BLACKSTORE_SALES_WORKER_ENABLED: 'false',
+      BLACKSTORE_POS_TERMINAL_ID: String(this.terminalId),
+      BLACKSTORE_STORECORE_TRANSPORT_CLIENT_INSTANCE_ID: this.clientInstanceId,
       SPRING_PROFILES_ACTIVE: '', BLACKSTORE_STORECORE_INTEGRATION_ENABLED: 'false', BLACKSTORE_STORECORE_INTEGRATION_MODE: 'fixture',
       BLACKSTORE_STORECORE_TRANSPORT_KILL_SWITCH: 'true', BLACKSTORE_STORECORE_CONTROL_KILL_SWITCH: 'true',
     });
