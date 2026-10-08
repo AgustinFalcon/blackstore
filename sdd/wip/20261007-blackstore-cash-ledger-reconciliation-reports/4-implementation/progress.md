@@ -1,5 +1,9 @@
 # Progreso inicial
 
+## 2026-10-08 — corrección P2 Security posterior a integración T08-D
+
+Source `b0ab8c18ea678e829d2f7dc3ed6f6763335affa3` sobre `65407e2`: CommandHttp preserva status del GET de proyección y safe considera status al recuperar fallos; PosWireMapper exige HTTP200/code200/errorCode null/error ausente o null para Found. Contradictorios conservan journal y cero rePOST. Typecheck/build PASS, Karma 227/227 PASS, audit productivo 0, diff-check PASS. [Evidencia](../evidence/CLR-T08-D-frontend-local-20261008.md). Ningún gate PG16/browser/CI/review se cierra por esta validación local.
+
 ## Estado integrado local T08-D — vigente
 
 2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
