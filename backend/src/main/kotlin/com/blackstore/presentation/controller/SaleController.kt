@@ -66,7 +66,7 @@ class SaleController(
             view.createdBy == null || sale.blockSameOperationRepost || view.sale.state in setOf(com.blackstore.domain.sales.DurableSaleState.UNKNOWN,
                 com.blackstore.domain.sales.DurableSaleState.LEGACY_INCOMPLETE, com.blackstore.domain.sales.DurableSaleState.RECONCILIATION_REQUIRED),
             sale.retired, sale.lines.map { DurableSaleLineResponse(it.sku, it.productName, it.quantity, it.effectiveUnitPrice.multiply(it.quantity.toBigDecimal())) },
-            view.payments.map { DurableSalePaymentResponse(it.paymentId, it.status, it.method, it.amount, it.feeAmount) },
+            view.payments.map { DurableSalePaymentResponse(it.paymentId, it.status, it.method, it.amount, it.feeAmount, it.originalPaymentId) },
             kind?.let(::DurableSalePendingCommandResponse), if (view.createdBy == null) emptySet() else view.allowedActions)
     }
     @PostMapping("/reservations")
@@ -213,7 +213,7 @@ data class SaleActionRequest(val reason: String? = null)
 data class DurableSaleListResponse(val items: List<DurableSaleDetailResponse>, val nextCursor: String?)
 data class DurableSaleLineResponse(val sku: String, val productName: String, val quantity: Int, val totalAmount: BigDecimal)
 data class DurableSalePaymentResponse(val paymentId: Long, val status: com.blackstore.domain.sales.PaymentStatus,
-    val method: com.blackstore.domain.sales.PaymentMethod, val amount: BigDecimal?, val feeAmount: BigDecimal?)
+    val method: com.blackstore.domain.sales.PaymentMethod, val amount: BigDecimal?, val feeAmount: BigDecimal?, val originalPaymentId: Long? = null)
 data class DurableSalePendingCommandResponse(val kind: com.blackstore.domain.sales.CommandKind)
 data class DurableSaleDetailResponse(val operationId: String, val clientInstanceId: String, val deviceId: String, val saleId: String,
     val cashSessionId: Long, val cashierId: Long, val createdBy: Long?, val status: com.blackstore.domain.sales.DurableSaleState,

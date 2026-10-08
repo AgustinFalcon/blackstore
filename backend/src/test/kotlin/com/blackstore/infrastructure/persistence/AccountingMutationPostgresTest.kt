@@ -488,6 +488,100 @@ class AccountingMutationPostgresTest {
         assertEquals("-7.00", scalar(source, "SELECT sum(amount_delta)::text FROM cash_ledger_events WHERE event_type='EXPENSE_PAID'"))
     }
 
+    @Test fun expenseProjectionCorrelatesOriginalSourcesAndRemainsFixedAfterSettlement() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val openingReceipt = applied(commands.execute(staff, opening()))
+        val cash = openingReceipt.cashSessionId
+        val at = java.time.Instant.now()
+        val digest = "e".repeat(64)
+        sql(source, "INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$digest',1,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+        val session = ResolvedStaffSession(staff, StaffSession(digest, staff.id, "csrf", at, at, at.plusSeconds(3600), null))
+        val query = JdbcExpenseCommandProjectionQuery(source)
+        val accrued = applied(commands.execute(staff, AccountingCommandDraft.ExpenseRecord(UUID.randomUUID(), cash, "rent invoice",
+            ExpenseInstruction.Accrue("OPERATING", BigDecimal("5.00")))))
+        fun found(id: UUID) = (query.read(session, id) as ExpenseCommandProjectionResult.Found).projection
+        val original = found(accrued.commandId)
+        assertEquals(ExpenseProjectionOperation.Accrue, original.operation)
+        assertNull(original.expense.paymentMethod)
+        val settled = applied(commands.execute(staff, AccountingCommandDraft.ExpenseRecord(UUID.randomUUID(), cash, "rent payment",
+            ExpenseInstruction.SettleExisting(accrued.expenseId!!, PaymentMethod.TRANSFER))))
+        assertEquals(ExpenseProjectionOperation.SettleExisting, found(settled.commandId).operation)
+        assertEquals(settled.ledgerEventIds, found(settled.commandId).ledgerEventIds)
+        assertEquals(original.operation, found(accrued.commandId).operation)
+        assertNull(found(accrued.commandId).settlement)
+        val immediate = applied(commands.execute(staff, AccountingCommandDraft.ExpenseRecord(UUID.randomUUID(), cash, "paid supplies",
+            ExpenseInstruction.AccrueAndSettle("OPERATING", BigDecimal("2.00"), PaymentMethod.CASH))))
+        assertEquals(ExpenseProjectionOperation.AccrueAndSettle, found(immediate.commandId).operation)
+        assertEquals(ExpenseCommandProjectionResult.NotFound, query.read(session, openingReceipt.commandId))
+        assertEquals(ExpenseCommandProjectionResult.NotFound, query.read(session, UUID.randomUUID()))
+        val other = AuthenticatedStaff(StaffUserId(3), "Other", StaffRole.CASHIER)
+        val otherDigest = "c".repeat(64)
+        sql(source, "INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$otherDigest',3,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+        val otherSession = ResolvedStaffSession(other, session.session.copy(digest = otherDigest, userId = other.id))
+        assertEquals(ExpenseCommandProjectionResult.NotFound, query.read(otherSession, accrued.commandId))
+        assertEquals(ExpenseCommandProjectionResult.NotFound, query.read(otherSession, UUID.randomUUID()))
+        val before = scalar(source, "SELECT count(*) FROM accounting_command_receipts")
+        applied(commands.execute(staff, AccountingCommandDraft.CashSessionClose(UUID.randomUUID(), cash, BigDecimal.ZERO, "close shift")))
+        sql(source, "UPDATE accounting_runtime SET state='PAUSED'")
+        assertEquals(ExpenseProjectionOperation.Accrue, found(accrued.commandId).operation)
+        assertEquals((before.toInt() + 1).toString(), scalar(source, "SELECT count(*) FROM accounting_command_receipts"))
+        assertEquals("2", scalar(source, "SELECT count(*) FROM expenses WHERE paid_at IS NULL"))
+        sql(source, "INSERT INTO roles(code) VALUES('AUDITOR')")
+        sql(source, "UPDATE staff_users SET role_code='AUDITOR' WHERE id=1")
+        assertEquals(StaffSecurityFailure.FORBIDDEN, assertThrows(StaffSecurityException::class.java) {
+            query.read(session, UUID.randomUUID())
+        }.failure)
+        sql(source, "UPDATE staff_users SET role_code='CASHIER' WHERE id=1")
+        sql(source, "ALTER TABLE accounting_command_receipts DISABLE TRIGGER immutable_accounting_history")
+        sql(source, "UPDATE accounting_command_receipts SET result=result-'expenseId' WHERE command_id='${accrued.commandId}'")
+        sql(source, "ALTER TABLE accounting_command_receipts ENABLE TRIGGER immutable_accounting_history")
+        assertEquals(ExpenseCommandProjectionResult.Unavailable, query.read(session, accrued.commandId))
+        sql(source, "UPDATE staff_sessions SET revoked_at=clock_timestamp() WHERE token_digest='$digest'")
+        assertEquals(StaffSecurityFailure.SESSION_INVALID, assertThrows(StaffSecurityException::class.java) {
+            query.read(session, accrued.commandId)
+        }.failure)
+    }
+
+    @Test fun expenseProjectionSnapshotExcludesSettlementCommittedAfterItsAuthoritySnapshot() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val cash = applied(commands.execute(staff, opening())).cashSessionId
+        val accrued = applied(commands.execute(staff, AccountingCommandDraft.ExpenseRecord(UUID.randomUUID(), cash, "rent invoice",
+            ExpenseInstruction.Accrue("OPERATING", BigDecimal("5.00")))))
+        val digest = "f".repeat(64)
+        val at = java.time.Instant.now()
+        sql(source, "INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$digest',1,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+        val session = ResolvedStaffSession(staff, StaffSession(digest, staff.id, "csrf", at, at, at.plusSeconds(3600), null))
+        val settle = AccountingCommandDraft.ExpenseRecord(UUID.randomUUID(), cash, "rent payment", ExpenseInstruction.SettleExisting(accrued.expenseId!!, PaymentMethod.CARD))
+        val reached = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        val paused = object : DataSource by source {
+            override fun getConnection(): Connection {
+                val connection = source.connection
+                return Proxy.newProxyInstance(Connection::class.java.classLoader, arrayOf(Connection::class.java)) { _, method, args ->
+                    if (method.name == "prepareStatement" && (args?.firstOrNull() as? String)?.startsWith("SELECT * FROM accounting_command_receipts") == true) {
+                        reached.countDown()
+                        check(proceed.await(15, TimeUnit.SECONDS))
+                    }
+                    try { method.invoke(connection, *(args ?: emptyArray())) }
+                    catch (error: InvocationTargetException) { throw error.targetException }
+                } as Connection
+            }
+        }
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val before = pool.submit<ExpenseCommandProjectionResult> { JdbcExpenseCommandProjectionQuery(paused).read(session, settle.commandId) }
+            assertTrue(reached.await(15, TimeUnit.SECONDS))
+            val committed = applied(commands.execute(staff, settle))
+            proceed.countDown()
+            assertEquals(ExpenseCommandProjectionResult.NotFound, before.get(15, TimeUnit.SECONDS))
+            val after = JdbcExpenseCommandProjectionQuery(source).read(session, settle.commandId) as ExpenseCommandProjectionResult.Found
+            assertEquals(committed.ledgerEventIds, after.projection.ledgerEventIds)
+            assertEquals(ExpenseProjectionOperation.SettleExisting, after.projection.operation)
+        } finally { proceed.countDown(); pool.shutdownNow() }
+    }
+
     @Test fun feeUsesOwnerPortAndExplicitPaidMethod() = database { source ->
         activate(source)
         val commands = JdbcAccountingMutationCommands(source)

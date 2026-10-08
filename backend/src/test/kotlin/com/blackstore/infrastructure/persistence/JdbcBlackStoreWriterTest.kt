@@ -5,8 +5,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.math.BigDecimal
 import java.sql.Connection
 import java.sql.DriverManager
@@ -17,14 +15,14 @@ import org.postgresql.ds.PGSimpleDataSource
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.sales.*
 
-@Testcontainers
 class JdbcBlackStoreWriterTest {
 
     private val writer = JdbcBlackStoreWriter()
     private val now = Instant.parse("2026-09-22T15:00:00Z")
+    private lateinit var postgres: TestDatabase
 
     @Test
-    fun appInsertsAutonomousRecordsAndCannotRewriteHistory() {
+    fun appInsertsAutonomousRecordsAndCannotRewriteHistory() = database {
         migrate()
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
             val cashierId = seedReferenceData(connection)
@@ -67,9 +65,9 @@ class JdbcBlackStoreWriterTest {
                 writer.markReserved(connection, projectionId, "res-1", "rcpt-1", "1.0.0-draft", digest, now.plusSeconds(900))
             }
             val identity = OperationQuadruple(clientId.toString(), "terminal-1", "sale-1", operationId.toString())
-            val other = identity.copy(deviceId = "terminal-2", saleId = "sale-2")
+            val other = identity.copy(deviceId = "terminal-2", saleId = "sale-2", operationId = UUID.randomUUID().toString())
             asRole(connection, "blackstore_app") {
-                writer.insertPendingSale(connection, clientId, other.deviceId, other.saleId, operationId, sessionId, cashierId, "1.0.0-draft", digest)
+                writer.insertPendingSale(connection, clientId, other.deviceId, other.saleId, UUID.fromString(other.operationId), sessionId, cashierId, "1.0.0-draft", digest)
                 for (invalid in listOf("18.001", "0.001", "10.005", "7.995", "1000000000000")) {
                     assertThrows<IllegalArgumentException> { writer.insertPayment(connection, projectionId, "CASH", BigDecimal(invalid), BigDecimal.ZERO) }
                 }
@@ -116,7 +114,7 @@ class JdbcBlackStoreWriterTest {
             connection.createStatement().execute("ALTER TABLE payments DROP CONSTRAINT payments_check")
             connection.prepareStatement("INSERT INTO payments (sale_id,payment_method,amount,fee_amount,status) SELECT id,'FUTURE',1,0,'FUTURE' FROM sale_state_projection WHERE device_id = ? AND operation_id = ?").use { statement ->
                 statement.setString(1, other.deviceId)
-                statement.setObject(2, operationId)
+                statement.setObject(2, UUID.fromString(other.operationId))
                 statement.executeUpdate()
             }
             val corrupt = (ledger.paymentLedger(other) as OperationLedger.Known).entries.single()
@@ -189,9 +187,16 @@ class JdbcBlackStoreWriterTest {
         }
     }
 
-    companion object {
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16-alpine")
+    private fun database(block: () -> Unit) {
+        val direct = System.getenv("BLACKSTORE_TEST_JDBC_URL")
+        if (!direct.isNullOrBlank()) {
+            postgres = TestDatabase(direct, System.getenv("BLACKSTORE_TEST_JDBC_USER") ?: "postgres", System.getenv("BLACKSTORE_TEST_JDBC_PASSWORD") ?: "")
+            block()
+        } else PostgreSQLContainer("postgres:16-alpine").use {
+            it.start()
+            postgres = TestDatabase(it.jdbcUrl, it.username, it.password)
+            block()
+        }
     }
+    private data class TestDatabase(val jdbcUrl: String, val username: String, val password: String)
 }

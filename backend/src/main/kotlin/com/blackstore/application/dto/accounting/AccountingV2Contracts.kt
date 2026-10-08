@@ -45,7 +45,7 @@ object AccountingV2RequestTranslator {
     private fun identity(clientInstanceId: String, deviceId: String, saleId: String, operationId: String) = OperationQuadruple(clientInstanceId, deviceId, saleId, operationId)
 }
 
-enum class ExpenseOperationV2(val wire: String) {
+enum class ExpenseOperationV2(@get:JsonValue val wire: String) {
     Accrue("ACCRUE"), AccrueAndSettle("ACCRUE_AND_SETTLE"), SettleExisting("SETTLE_EXISTING"), Unknown("UNKNOWN");
     companion object { fun fromWire(value: String?): ExpenseOperationV2 = entries.firstOrNull { it.wire == value } ?: Unknown }
 }
