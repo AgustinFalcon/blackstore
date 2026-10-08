@@ -1,10 +1,28 @@
 # Especificación técnica
 
+## Estado integrado local T08-D — vigente
+
+2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
+
+Ver [evidencia local](../evidence/CLR-T08-D-frontend-local-20261008.md).
+
+## Antecedentes conservados — no son estado vigente
+
 ## Addendum T08-D — contrato de evidencia autoritativa
 
 [ADR-004](adr/ADR-004-accounting-command-projection-evidence.md) proposed desde `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; revisión/GO específicos pendientes. Propone originalPaymentId nullable en DurableSalePaymentResponse desde PaymentLedgerEntry y validación refund→capture en política de dominio/traductor único, sin heurística ni backfill. Propone GET /api/v2/expenses/commands/{commandId}/projection con ExpenseCommandProjectionResult cerrado Found/NotFound/Unavailable/Unknown, BaseResponse/no-store, permisos AccountingCommandRead + permiso actual ExpenseRecord/ownership de caja; closed no impide lectura histórica. 404 opaco precede toda revelación de receipt/kind/existencia. No privilegio nuevo para AUDITOR/Unknown.
 
 Puerto/query, pasos de autoridad/carga/validación y adaptador REPEATABLE READ read-only en una conexión; correlación exacta commandId/expenseId/settlementId/ledgerEventIds, operación cerrada y evidence snapshot cutoff/asOf/accountingVersion/completitud. Devengo/pago inmediato/settlement total se acreditan con fuentes originales y postings propios del comando; incoherencia degrada a Unavailable y unknown wire a Unknown. No writes/dispatch/POST automático. Contrato y matriz completos en ADR-004. D sólo SDD; D-BACKEND planned y gate adicional de C `blocked_on_pos_context_and_evidence`; B-POS conserva su aceptación pendiente, T08 parcial y T09 planned. Las menciones previas de bloqueo exclusivo POS debajo son antecedentes, sustituidos por este estado y el DAG JSON.
+
+### Antecedente T08-C integrado (conservado)
+
+Estado único vigente C: `blocked_on_authoritative_read_models`. Hook preventivo focus/visible invalida inmediatamente epoch/contexto/lifecycle/autoridad y hace GET context+lifecycle+journal con generación/actor guardados; controles/handler bloqueados mientras stale/refetch y ante Unknown/Paused. Puerto de infraestructura de responsabilidad única con listeners únicos/cleanup; no window en dominio. [Evidencia actual](../evidence/CLR-T08-C-foreground-20261008.md), source 7516b0e validado194/194 y nuevo corte NOT_RUN. T08 parcial, T08-D/PG16/browser CLR/crash/CI pendientes; los incrementos debajo son antecedentes.
+
+Ronda 2: Reserve Accepted permanece ReceiptVerifiedAwaitingRefresh durante polling GET-only de identidad correlacionada, máximo 20 lecturas/100 ms/deadline 5 s; sólo Reserved válido resuelve claim antes de capture. Pending continúa; Unknown/NotFound/timeout conserva bloqueo. Objeto compartido con AwaitReservationStep, guard por actor/generación/contexto/command/familia. [Evidencia y tests pendientes](../evidence/CLR-T08-C-async-reserve-review2-20261008.md). C continúa blocked_on_authoritative_read_models.
+
+Estado vigente tras review 0a6bb36: T08-C `blocked_on_authoritative_read_models`, T08 parcial. C no es totalmente usable: cualquier refund bloquea nuevas reversas hasta linkage autoritativo por pago; egreso/liquidación permanece ReceiptVerifiedAwaitingRefresh hasta read model T08-D. Addendum backend separado, sin backend en este corte. Fingerprint contractual sale-admission-v1 y guard de entrega por actor/generación corrigen frontend; tests nuevos NOT_RUN. [Evidencia vigente](../evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estados actuales anteriores; PASS 161/161 aplica sólo a source 8227177.
+
+Antecedente T08-C source 8227177 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: tipos/traductores/journal/v2 implementados, entonces `implemented_pending_pg16_browser_ci_review`, sustituido por blocked_on_authoritative_read_models. [Evidencia histórica](../evidence/CLR-T08-C-frontend-local-20261008.md): 161/161/typecheck/build PASS exactos de ese source, no aceptación runtime ni estado vigente.
 
 ## Addendum T08-B-POS — contexto verificado
 

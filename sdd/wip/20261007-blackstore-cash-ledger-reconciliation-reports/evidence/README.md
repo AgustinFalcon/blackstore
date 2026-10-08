@@ -2,6 +2,8 @@
 
 Esta carpeta no acredita PASS. Conservar por CLR-Txx la revisión/base exacta, comando o harness, build, Flyway versions, PostgreSQL major 16, roles runtime, escenarios/assertions, resultado, fallos y artefactos sanitizados. No secretos/cookies/CSRF ni tráfico live.
 
+- Estado local integrado T08-D: [frontend 2026-10-08](CLR-T08-D-frontend-local-20261008.md), source b8024dcc0292897aa7a77f96e9ed9e25d63d54ea. npm ci/typecheck/build y 223/223 Karma PASS; audit productivo 0. Acredita sólo unitarios/integración HTTP con test doubles: PG16/browser/crash/restart/CI/reviews pendientes. Historial de addenda/fallos conservado.
+
 - CLR-T08-D: [documental 2026-10-08](CLR-T08-D-sdd-20261008.md), base exacta fc858de42a5e021aab2f47ab68794a2519ff2cb5, ADR-004 proposed/review específica pendiente. No implementación ni PASS PG16/browser/CI heredados. D-BACKEND/T08-C/T09 deben registrar refund→capture y receipt/gasto/settlement/postings del mismo snapshot, cutoff/asOf/version/completitud, autoridad/opacidad, pérdida de respuesta/restart y ausencia de POST automático con source/build/PG major y teardown propios.
 
 - CLR-T01: PASS documental 2026-10-07. Revisiones Astra funcional/arquitectura, Sol factibilidad/Bugbot y Sol seguridad; NO-GO inicial y follow-ups conservaron los hallazgos, todos resueltos antes del GO. La evidencia vive en la conversación coordinadora hasta materializarse en el PR SDD exact-head.

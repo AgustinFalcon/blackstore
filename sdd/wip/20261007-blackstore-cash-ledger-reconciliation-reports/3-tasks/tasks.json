@@ -182,7 +182,7 @@
     {
       "id": "CLR-T08",
       "title": "UI tipos mapper recibos arqueo períodos y estados incompletos",
-      "status": "partial_v2_operations_receipts_pending_saga_contract_browser_review",
+      "status": "partial_v2_clients_journal_pending_acceptance",
       "pr_cut": "UI_ACCEPTANCE",
       "depends_on": [
         "CLR-T07"
@@ -302,7 +302,7 @@
     {
       "id": "CLR-T08-D-BACKEND",
       "title": "Backend lectura durable de referencia y proyección autoritativa de gasto",
-      "status": "planned",
+      "status": "implemented_pending_pg16_ci_review",
       "pr_cut": "ACCOUNTING_EVIDENCE_BACKEND",
       "depends_on": ["CLR-T08-D", "CLR-T08-B-POS"],
       "requirements": ["CLR-001", "CLR-003", "CLR-004", "CLR-009", "CLR-010"],
@@ -321,7 +321,7 @@
     {
       "id": "CLR-T08-C",
       "title": "Clientes saga v2 lifecycle preventivo y journal durable UI",
-      "status": "blocked_on_pos_context_and_evidence",
+      "status": "implemented_pending_pg16_browser_ci_review",
       "pr_cut": "DURABLE_COMMAND_UI",
       "depends_on": [
         "CLR-T08-B-POS",
@@ -390,15 +390,34 @@
   "gates": {
     "design": "PASS",
     "contract_extension_design": "T08_A_DESIGN_GO_PASS",
-    "implementation": "PARTIAL_T08_V2_OPERATIONS_PENDING_SAGA_CONTRACT",
+    "implementation": "PARTIAL_T08_D_BACKEND_FRONTEND_INTEGRATED_LOCAL_VALIDATION_PASS_PG16_BROWSER_CI_REVIEW_PENDING",
     "integration": "PG18_T06_PASS_T07_PG_NOT_RUN_PG16_NOT_RUN_BROWSER_NOT_RUN",
-    "review": "T07_T08_PENDING",
+    "review": "T07_T08_T08_C_PENDING",
     "homologation": "BLOCKED",
     "publication": "NOT_RUN",
-    "pos_context": "LOCAL_BACKEND_205_TESTS_PASS_PG16_BLOCKED_BROWSER_CI_REVIEW_PENDING_T08_C_BLOCKED",
-    "accounting_evidence_contract": "T08_D_PREPARED_SPECIFIC_REVIEW_GO_PENDING_BACKEND_UI_PG16_BROWSER_CI_NOT_RUN"
+    "pos_context": "BACKEND_FRONTEND_INTEGRATED_LOCAL_PG16_BROWSER_CI_REVIEW_PENDING",
+    "accounting_evidence_contract": "T08_D_SPECIFIC_REVIEW_GO_PENDING_BACKEND_BB9E64B_FRONTEND_B8024DC_INTEGRATED_PG16_BROWSER_CI_PENDING"
   },
   "evidence": {
+    "frontend_t08d_journal_p2_source_head": "c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c",
+    "frontend_t08d_journal_p2_validation": "FOCUSED_20_20_FULL_234_234_TYPECHECK_BUILD_PASS_AUDIT_PRODUCTION_0_DIFF_CHECK_PASS",
+    "frontend_t08d_journal_p2_race": "A_RESOLVED_B_PREPARED_LATE_RECORD_A_TERMINAL_B_ONLY_UNRESOLVED_HYDRATE_GET_ONLY",
+    "frontend_t08d_security_p2_source_head": "b0ab8c18ea678e829d2f7dc3ed6f6763335affa3",
+    "frontend_t08d_security_p2_validation": "TYPECHECK_KARMA_227_227_BUILD_PASS_AUDIT_PRODUCTION_0_DIFF_CHECK_PASS",
+    "frontend_t08d_security_p2_http_envelope": "HTTP503_BODY200_FOUND_AND_CODE200_ERRORCODE_UNAVAILABLE_UNKNOWN_JOURNAL_BLOCKED_GET_ONLY",
+    "frontend_t08d_source_head": "b8024dcc0292897aa7a77f96e9ed9e25d63d54ea",
+    "frontend_t08d_merge_head": "5417916",
+    "frontend_t08d_validation": "NPM_CI_TYPECHECK_KARMA_223_223_BUILD_PASS_AUDIT_PRODUCTION_0",
+    "frontend_t08d_acceptance": "LOCAL_HTTP_TEST_DOUBLE_ONLY_PG16_BROWSER_CRASH_RESTART_CI_REVIEW_NOT_RUN",
+    "frontend_t08c_latest_validated_head": "7516b0eabb730585ac9e4762150e8bd4913c5d76",
+    "frontend_t08c_latest_validation": "FOCUSED_5_5_FULL_194_194_TYPECHECK_BUILD_PASS_AUDIT_PRODUCTION_0",
+    "frontend_t08c_foreground_refresh": "IMMEDIATE_INVALIDATION_FOCUS_VISIBLE_GUARDED_READ_ONLY_REFETCH_NEW_SOURCE_TESTS_NOT_RUN",
+    "frontend_t08c_review2_async_reserve": "SOURCE_3673658_TYPECHECK_BUILD_PASS_KARMA_189_PASS_5_FAIL_SETUP_NG0101_TEST_SETUP_REPAIRED_NEW_VALIDATION_PENDING",
+    "frontend_t08c_review_corrections": "SOURCE_TESTS_ADDED_NOT_RUN_COORDINATOR_VALIDATION_PENDING_BLOCKED_ON_T08_D_READ_MODELS",
+    "frontend_t08c_source_head": "82271775df12d79554aacbfc67030db3843f1445",
+    "frontend_t08c_install_typecheck_build": "PASS_LOCAL_LOCKFILE_SOURCE_8227177",
+    "frontend_t08c_unit_tests": "161_161_PASS_BUILTIN_CHROME_HEADLESS_NO_SANDBOX_TEMPORARY_T_DRIVE_REMOVED",
+    "frontend_dependencies_security": "PREEXISTING_NPM_AUDIT_7_HIGH_PENDING_SECURITY_TRIAGE_NO_AUDIT_FIX",
     "postgres16_clean": "NOT_RUN",
     "postgres16_upgrade": "NOT_RUN",
     "crash": "PG18_T06_PASS",

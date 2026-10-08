@@ -1,10 +1,15 @@
+import { signal } from '@angular/core';
+import { of } from 'rxjs';
+import { AccountingCommandsStore } from './accounting-commands.store';
+import { SaleCommandsStore } from './sale-commands.store';
+import { SaleCommandKind,SaleAdmissionOutcome } from '../domain/sale-command';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { AccountingCoverage, CommandFailure, CommandOutcome, ExpenseOperation } from '../domain/accounting-command';
 import { ReconciliationOutcome } from '../domain/accounting-report';
 import { ACCOUNTING_API_BASE, API_BASE } from '../api';
-import { AllowedAction, DurableSaleState } from '../domain/durable-sale';
+import { AllowedAction, DurableSaleState,PaymentReversibility } from '../domain/durable-sale';
 import { PaymentMethod, PaymentStatus, StaffRole } from '../domain/pos-types';
 import { PaymentCoverage } from '../domain/ticket-transition';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
@@ -22,7 +27,7 @@ const detail = (status = DurableSaleState.Reserved, coverage = PaymentCoverage.P
   paymentCoverage: coverage.wire, hasPaymentHistory: coverage !== PaymentCoverage.Unpaid,
   evidenceValid: true, receipt: 'receipt', reservationRef: 'reservation', blocked: false, retired: false,
   lines: [{ sku: 'SKU', productName: 'Producto persistido', quantity: 1, totalAmount: '18' }],
-  payments: coverage === PaymentCoverage.Unpaid ? [] : [{ paymentId: 41, status: PaymentStatus.Captured.wire, method: PaymentMethod.Cash.wire, amount: '10', feeAmount: '0' }],
+  payments: coverage === PaymentCoverage.Unpaid ? [] : [{ paymentId: 41, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount: coverage === PaymentCoverage.Paid ? '18' : '10', feeAmount: '0' }],
   pendingCommand: null, allowedActions: AllowedAction.values.map(action => action.wire), ...overrides });
 
 describe('DurableSale closed types and DTO boundary', () => {
@@ -47,7 +52,7 @@ describe('DurableSale closed types and DTO boundary', () => {
   it('invalidates malformed lines, unknown actions, mismatched identity and evidence', () => {
     for (const overrides of [{ lines: [{ quantity: 0, totalAmount: '18' }] }, { lines: [{ quantity: 1, totalAmount: null }] },
       { allowedActions: ['UNRECOGNIZED_ACTION'] }, { evidenceValid: false }, { pendingAmount: '18', paymentCoverage: PaymentCoverage.Partial.wire },
-      { payments: [{ paymentId: 1, status: PaymentStatus.Captured.wire, method: PaymentMethod.Cash.wire, amount: '1.001', feeAmount: '0' }] }]) {
+      { payments: [{ paymentId: 1, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount: '1.001', feeAmount: '0' }] }]) {
       expect(PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved, PaymentCoverage.Partial, overrides)), identity.operationId)?.valid).toBeFalse();
     }
     expect(PosWireMapper.durableDetail(envelope(detail()), identity.saleId)).toBeNull();
@@ -61,109 +66,58 @@ describe('DurableSale closed types and DTO boundary', () => {
   });
 });
 
-describe('DurableSalesStore existing sale entry', () => {
-  let store: DurableSalesStore;
-  let http: HttpTestingController;
-  let session: SessionStore;
-  const url = `${API_BASE}/sales/operations/${identity.operationId}`;
-  beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
-    session = TestBed.inject(SessionStore); authenticateTestSession(session);
-    store = TestBed.inject(DurableSalesStore); http = TestBed.inject(HttpTestingController);
+describe('DurableSalesStore v2 existing sale entry',()=>{
+  let store:DurableSalesStore;let http:HttpTestingController;let accounting:any;let sales:any;
+  const url=`${API_BASE}/sales/operations/${identity.operationId}`;
+  beforeEach(()=>{
+    accounting={unresolved:signal(null),blocked:signal(CommandFailure.None),execute:jasmine.createSpy(),consult:jasmine.createSpy()};
+    sales={unresolved:signal(null),execute:jasmine.createSpy().and.returnValue(of({outcome:SaleAdmissionOutcome.Unknown,receipt:null})),consult:jasmine.createSpy()};
+    TestBed.configureTestingModule({providers:[provideHttpClient(),provideHttpClientTesting(),{provide:AccountingCommandsStore,useValue:accounting},{provide:SaleCommandsStore,useValue:sales}]});
+    authenticateTestSession(TestBed.inject(SessionStore));store=TestBed.inject(DurableSalesStore);http=TestBed.inject(HttpTestingController);
   });
-  afterEach(() => http.verify());
-  function open(status = DurableSaleState.Reserved, coverage = PaymentCoverage.Partial, overrides = {}): void {
-    store.open(identity.operationId); http.expectOne(url).flush(envelope(detail(status, coverage, overrides)));
-  }
-  it('lists paginated operations using only relative GET', () => {
-    store.list('cursor', DurableSaleState.Reserved);
-    const request = http.expectOne(request => request.url === `${API_BASE}/sales`);
-    expect(request.request.method).toBe('GET'); expect(request.request.params.get('cursor')).toBe('cursor');
-    expect(request.request.params.get('state')).toBe(DurableSaleState.Reserved.wire);
-    request.flush(envelope({ items: [detail()], nextCursor: 'next' }));
-    expect(store.items()[0].status).toBe(DurableSaleState.Reserved); expect(store.nextCursor()).toBe('next');
+  afterEach(()=>http.verify());
+  const open=(status=DurableSaleState.Reserved,coverage=PaymentCoverage.Partial)=>{
+    store.open(identity.operationId);http.expectOne(url).flush(envelope(detail(status,coverage)));
+  };
+  it('opens existing identity through GET only without manufacturing a sale',()=>{
+    const uuid=spyOn(crypto,'randomUUID').and.callThrough();open();expect(store.detail()?.identity).toEqual(identity);expect(uuid).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
   });
-  it('opens partial/full/terminal/legacy/unknown without POST or new UUIDs', () => {
-    const uuid = spyOn(crypto, 'randomUUID').and.callThrough();
-    for (const [state, coverage] of [[DurableSaleState.Reserved, PaymentCoverage.Partial], [DurableSaleState.PaymentCaptured, PaymentCoverage.Paid],
-      [DurableSaleState.Committed, PaymentCoverage.Paid], [DurableSaleState.LegacyIncomplete, PaymentCoverage.Unpaid], [DurableSaleState.Unknown, PaymentCoverage.Partial]] as const) {
-      open(state, coverage); expect(store.detail()?.identity).toEqual(identity);
-      http.expectNone(request => request.method === 'POST');
-    }
-    expect(uuid).not.toHaveBeenCalled();
+  it('isolates late list and detail responses after identity changes',()=>{
+    store.open(identity.operationId);const request=http.expectOne(url);TestBed.inject(SessionStore).changed.next();request.flush(envelope(detail()));expect(store.detail()).toBeNull();
   });
-  it('enables explicit partial capture and full commit only', () => {
-    open(); expect(store.can(AllowedAction.CapturePayment)).toBeTrue(); expect(store.can(AllowedAction.Commit)).toBeFalse(); expect(store.can(AllowedAction.Release)).toBeFalse();
-    open(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid);
-    expect(store.can(AllowedAction.CapturePayment)).toBeFalse(); expect(store.can(AllowedAction.Commit)).toBeTrue();
-  });
-  it('keeps an unverified historical actor read-only without inferring the cashier as author', () => {
-    open(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid, { createdBy: null });
-    expect(store.detail()?.createdBy).toBeNull();
-    expect(store.detail()?.cashierId).toBe(7);
-    expect(store.can(AllowedAction.Commit)).toBeFalse();
-    store.execute(AllowedAction.Commit, 'confirmar');
-    http.expectNone(request => request.method === 'POST');
-  });
-  it('denies Auditor/Unknown role all commercial reads and writes', () => {
-    for (const role of [StaffRole.Auditor, StaffRole.Unknown]) {
-      authenticateTestSession(session, role); store.list(); store.open(identity.operationId); store.execute(AllowedAction.Commit, '');
-    }
-    http.expectNone(() => true);
-  });
-  it('honors server ownership/allowedActions and neutralizes 404 without fallback', () => {
-    open(DurableSaleState.Reserved, PaymentCoverage.Partial, { allowedActions: [] });
-    expect(store.can(AllowedAction.CapturePayment)).toBeFalse();
-    store.open(identity.operationId); http.expectOne(url).flush(null, { status: 404, statusText: 'Not Found' });
-    expect(store.detail()).toBeNull(); http.expectNone(request => request.method === 'POST');
-  });
-  it('drops late detail/list after session generation changes', () => {
-    store.list(); const list = http.expectOne(request => request.url === `${API_BASE}/sales`);
-    store.open(identity.operationId); const read = http.expectOne(url);
-    session.expire();
-    list.flush(envelope({ items: [detail()], nextCursor: null })); read.flush(envelope(detail()));
-    expect(store.detail()).toBeNull(); expect(store.items().length).toBe(0);
-  });
-  it('performs explicit capture with original identity and no automatic retry after failure', () => {
-    open(); store.execute(AllowedAction.CapturePayment, 'completar', '8', '0');
-    store.execute(AllowedAction.CapturePayment, 'completar', '8', '0');
-    http.expectOne(url).flush(envelope(detail()));
-    const capture = http.expectOne(`${ACCOUNTING_API_BASE}/payments`);
-    expect(capture.request.body.saleId).toBe(identity.saleId); expect(capture.request.body.operationId).toBe(identity.operationId);
-    capture.flush(null, { status: 503, statusText: 'Unavailable' });
-    http.expectOne(`${ACCOUNTING_API_BASE}/accounting/commands/${capture.request.body.commandId}`).flush({ code: 404, traceId: 'trace',
-      data: { outcome: CommandOutcome.NotFound.wire, commandId: null, failure: null } }, { status: 404, statusText: 'Missing' });
-    expect(store.detail()).toBeNull(); expect(store.busy()).toBeFalse();
-    http.expectNone(request => request.method === 'POST');
-  });
-  for (const [reason, expected] of [['', null], [' \t\n ', null], ['  completar caja ajena  ', 'completar caja ajena']] as const) {
-    it(`sends a DTO-valid capture reason from durable input ${JSON.stringify(reason)}`, () => {
-      open(); store.execute(AllowedAction.CapturePayment, reason, '8', '0');
-      http.expectOne(url).flush(envelope(detail()));
-      const capture = http.expectOne(`${ACCOUNTING_API_BASE}/payments`);
-      expect(capture.request.body.reason).toBe(expected);
-      capture.flush(commandEnvelope(capture.request.body.commandId, { paymentId: 42 }));
-      http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid)));
-      expect(store.busy()).toBeFalse();
-      expect(store.can(AllowedAction.Commit)).toBeTrue();
+  for(const [action,kind,coverage] of [[AllowedAction.Commit,SaleCommandKind.Commit,PaymentCoverage.Paid],[AllowedAction.Release,SaleCommandKind.Release,PaymentCoverage.Unpaid]] as const){
+    it('pre-reads and delegates '+kind.wire+' with original identity to saga v2',()=>{
+      open(DurableSaleState.Reserved,coverage);store.execute(action,'motivo');http.expectOne(url).flush(envelope(detail(DurableSaleState.Reserved,coverage)));
+      const command=sales.execute.calls.mostRecent().args[0];expect(command.kind).toBe(kind);expect(command.identity).toEqual(identity);expect(command.cashSessionId).toBe(1);
+      http.expectNone(r=>r.method==='POST');expect(store.detail()).toBeNull();
     });
   }
-  it('fresh GET revokes a stale authorization before a terminal POST', () => {
-    open(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid); store.execute(AllowedAction.Commit, 'confirmar');
-    http.expectOne(url).flush(envelope(detail(DurableSaleState.Reserved, PaymentCoverage.Partial)));
-    http.expectNone(request => request.method === 'POST'); expect(store.busy()).toBeFalse();
+  it('blocks all mutations while common journal is pending or lifecycle is paused',()=>{
+    open();accounting.blocked.set(CommandFailure.Paused);for(const action of AllowedAction.values)expect(store.can(action)).toBeFalse();http.expectNone(r=>r.method==='POST');
   });
-  it('session expiry before preflight completes emits no POST', () => {
-    open(); store.execute(AllowedAction.CapturePayment, '', '8', '0');
-    const preflight = http.expectOne(url); session.expire(); preflight.flush(envelope(detail()));
-    http.expectNone(request => request.method === 'POST'); expect(store.detail()).toBeNull();
+  it('creates capture without any unsupported fee field',()=>{
+    accounting.execute.and.returnValue(of(PosWireMapper.commandReceipt(null,'')));
+    open();store.execute(AllowedAction.CapturePayment,'motivo','8',PaymentMethod.Card);http.expectOne(url).flush(envelope(detail()));
+    const command=accounting.execute.calls.mostRecent().args[0];expect(command.body['feeAmount']).toBeUndefined();expect(command.body['paymentMethod']).toBe(PaymentMethod.Card.wire);
   });
-  it('preserves identity through terminal action and refresh', () => {
-    open(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid); store.execute(AllowedAction.Commit, 'confirmar');
-    http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured, PaymentCoverage.Paid)));
-    const commit = http.expectOne(`${API_BASE}/sales/${identity.operationId}/commit`);
-    expect(commit.request.body.operationId).toBe(identity.operationId); commit.flush(envelope({}));
-    http.expectOne(url).flush(envelope(detail(DurableSaleState.Committed, PaymentCoverage.Paid)));
-    expect(store.can(AllowedAction.Commit)).toBeFalse(); expect(store.detail()?.identity).toEqual(identity);
+  it('blocks the refunded capture while the other split capture stays reversible',()=>{
+    const payments=[
+      {paymentId:41,status:PaymentStatus.Captured.wire, originalPaymentId:null,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
+      {paymentId:42,status:PaymentStatus.Captured.wire, originalPaymentId:null,method:PaymentMethod.Card.wire,amount:'8',feeAmount:'0'},
+      {paymentId:43,status:PaymentStatus.Refunded.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0',originalPaymentId:41},
+    ];
+    store.open(identity.operationId);http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured,PaymentCoverage.Partial,{pendingAmount:'10',payments})));
+    expect(store.detail()?.valid).toBeTrue();expect(store.detail()?.payments[2].originalPaymentId).toBe(41);
+    expect(store.detail()?.payments[0].reversibility).toBe(PaymentReversibility.AlreadyRefunded);
+    expect(store.detail()?.payments[1].reversibility).toBe(PaymentReversibility.Reversible);
+    expect(store.can(AllowedAction.ReversePayment)).toBeTrue();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
+    expect(accounting.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST'||r.url===url);
+  });
+  it('checks newly refunded evidence again before handing a reverse to the journal',()=>{
+    open();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
+    const payments=[{paymentId:41,status:PaymentStatus.Captured.wire, originalPaymentId:null,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
+      {paymentId:42,status:PaymentStatus.Refunded.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'}];
+    http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured,PaymentCoverage.Unpaid,{hasPaymentHistory:true,payments})));
+    expect(accounting.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
   });
 });

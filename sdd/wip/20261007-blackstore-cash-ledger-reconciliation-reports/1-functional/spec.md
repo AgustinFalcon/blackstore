@@ -1,10 +1,22 @@
 # Especificación funcional
 
+## Estado integrado local T08-D — vigente
+
+2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
+
+Ver [evidencia local](../evidence/CLR-T08-D-frontend-local-20261008.md).
+
+## Antecedentes conservados — no son estado vigente
+
 ## Addendum T08-D — evidencia de pagos y gastos
 
 Precedencia 2026-10-08: [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) proposed sobre backend POS exacto `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, revisión/GO propios pendientes. Amplía CLR-001/003/004/009/010: la lectura durable publica originalPaymentId nullable y valida refund→capture de la misma venta/medio/importe exacto, una reversión íntegra por captura; relación ausente/contradictoria/Unknown bloquea decisiones dependientes. La evidencia de gasto se recupera con GET /api/v2/expenses/commands/{commandId}/projection: Found completo y correlacionado al receipt del comando, NotFound opaco, Unavailable o Unknown conservan bloqueo/journal y nunca generan POST automático. Devengo, pago inmediato y liquidación total de gasto previo permanecen distintos; una liquidación posterior no reescribe la evidencia de un comando anterior.
 
 SID/permisos/ownership actuales se revalidan antes de exponer existencia o completitud. Caja cerrada admite lectura histórica autorizada sin conceder nuevo egreso; revocación/actor inactivo/caja ajena/rol Unknown fallan cerrados. Snapshot read-only único acredita receipt/gasto/settlement/postings y cutoff/asOf/version/completitud; Found no equivale a período/caja completos ni habilita siguiente mutación sin refresh autoritativo. Sólo documentación preparada: D-BACKEND planned, C `blocked_on_pos_context_and_evidence`, T08 parcial y T09 planned. Aprobaciones y evidencias anteriores no acreditan este contrato ni implementación.
+
+### Antecedente T08-C integrado (conservado)
+
+Estado vigente C: `blocked_on_authoritative_read_models`, T08 parcial. Antecedente: consola/journal/contexto v2 preparados sobre B-POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, entonces implemented_pending_pg16_browser_ci_review. T08-D debe acreditar refund→capture y egreso/liquidación. Al volver a foco/visible, controles y handler se bloquean inmediatamente hasta contexto/lifecycle frescos. [Evidencia actual](../evidence/CLR-T08-C-foreground-20261008.md); PG16/browser CLR/crash/CI pendientes.
 
 ## Addendum POS — CLR-004/009/010
 

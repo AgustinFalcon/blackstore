@@ -3,12 +3,14 @@ import { ReconciliationOutcome } from './accounting-report';
 import { TicketMoney } from './ticket-transition';
 
 export class AccountingCommandKind {
-  static readonly Open = new AccountingCommandKind(StaffPermission.CashSessionOpen);
-  static readonly Close = new AccountingCommandKind(StaffPermission.CashSessionClose);
-  static readonly Expense = new AccountingCommandKind(StaffPermission.ExpenseRecord);
-  static readonly Capture = new AccountingCommandKind(StaffPermission.PaymentCapture);
-  static readonly Reverse = new AccountingCommandKind(StaffPermission.PaymentReverse);
-  private constructor(readonly permission: StaffPermission) {}
+  static readonly Open = new AccountingCommandKind('Open', StaffPermission.CashSessionOpen);
+  static readonly Close = new AccountingCommandKind('Close', StaffPermission.CashSessionClose);
+  static readonly Expense = new AccountingCommandKind('Expense', StaffPermission.ExpenseRecord);
+  static readonly Capture = new AccountingCommandKind('Capture', StaffPermission.PaymentCapture);
+  static readonly Reverse = new AccountingCommandKind('Reverse', StaffPermission.PaymentReverse);
+  static readonly Unknown = new AccountingCommandKind('Unknown', StaffPermission.Unknown);
+  private constructor(readonly wire: string, readonly permission: StaffPermission) {}
+  static fromWire(raw: unknown): AccountingCommandKind { return [this.Open, this.Close, this.Expense, this.Capture, this.Reverse].find(value => value.wire === raw) ?? this.Unknown; }
 }
 
 export class ExpenseOperation {
@@ -70,6 +72,7 @@ export interface CloseSnapshot {
   readonly outcome: ReconciliationOutcome; readonly coverage: AccountingCoverage;
 }
 export interface CommandReceipt {
+  readonly committedAt?: string | null; readonly ledgerEventIds?: readonly number[];
   readonly outcome: CommandOutcome; readonly failure: CommandFailure; readonly commandId: string | null;
   readonly cashSessionId: number | null; readonly paymentId: number | null; readonly expenseId: number | null; readonly settlementId: number | null;
   readonly closeSnapshot: CloseSnapshot | null;
@@ -77,6 +80,9 @@ export interface CommandReceipt {
 export class AccountingCommand {
   private constructor(readonly kind: AccountingCommandKind, readonly commandId: string,
     readonly body: Readonly<Record<string, unknown>>, readonly aggregateId?: number) {}
+  static fromJournal(kind: AccountingCommandKind, commandId: string, body: Readonly<Record<string, unknown>>, aggregateId?: number): AccountingCommand {
+    return new AccountingCommand(kind, commandId, Object.freeze({ ...body }), aggregateId);
+  }
   static create(kind: AccountingCommandKind, body: Readonly<Record<string, unknown>>, aggregateId?: number): AccountingCommand {
     const commandId = crypto.randomUUID();
     // PaymentCaptureV2Request defaults its optional reason to null; blank text is invalid.
@@ -90,8 +96,12 @@ export class AccountingCommand {
     if (receipt.outcome !== CommandOutcome.Committed) return true;
     if (this.kind === AccountingCommandKind.Close) return receipt.cashSessionId === this.aggregateId && !!receipt.closeSnapshot &&
       receipt.closeSnapshot.declared.cents === TicketMoney.fromDecimal(this.body['declaredCash'])?.cents;
-    if (this.kind === AccountingCommandKind.Expense) return receipt.cashSessionId === this.body['cashSessionId'] && !!receipt.expenseId &&
-      (this.body['operation'] !== ExpenseOperation.AccrueAndSettle.wire || !!receipt.settlementId);
+    if (this.kind === AccountingCommandKind.Expense) {
+      const operation=ExpenseOperation.fromWire(this.body['operation']);
+      return operation!==ExpenseOperation.Unknown && receipt.cashSessionId === this.body['cashSessionId'] && !!receipt.expenseId &&
+        (operation===ExpenseOperation.Accrue ? receipt.settlementId===null : !!receipt.settlementId) &&
+        (operation!==ExpenseOperation.SettleExisting || receipt.expenseId===this.body['expenseId']);
+    }
     if (this.kind === AccountingCommandKind.Capture) return !!receipt.paymentId;
     if (this.kind === AccountingCommandKind.Reverse) return !!receipt.paymentId && receipt.paymentId !== this.aggregateId;
     return !!receipt.cashSessionId;

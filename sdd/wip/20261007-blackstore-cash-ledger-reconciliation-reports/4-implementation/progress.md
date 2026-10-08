@@ -1,10 +1,48 @@
 # Progreso inicial
 
+## 2026-10-08 — corrección P2 de carrera IndexedDB
+
+Source `c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c`: política JournalPhase.nextPhase de avance/retroceso idempotente/Resolved terminal/Unknown y cuarentena fail-closed, evaluada contra fase persistida dentro de la transacción de transition. Dos conexiones reales y recovery tardío prueban A Resolved, B único unresolved, hydrate normal y cero rePOST. Focused 20/20, full 234/234, typecheck/build/audit productivo 0/diff-check PASS. [Evidencia](../evidence/CLR-T08-D-frontend-local-20261008.md). Sin aceptación DCT/browser PG16 ni aprobación heredada.
+
+## 2026-10-08 — corrección P2 Security posterior a integración T08-D
+
+Source `b0ab8c18ea678e829d2f7dc3ed6f6763335affa3` sobre `65407e2`: CommandHttp preserva status del GET de proyección y safe considera status al recuperar fallos; PosWireMapper exige HTTP200/code200/errorCode null/error ausente o null para Found. Contradictorios conservan journal y cero rePOST. Typecheck/build PASS, Karma 227/227 PASS, audit productivo 0, diff-check PASS. [Evidencia](../evidence/CLR-T08-D-frontend-local-20261008.md). Ningún gate PG16/browser/CI/review se cierra por esta validación local.
+
+## Estado integrado local T08-D — vigente
+
+2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
+
+Ver [evidencia local](../evidence/CLR-T08-D-frontend-local-20261008.md).
+
+## Antecedentes conservados — no son estado vigente
+
 ## 2026-10-08 — CLR-T08-D documental preparado
 
 Worktree `blackstore-clr-evidence-sdd`, branch `feat/cash-ledger-evidence-sdd`, base backend POS exacta `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) registra las brechas comprobadas y el contrato: originalPaymentId nullable, refund→capture íntegro/correlacionado, proyección de gasto por commandId cerrada, autoridad/visibilidad actuales y snapshot read-only de receipt/fuentes/postings. Specs/meta/plan/tasks/evidence sincronizados. Sólo SDD; código productivo y migraciones intactos.
 
 T08-D prepared_pending_specific_review, D-BACKEND planned; no GO ni aprobación heredada. C blocked_on_pos_context_and_evidence, T08 parcial, T09 planned. B-POS conserva sus gates previos; PG16/browser/CI/reviews de implementación de este addendum NOT_RUN/PENDING. [Validación documental y límites](../evidence/CLR-T08-D-sdd-20261008.md). Sin activación/deploy/push/PR/homologación/publicación/archivo.
+
+### Antecedente T08-C integrado (conservado)
+
+## Estado vigente único
+
+C `blocked_on_authoritative_read_models`; T08 parcial, T08-D/PG16/browser CLR/crash/CI pendientes. Source 7516b0e: focused5/full194/typecheck/build PASS, audit productivo0. Se conserva 3673658 189/5 FAIL. Hook focus/visible añade invalidación inmediata/GET guardado, nuevos tests NOT_RUN. [Evidencia vigente](../evidence/CLR-T08-C-foreground-20261008.md).
+
+## Historial de cortes y validaciones — no estados actuales
+
+Validación externa exacta 3673658: typecheck/build PASS (483.48 kB), Karma **189 PASS/5 FAIL** y focused integrado **0/5 PASS**, por NG0101 del setup antes del recorrido. Reparado lifecycle de fixture/Zone y separado bootstrap de preflight; assertions integradas conservadas, nueva ejecución pendiente sin npm. [Registro](../evidence/CLR-T08-C-async-reserve-review2-20261008.md). No PASS integrado ni cierre T08.
+
+## Corrección ronda 2 — reserva asíncrona
+
+Sobre 61ea8ad, refresh Reserve usa espera GET-only acotada (20 lecturas/100 ms/deadline 5 s) compartida con AwaitReservationStep. Pending conserva claim; sólo Reserved válido resuelve antes de capture. Unknown/NotFound/timeout/sesión tardía no rePOST/capture. Tests integrados y del objeto común añadidos, ejecución NOT_RUN sin npm. [Evidencia](../evidence/CLR-T08-C-async-reserve-review2-20261008.md). C sigue blocked_on_authoritative_read_models/T08 parcial.
+
+## Correcciones de review C — 2026-10-08
+
+Sobre 0a6bb36: reversibilidad cerrada y fallback tras refund antes de journal; Expense/Settle awaitingRefresh sin falso Resolved; guard por actor/generación después de shareReplay y antes de defer; fingerprint exacto sale-admission-v1 persistido/recalculado/correlacionado y cuarentena. Tests fuente de mapper/store/HTTP/IDB/DOM añadidos, ejecución NOT_RUN por instrucción del coordinador, sin npm. C `blocked_on_authoritative_read_models`; T08 parcial, no usable completo. T08-D read-models backend se formaliza aparte. [Evidencia vigente](../evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estado C previo; validación histórica 161/161 pertenece sólo a source 8227177.
+
+## Validación frontend externa — 2026-10-08
+
+Commit source exacto `82271775df12d79554aacbfc67030db3843f1445`: npm ci local desde lockfile PASS; typecheck PASS; build PASS (main 438.69 kB, initial 476.19 kB); ng test completo PASS 161/161 desde unidad temporal T: con launcher built-in ChromeHeadlessNoSandbox. Primer intento estándar bloqueado por sandbox/GPU; resuelto sin cambios de código/CI y unidad desmontada. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). C implemented_pending_pg16_browser_ci_review; T08 parcial. Browser CLR/PG16/crash/CI/reviews pendientes; npm audit 7 high preexistentes pendiente security triage, sin audit fix.
 
 ## 2026-10-08 — implementación CLR-T08-B-POS
 
@@ -69,3 +107,6 @@ Validación local T06: PostgreSQL 18, `AccountingMutationPostgresTest` 22 tests,
 2026-10-07: CLR-T07 quedó `implemented_pending_pg16_ci_review` sobre T06. Agrega lecturas v2 SHIFT/DAY tipadas con autoridad revalidada, snapshot PostgreSQL `REPEATABLE READ` read-only, cutoff y zona histórica versionada; universo de cobertura independiente, filtros previos a agregación, totales por medio, fórmulas cerradas e incompletitud explícita. La validación local ejecutó 24 tests focalizados en 4 suites, sin fallos; el fixture PostgreSQL compiló pero no se ejecutó porque Windows sandbox rechazó `initdb`/`pg_ctl` con restricted-token error 87/3. PostgreSQL real, PG16, CI, browser y reviews exact-head permanecen pendientes. Evidencia: `evidence/CLR-T07-local-20261007.md`. Runtime sigue PRE_ACTIVATION; sin homologación ni publicación.
 
 2026-10-07: CLR-T08 agregó operaciones UI v2 para apertura/cierre/egreso/captura/reversión y lectura de recibos correlacionada por commandId estable, sin POST automático; Unknown/NotFound conservan bloqueo y PAUSED/legacy/NotActivated fallan cerrados. Dominio cerrado, mapper único, store compartido y arqueo validado. T08 permanece parcial: reserva/commit/release aún sólo tienen contrato v1, lifecycle no se publica en workspace, harness DCT conserva pruebas legacy y recarga browser/reinicio requiere aceptación. Ver evidence/CLR-T08-operations-local-20261007.md. Typecheck/ngc y regresión Vitest/jsdom locales PASS; PG16, browser, CI y reviews exact-head pendientes. Runtime PRE_ACTIVATION, homologación/publicación bloqueadas.
+# Incremento T08-C — 2026-10-08
+
+Source frontend implementado sobre base B-POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, con todos los POST comerciales afectados en v2, contexto/lifecycle preventivos y journal común confirmado antes de enviar. Rehidratación conserva incertidumbre y sólo GET; receipt necesita refresh y resolución durable. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). C `implemented_pending_pg16_browser_ci_review`, T08 parcial. Validación local externa source 82271775df12d79554aacbfc67030db3843f1445: 161/161 unitarios, typecheck/build PASS; PG16/browser CLR/crash/CI/reviews exact-head pendientes. Los estados bloqueados debajo son antecedentes; sus gates externos continúan pendientes.
