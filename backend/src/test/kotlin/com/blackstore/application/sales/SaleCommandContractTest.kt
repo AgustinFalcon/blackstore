@@ -8,7 +8,6 @@ import com.blackstore.domain.identity.*
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.port.out.accounting.AccountingLifecycleObservation
 import com.blackstore.domain.sales.*
-import com.blackstore.infrastructure.identity.StaffHttpPermission
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.junit.jupiter.api.Assertions.*
@@ -56,9 +55,7 @@ class SaleCommandContractTest {
         for(role in listOf(StaffRole.CASHIER,StaffRole.SUPERVISOR,StaffRole.OWNER,StaffRole.AUDITOR)) assertTrue(policy.permits(role,StaffPermission.AccountingRuntimeRead))
         assertFalse(policy.permits(StaffRole.UNKNOWN,StaffPermission.AccountingRuntimeRead))
         for(p in listOf(StaffPermission.SaleReserve,StaffPermission.SaleRead,StaffPermission.SaleCommandRead,StaffPermission.WorkspaceRead)) assertFalse(policy.permits(StaffRole.AUDITOR,p))
-        assertEquals(StaffPermission.AccountingRuntimeRead,StaffHttpPermission.permission("GET","/api/v2/accounting/runtime"))
-        assertEquals(StaffPermission.SaleCommandRead,StaffHttpPermission.permission("GET","/api/v2/sales/commands/id"))
-        assertEquals(StaffPermission.SaleCommit,StaffHttpPermission.permission("POST","/api/v2/sales/id/commit"))
+        // HTTP route classification is covered by infrastructure/identity/StaffSessionFilterTest.
     }
     @Test fun lifecycleRejectsUnknownAndIncoherentActivation() {
         assertThrows(IllegalArgumentException::class.java) { AccountingLifecycleObservation(AccountingRuntimeState.Active,null,AccountingContractVersion.V2,Instant.EPOCH) }

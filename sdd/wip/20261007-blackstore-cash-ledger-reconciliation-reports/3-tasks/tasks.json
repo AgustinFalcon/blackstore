@@ -263,7 +263,7 @@
     {
       "id": "CLR-T08-B-POS",
       "title": "Addendum backend contexto POS provisionado y validación de Reserve",
-      "status": "planned",
+      "status": "implemented_pending_pg16_ci_review",
       "pr_cut": "POS_CONTEXT_BACKEND",
       "depends_on": [
         "CLR-T08-B"
@@ -354,7 +354,7 @@
     "review": "T07_T08_PENDING",
     "homologation": "BLOCKED",
     "publication": "NOT_RUN",
-    "pos_context": "SDD_PROPOSED_BACKEND_NOT_RUN_T08_C_BLOCKED"
+    "pos_context": "LOCAL_BACKEND_205_TESTS_PASS_PG16_BLOCKED_BROWSER_CI_REVIEW_PENDING_T08_C_BLOCKED"
   },
   "evidence": {
     "postgres16_clean": "NOT_RUN",

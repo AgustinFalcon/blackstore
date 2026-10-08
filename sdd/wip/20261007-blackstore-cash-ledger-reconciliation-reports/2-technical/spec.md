@@ -2,6 +2,8 @@
 
 ## Addendum T08-B-POS — contexto verificado
 
+Implementación 2026-10-08 sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`: V11 vacío/inmutable, referencias de provisión/evidencia obligatorias, app SELECT-only; terminal FOR SHARE mediante función definer estrecha sin UPDATE runtime. Configuración explícita de terminal/conector capturada al iniciar, sin inferencia de seed/companion. Query read-only y validación nueva Reserve con misma conexión después de autoridad/replay, caja→terminal→venta→delivery. [Runbook](../../../../backend/POS-CONTEXT-PROVISIONING.md) y [evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md). Estado implementado con aceptación PG16/browser/CI/reviews pendiente; C bloqueado y ADR-003 proposed sin aprobación heredada.
+
 [ADR-003](adr/ADR-003-pos-execution-context.md) proposed sobre `39aa9d6dad199d88328e9c3799911e355a9cbddd`: PosExecutionContext cerrado, binding V11 explícito/inmutable, GET /api/v2/pos/context con WorkspaceRead/no-store y concordancia de conector. Nueva Reserve valida contexto/caja dentro de transacción después de replay autorizado. Historia conserva cuádruple y permisos; ninguna autoridad desde browser. T08-C pasa de planned a `blocked_on_pos_context` hasta backend addendum integrado/revisado. Esta decisión requiere revisión propia y no hereda GO T08-A.
 
 ## Ampliación contractual T08-A — GO de diseño

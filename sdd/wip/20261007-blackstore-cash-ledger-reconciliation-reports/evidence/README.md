@@ -9,5 +9,6 @@ Esta carpeta no acredita PASS. Conservar por CLR-Txx la revisión/base exacta, c
 - CLR-T05 local: `CLR-T05-local-20261007.md` acredita cierre/arqueo/lifecycle/reconocimiento y carreras en PostgreSQL 18; no acredita PostgreSQL 16 ni crash/reinicio T06.
 - CLR-T07: dataset con dos cajas/días/medios/ventas pendientes, DST y fronteras, snapshots/cutoffs, no fan-out, complete/incomplete y filtros de autoridad.
 - CLR-T08/T09: browser SID + backend exacto + PG16, flujos funcionales, reinicio, screenshots/traces sanitizados; CI y reviews exact-head independientes.
+- CLR-T08-B-POS: [backend local 2026-10-08](CLR-T08-B-POS-backend-local-20261008.md), contexto cerrado/HTTP y fixtures V11/provisión/replay/carreras preparados; PG16 bloqueado antes de assertions por Docker no disponible, browser/CI/reviews pendientes. No hereda aprobación de B ni activa runtime.
 
 Cada ejecución identifica recursos propios (DB/schema/puertos/PID/directorio), teardown confirmado y cualquier recurso retenido con razón. Nunca terminar procesos ajenos ni limpiar directorios amplios. Evidencia de fixture/MockMvc/discovery se etiqueta como tal; sólo browser real y PG16 ejecutados cierran sus gates. Fallos y bloqueos se conservan, sin reescribirlos como PASS.

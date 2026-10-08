@@ -25,6 +25,7 @@ object StaffHttpPermission {
         method=="POST" && path=="/api/v1/auth/logout" -> StaffPermission.StaffLogout
         method=="GET" && path=="/api/v1/catalog" -> StaffPermission.CatalogRead
         method=="GET" && path=="/api/v1/workspace" -> StaffPermission.WorkspaceRead
+        method=="GET" && path=="/api/v2/pos/context" -> StaffPermission.WorkspaceRead
         method=="GET" && path=="/api/v1/cash-sessions" -> StaffPermission.CashSessionList
         method=="POST" && path=="/api/v1/cash-sessions" -> StaffPermission.CashSessionOpen
         method=="POST" && Regex("/api/v1/cash-sessions/[^/]+/close").matches(path) -> StaffPermission.CashSessionClose
