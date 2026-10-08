@@ -1,5 +1,9 @@
 # Libro de caja, arqueo y reportes por período
 
+## Estado vigente del addendum POS
+
+Base T08-B `39aa9d6dad199d88328e9c3799911e355a9cbddd`; [ADR-003](2-technical/adr/ADR-003-pos-execution-context.md) proposed, revisión específica pendiente. CLR-T08-B conserva implemented_pending_pg16_ci_review; nuevo CLR-T08-B-POS planned. CLR-T08-C `blocked_on_pos_context`, T08 parcial y T09 planned. Las referencias anteriores a B/C planned son antecedentes. Sólo documentación; no GO nuevo, código, migración ejecutada, runtime ni homologación.
+
 - Feature: `blackstore-cash-ledger-reconciliation-reports`.
 - Backlog: TODO-007. Fecha: 2026-10-07. Idioma: español.
 - Estado: `active`. GO de diseño: aprobado 2026-10-07 por revisión funcional/arquitectura Astra, factibilidad/Bugbot Sol y seguridad Sol después de resolver todos los hallazgos P1/P2. La implementación queda autorizada sólo por los cortes secuenciales del plan; ningún runtime se activa por este GO.

@@ -1,5 +1,11 @@
 # Plan y cortes revisables
 
+## Addendum de contexto POS — precedencia vigente
+
+[ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) separa CLR-T08-B-POS (backend/schema) de T08-C. Base T08-B exacta `39aa9d6dad199d88328e9c3799911e355a9cbddd`. Orden: SDD/revisión específica → B-POS → C → T09; no mezclar migración/endpoints con frontend. B-POS depende B; C depende B-POS y queda `blocked_on_pos_context`. T08 sigue parcial, B conserva sus gates previos. Las menciones planned de C debajo son antecedentes, sustituidos por este estado. JSON es fuente del DAG vigente.
+
+B-POS entrega dominio/puerto/query/context validator, V11 tras comprobar numeración, provisión explícita de harness, contrato HTTP y validación transaccional Reserve/replay. No enrollment browser ni identificación física. Aceptación: constraints/grants, PG16 clean/upgrade, autoridad/opacidad, conector concordante, terminal/caja/contexto inválidos sin efectos, carrera desactivación, recuperación histórica y reviews bugs/seguridad/SDD exact-head. C cubre mapper/store/journal/actor/tab/generación; T09 prueba browser/PG16/restart propios. Ninguno se marca done por documentación.
+
 ## Residuales T08 — cortes apilados propuestos desde 9e6e2cb
 
 La ampliación [ADR-002](../2-technical/adr/ADR-002-sale-v2-lifecycle-command-journal.md) recibió GO DE DISEÑO explícito del usuario y APPROVE documental/Security sobre `0b4cddc7f26ec6965ad81443ec4cde74aadd2ce5`; el GO original que figura abajo sigue siendo antecedente del alcance anterior. No activar runtime ni marcar T08 done por el GO documental.
