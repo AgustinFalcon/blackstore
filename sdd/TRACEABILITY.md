@@ -1,5 +1,17 @@
 # RTM — `blackstore-pilot`
 
+## CLR — ampliación contractual T08-A, 2026-10-07
+
+Base exacta `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`; documentación solamente. [ADR-002](wip/20261007-blackstore-cash-ledger-reconciliation-reports/2-technical/adr/ADR-002-sale-v2-lifecycle-command-journal.md), [plan](wip/20261007-blackstore-cash-ledger-reconciliation-reports/3-tasks/plan.md) y [tareas](wip/20261007-blackstore-cash-ledger-reconciliation-reports/3-tasks/tasks.json) proponen el cierre de residuales; no sustituyen evidencia de ejecución.
+
+- CLR-001/004/009 → T08-A diseño; T08-B tipos/contratos saga v2, recibos, autoridad/CSRF/ownership, lifecycle GET y V10 propuesta; T08-C mapper/política/journal; T09 prueba real y reviews.
+- CLR-003/005/006 → T08-B Accepted distinto de COMMITTED, outbox/evidencia/reconocimiento/terminalidad, crash/cierre/pausa y sin backfill; T08-C refresh autoritativo; T09 reserva→pago→commit y reversión→release antes de cierre.
+- CLR-002/008 → T08-B rechazo explícito feeAmount en captura y conservación FeeRecord OWNER interno; T08-C elimina entrada de comisión no soportada, conserva lectura histórica; T09 regresión de medios/fórmulas sin doble FEE.
+- CLR-007/008 → T07/T08 lecturas existentes conservadas; T08-C no mezcla contexto/actor; T09 SHIFT/DAY/completitud, sin atribuir PASS por este documento.
+- CLR-010 → T08-C journal antes de POST, reload/SID/tab/respuesta tardía/NotFound; T09 browser CLR separado del arnés DCT legacy, PG16, reinicio, teardown y rechazo writers v1 en Active/Paused.
+
+T08-A done: GO DE DISEÑO explícito del usuario y APPROVE documental/Security sobre `0b4cddc7f26ec6965ad81443ec4cde74aadd2ce5`, sin aprobación de implementación/runtime. T08-B/C planned, T08 parcial, T09 planned. Tests nuevos de implementación y aceptación NOT_RUN; reviews runtime pendientes, homologación BLOCKED/publicación NOT_RUN. [Evidencia documental](wip/20261007-blackstore-cash-ledger-reconciliation-reports/evidence/CLR-T08-A-contracts-20261007.md). Sin activación, archivo ni `/sdd.finish`.
+
 ## Estado vigente — 2026-10-07
 
 Incremento local de aceptación (base checkout8fcff40): DCT-001..007 → frontend/e2e/dct/cash-browser-restart.spec.ts y denials.spec.ts, fixture PG16/JAR/Chromium y job dct-browser. Domain/application54 tests/11 suites y compileTestKotlin PASS; typechecks/discovery PASS. Browser/PG16 BLOCKED antes de assertions por Docker pipe; review/CI nuevos NOT_RUN, no heredan caab0a9. Evidencia DCT-browser-harness-20261007.md del WIP; no cierra T05/T06.

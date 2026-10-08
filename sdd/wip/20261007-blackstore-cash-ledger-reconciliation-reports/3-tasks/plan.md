@@ -1,5 +1,18 @@
 # Plan y cortes revisables
 
+## Residuales T08 — cortes apilados propuestos desde 9e6e2cb
+
+La ampliación [ADR-002](../2-technical/adr/ADR-002-sale-v2-lifecycle-command-journal.md) recibió GO DE DISEÑO explícito del usuario y APPROVE documental/Security sobre `0b4cddc7f26ec6965ad81443ec4cde74aadd2ce5`; el GO original que figura abajo sigue siendo antecedente del alcance anterior. No activar runtime ni marcar T08 done por el GO documental.
+
+1. **CLR-T08-A / SDD_CONTRACTS** done: documentación solamente en `feat/cash-ledger-contracts-t08a`, base `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`. Saga v2/Accepted, lifecycle GET, permisos/replay, journal/actor/tab, fee y matriz PG16/crash/browser; JSON, links y diff validados. APPROVE documental/Security sobre 0b4cddc y GO de diseño explícito registrados en evidencia, sin review runtime heredada. No crear V10 ni endpoints en este corte.
+2. **CLR-T08-B / SAGA_V2_BACKEND** depende de T08-A aprobado: puertos/tipos/pasos SOLID, controllers/traductores, admisión/receipt/outbox atómicos, lifecycle read-only, clasificación de rutas SID/CSRF, rechazo explícito feeAmount y alineación de permisos de receipts. Proponer V10 forward-only tras verificar numeración. Tests unitarios/HTTP y PG16 clean/upgrade/replay/locks/crash/grants; revisión bugs + seguridad/arquitectura + SDD exact-head y CI. No GO productivo por un PASS local.
+3. **CLR-T08-C / DURABLE_COMMAND_UI** depende de T08-B: migrar los tres POST saga a v2, lifecycle preventivo sin fallback, journal IndexedDB antes de POST para caja/pago/saga, rehidratación y aislamiento de actor/tab/generación. GET de receipt más refresh autoritativo antes de avanzar. Tests de tipos/mapper/store/componentes y build productivo. No recuperar con POST automático ni habilitar captura con fee.
+4. **CLR-T09 / UI_ACCEPTANCE** depende de T08 completo (incluido B/C): arnés `frontend/e2e/clr` separado de `frontend/e2e/dct` legacy; SID + PG16 + source/build exactos, browser y reinicio/crash reales, teardown y rollback/kill switch. Completar CLR-010 y pruebas de denegación v1 en ACTIVE/PAUSED. CI backend/frontend/PG16/browser y reviews exact-head; no atribuir PASS desde pruebas de otros WIPs.
+
+La matriz por caso y archivos previstos están en ADR-002. Cada PR se apila sobre el head aprobado anterior; registrar base/head y volver a revisar si cambia. El estado de T08 sigue `partial_v2_operations_receipts_pending_saga_contract_browser_review`; T08-A done por GO de diseño, T08-B/C planned, T09 planned. El amend registra aprobación del head revisado sin cambiar sus contratos ni atribuir una nueva review. T09 conserva PG16, browser/restart, rollback/restore, CI/reviews como gates propios; homologación/publicación/live/fiscal siguen separados y bloqueados. No archive ni `/sdd.finish`.
+
+## Plan original y gates conservados
+
 Estado active. GO de diseño aprobado 2026-10-07 tras revisiones Astra funcional/arquitectura, Sol factibilidad/Bugbot y Sol seguridad, con hallazgos resueltos. Los pasos de implementación se ejecutan sólo en los cortes secuenciales siguientes y conservan sus gates propios.
 
 1. PR SDD/GO: revisar alcance, fórmulas, legado, terminalidad de ventas, protocolo global de locks, V8 y permisos; resolver hallazgos funcionales/arquitectura/seguridad; fijar base y versionado contractual. El arnés DCT base ya está acreditado; no sustituye la aceptación CLR todavía NOT_RUN.

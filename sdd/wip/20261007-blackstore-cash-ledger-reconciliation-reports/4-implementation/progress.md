@@ -1,5 +1,13 @@
 # Progreso inicial
 
+## Estado agregado T08-A — 2026-10-07
+
+Documentación preparada en worktree `blackstore-clr-contracts-t08a`, branch `feat/cash-ledger-contracts-t08a`, desde exact `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`. [ADR-002](../2-technical/adr/ADR-002-sale-v2-lifecycle-command-journal.md) propone saga v2/recibo Accepted separado de COMMITTED, lifecycle GET y permiso de lectura cerrado, journal durable previo al POST con rehidratación por actor/ámbito/tab, rechazo explícito de feeAmount y pruebas de autoridad/replay/crash. Se actualizaron specs, plan, tareas, metadatos y trazabilidad. Sin código productivo ni migración nueva; backend/frontend actuales conservan las brechas documentadas.
+
+T08-A done: GO DE DISEÑO autorizado explícitamente por el usuario y APPROVE documental/Security sobre exact head `0b4cddc7f26ec6965ad81443ec4cde74aadd2ce5`, según registro del coordinador. Este amend anota el GO sin cambiar contratos ni atribuir nueva review al SHA resultante. T08-B/C planned; T08 sigue parcial y T09 planned. [Evidencia T08-A](../evidence/CLR-T08-A-contracts-20261007.md) conserva alcance y validación. Implementación/runtime/activación/homologación NO aprobados; tests nuevos/PG16/browser/CI/reviews de implementación todavía NOT_RUN/PENDING. Runtime operativo permanece PRE_ACTIVATION; sin activación, push, PR, publicación, archivo ni `/sdd.finish`.
+
+## Evidencia y progreso anteriores (conservar como antecedentes)
+
 2026-10-07: corte de lectura UI CLR-T08 preparado en `blackstore-clr-ui-t08`, branch `feat/cash-ledger-ui-t08`, base exacta `ba1104273a56aa39ba393e20c1521d174d4aaeb1`. Reemplaza la pantalla de sumas v1 por GET v2 SHIFT/DAY con caja/fecha/zona/filtros explícitos, tipos TS cerrados, traductor único `PosWireMapper`, importes exactos y cobertura nullable, cutoff/as-of/snapshot/zona histórica, arqueo Balanced/Shortage/Overage/Unavailable y Unknown neutral. Dos slots independientes cancelan la consulta anterior y verifican generation + epoch antes de cualquier callback; edición de filtros, cambio de caja/identidad y destrucción limpian datos. El interceptor SID ahora cubre `/api/v2` y conserva cookie/CSRF y descarte por identidad.
 
 Validación T08 local: typecheck y Angular build PASS; compilación Angular de specs y runner temporal Vitest 4.1.11/jsdom, 6 suites/37 tests PASS (20 nuevos + 17 de mapper/SID existentes). Pruebas DOM de labels/fieldset/aria-busy/status/alert, no auditoría a11y browser completa. El comando normal `npm test` falló en bundling Karma por acceso denegado/resolución absoluta de archivos bajo Windows antes de ejecutar assertions; se conserva como fallo de entorno y no se afirma PASS Karma. Detalles/reproducción en `evidence/CLR-T08-local-20261007.md`.
