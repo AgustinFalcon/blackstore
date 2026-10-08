@@ -93,7 +93,7 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
                 return@transaction AccountingCommandResult.NotFound
             val actor = actor(c, staff.id.value)
             val cash = readCash(c, header.cashSessionId, false)
-            receiptAccess.authorize(actor, cash)?.let(::reject)
+            receiptAccess.authorize(actor, cash, header.kind)?.let(::reject)
             AccountingCommandResult.Committed(decodeReceipt(header))
         }
     } catch (error: MutationRejected) {
@@ -153,7 +153,7 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
         fun resolve(c: Connection, scope: Scope, saved: ReceiptHeader?, current: AuthenticatedStaff,
             replayHash: (Long) -> String): AccountingCommandReceipt? {
             saved ?: return null
-            receiptAccess.authorize(current, readCash(c, saved.cashSessionId, false))?.let(::reject)
+            receiptAccess.authorize(current, readCash(c, saved.cashSessionId, false), saved.kind)?.let(::reject)
             if (saved.kind != scope.kind || saved.payloadHash != replayHash(saved.actorId)) reject(AccountingCommandFailure.PayloadMismatch)
             return decodeReceipt(saved)
         }
