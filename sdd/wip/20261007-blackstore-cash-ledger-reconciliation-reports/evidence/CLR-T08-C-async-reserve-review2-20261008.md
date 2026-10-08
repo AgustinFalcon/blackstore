@@ -1,5 +1,11 @@
 # CLR-T08-C — reserva asíncrona, ronda 2
 
+## Validación externa de 3673658 y reparación del test
+
+Source exacto `3673658efe72ebe4c4622d7ae8fff06cb65d23b6`: coordinador informa typecheck PASS y build PASS (483.48 kB). Karma completo **189 PASS / 5 FAIL**; focused async-reserve-integration.spec **0 PASS / 5 FAIL**. Todos fallaron antes del flujo por NG0101 ApplicationRef.tick recursively; luego admit esperaba preflight context que no había empezado. Esta corrida es FAIL, no evidencia del recorrido integrado ni cierre de la ronda.
+
+Se corrige sólo el lifecycle del test: fixture conservado e inicializado una vez en beforeEach fakeAsync con detectChanges, sin TestBed.tick en cada caso. Se declara Zone change detection igual que app.config para controlar timers mediante fakeAsync. Bootstrap consume/asserta sus GET reales de context/runtime y comprueba hydrated/canWrite; admit comprueba elegibilidad y dispara un preflight nuevo, distinto del bootstrap. Se conservan assertions del recorrido Accepted→Pending→Reserved→Capture, claim, timeout, Unknown/NotFound y sesión tardía. No se maquillan HTTP expectations ni se elimina el recorrido. Nueva ejecución/typecheck/build pendiente del coordinador; no npm en este turno. No se detectó/alteró bug productivo en esta reparación de setup.
+
 Base exacta `61ea8adb9fe907296a49cfccb7b7f6e72c12af53`. Hallazgo P2: el primer GET tras Accepted podía observar PendingReservation y devolver Unknown antes de que el paso AwaitReservation del ticket corriera. No era correcto permitir capture ni liberar claim, pero abortaba la reserva normal.
 
 Corrección: objeto compartido AwaitReservationReadStep con observación cerrada Pending/Reserved/Unknown, reutilizado por AwaitReservationStep del ticket y refresh autoritativo de CommandHttp. Reserve conserva ReceiptVerifiedAwaitingRefresh y su claim mientras consulta **la misma identidad/command**: máximo 20 GET, 100 ms entre Pending y deadline total 5 s (incluye GET que no responde). Sólo Pending correlacionado continúa; sólo Reserved con detalle válido y caja/identidad coincidentes acredita resolución durable y permite seguir al ticket/capture. Ningún POST adicional de reserve ni capture durante la espera. NotFound/Unknown/error/timeout conservan incertidumbre/claim y copy visible para consulta manual; no reenvío.

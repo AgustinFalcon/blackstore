@@ -1,5 +1,7 @@
 # Libro de caja, arqueo y reportes por período
 
+Validación externa 3673658: typecheck/build PASS (483.48 kB), tests FAIL 189/5 (focused integrado 0/5) por setup recursivo NG0101. Reparación del test mantiene flujo/assertions; nueva validación pendiente. [Detalle](evidence/CLR-T08-C-async-reserve-review2-20261008.md). C continúa bloqueado/T08 parcial.
+
 Ronda 2 sobre 61ea8ad corrige Reserve asíncrona mediante espera autoritativa GET-only acotada, sin liberar journal/capturar durante Pending. [Evidencia](evidence/CLR-T08-C-async-reserve-review2-20261008.md); tests nuevos NOT_RUN, validación externa pendiente. C sigue blocked_on_authoritative_read_models/T08 parcial.
 
 Estado vigente posterior al review de 0a6bb36: C `blocked_on_authoritative_read_models`, T08 parcial. Fallback explícito: tras cualquier refund no se admiten nuevas reversas; egreso/liquidación admitido no se resuelve sin GET autoritativo. Dependencia T08-D en addendum backend separado. Correcciones de aislamiento/fingerprint y tests añadidos, todavía NOT_RUN para este nuevo source. [Evidencia vigente](evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estados C anteriores sin heredar el PASS de source 8227177.

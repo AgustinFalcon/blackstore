@@ -1,5 +1,7 @@
 # Progreso inicial
 
+Validación externa exacta 3673658: typecheck/build PASS (483.48 kB), Karma **189 PASS/5 FAIL** y focused integrado **0/5 PASS**, por NG0101 del setup antes del recorrido. Reparado lifecycle de fixture/Zone y separado bootstrap de preflight; assertions integradas conservadas, nueva ejecución pendiente sin npm. [Registro](../evidence/CLR-T08-C-async-reserve-review2-20261008.md). No PASS integrado ni cierre T08.
+
 ## Corrección ronda 2 — reserva asíncrona
 
 Sobre 61ea8ad, refresh Reserve usa espera GET-only acotada (20 lecturas/100 ms/deadline 5 s) compartida con AwaitReservationStep. Pending conserva claim; sólo Reserved válido resuelve antes de capture. Unknown/NotFound/timeout/sesión tardía no rePOST/capture. Tests integrados y del objeto común añadidos, ejecución NOT_RUN sin npm. [Evidencia](../evidence/CLR-T08-C-async-reserve-review2-20261008.md). C sigue blocked_on_authoritative_read_models/T08 parcial.
