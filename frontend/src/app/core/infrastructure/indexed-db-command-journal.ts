@@ -9,7 +9,7 @@ import { SaleAdmissionFingerprint } from './sale-admission-fingerprint';
 
 /** Storage is untrusted evidence. This decoder is the only storage-to-domain boundary. */
 export class JournalDecoder {
-  static decode(raw: unknown): JournalEntry | null {
+  static decode(raw: unknown,allowQuarantined=false): JournalEntry | null {
     try {
       if (JSON.stringify(raw).length > 32768 || !raw || typeof raw !== 'object') return null;
       const r = raw as Record<string, unknown>; const scope = r['scope'] as Record<string, unknown>;
@@ -19,7 +19,7 @@ export class JournalDecoder {
       if (r['version'] !== 1 || !scope || typeof scope['origin'] !== 'string' || !/^https?:\/\//.test(scope['origin']) ||
         new URL(scope['origin']).origin !== scope['origin'] || !PosWireMapper.uuid(scope['clientInstanceId']) || typeof scope['deviceId'] !== 'string' || !scope['deviceId'].trim() || scope['deviceId'] !== scope['deviceId'].trim() || scope['deviceId'].length > 80 || !id(scope['terminalId']) ||
         !id(r['actorId']) || (r['cashSessionId'] !== null && !id(r['cashSessionId'])) || !PosWireMapper.uuid(r['tabId']) ||
-        family === JournalFamily.Unknown || phase === JournalPhase.Unknown || phase === JournalPhase.Quarantined ||
+        family === JournalFamily.Unknown || phase === JournalPhase.Unknown || phase === JournalPhase.Quarantined && !allowQuarantined ||
         !command || !PosWireMapper.uuid(command['commandId']) || !body || Array.isArray(body) || body['commandId'] !== command['commandId']) return null;
       // Only scalar canonical request fields; no credentials, persisted permissions or nested objects.
       const allowed = ['commandId','clientInstanceId','deviceId','saleId','operationId','cashSessionId','terminalId','cashierId','openingCash','declaredCash','amount','paymentMethod','reason','originalPaymentId','evidenceRef','operation','expenseId','category','variantId','quantity','expectedPriceVersion','sku','productName','originalUnitPrice','discountAmount'];
@@ -107,10 +107,14 @@ export class IndexedDbCommandJournal extends CommandJournal {
   transition(entry: JournalEntry, phase: JournalPhase): Promise<void> {
     return this.transaction(true, (store,done,fail) => {
       const request = store.get(entry.command.commandId); request.onsuccess = () => {
-        const saved = JournalDecoder.decode(request.result);
+        const saved = JournalDecoder.decode(request.result,true);
         if (!saved || saved.family !== entry.family || saved.actorId !== entry.actorId || !sameScope(saved.scope,entry.scope) || saved.cashSessionId!==entry.cashSessionId ||
           saved.expectedPayloadHash!==entry.expectedPayloadHash || saved.fingerprintVersion!==entry.fingerprintVersion || JSON.stringify(saved.command.body) !== JSON.stringify(entry.command.body)) { fail(new Error('Evidencia cambió')); return; }
-        store.put(JournalDecoder.encode({ ...saved, phase })); done(undefined);
+        const next=saved.phase.nextPhase(phase);
+        if(!next){fail(new Error('Transición de evidencia inválida'));return;}
+        // Read, policy and write share the transaction. Terminal evidence cannot be reopened by a stale tab.
+        if(next!==saved.phase)store.put(JournalDecoder.encode({ ...saved, phase:next }));
+        done(undefined);
       };
     });
   }

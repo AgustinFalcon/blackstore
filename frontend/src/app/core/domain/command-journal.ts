@@ -16,6 +16,20 @@ export class JournalPhase {
   static readonly Unknown = new JournalPhase('Unknown');
   private constructor(readonly wire: string) {}
   static fromWire(raw: unknown): JournalPhase { return [this.Prepared, this.AwaitingReceipt, this.ReceiptVerifiedAwaitingRefresh, this.Resolved, this.Quarantined].find(value => value.wire === raw) ?? this.Unknown; }
+  /** Applied to the persisted phase, never the caller's stale observation. */
+  nextPhase(requested:JournalPhase):JournalPhase|null {
+    if(this===JournalPhase.Unknown || requested===JournalPhase.Unknown)return null;
+    if(this===JournalPhase.Resolved)return this;
+    if(this===JournalPhase.Quarantined)return requested===this?this:null;
+    if(requested===this)return this;
+    if(requested===JournalPhase.Quarantined)return requested;
+    // Recovery in another tab may already have completed an earlier step.
+    if(requested===JournalPhase.Prepared || this===JournalPhase.ReceiptVerifiedAwaitingRefresh && requested===JournalPhase.AwaitingReceipt)return this;
+    if(this===JournalPhase.Prepared && requested===JournalPhase.AwaitingReceipt ||
+      (this===JournalPhase.Prepared || this===JournalPhase.AwaitingReceipt) && requested===JournalPhase.ReceiptVerifiedAwaitingRefresh ||
+      this===JournalPhase.ReceiptVerifiedAwaitingRefresh && requested===JournalPhase.Resolved)return requested;
+    return null;
+  }
 }
 export interface JournalScope { readonly origin: string; readonly clientInstanceId: string; readonly deviceId: string; readonly terminalId: number; }
 export interface JournalEntry {

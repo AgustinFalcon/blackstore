@@ -33,6 +33,27 @@ describe('untrusted journal decoder and transactional IndexedDB claim',()=>{
     await journal.transition(first,JournalPhase.ReceiptVerifiedAwaitingRefresh);await expectAsync(journal.prepare(entry())).toBeRejected();
     await journal.transition(first,JournalPhase.Resolved);await journal.prepare(entry());expect((await journal.list()).entries.length).toBe(2);
   });
+  it('keeps A terminal after B claim and stale A receipt transitions from another tab',async()=>{
+    const other=TestBed.runInInjectionContext(()=>new IndexedDbCommandJournal()),a=entry(),b=entry();
+    await journal.prepare(a);await other.transition(a,JournalPhase.ReceiptVerifiedAwaitingRefresh);await other.transition(a,JournalPhase.Resolved);
+    await other.prepare(b);
+    await journal.transition(a,JournalPhase.ReceiptVerifiedAwaitingRefresh);await journal.transition(a,JournalPhase.AwaitingReceipt);await journal.transition(a,JournalPhase.Resolved);
+    const snapshot=await journal.list();expect(snapshot.quarantined).toBeFalse();
+    expect(snapshot.entries.find(v=>v.command.commandId===a.command.commandId)?.phase).toBe(JournalPhase.Resolved);
+    expect(snapshot.entries.filter(v=>v.phase!==JournalPhase.Resolved).map(v=>v.command.commandId)).toEqual([b.command.commandId]);
+  });
+  it('rejects skipping receipt verification atomically and preserves stored phase',async()=>{
+    const a=entry();await journal.prepare(a);await expectAsync(journal.transition(a,JournalPhase.Resolved)).toBeRejected();
+    expect((await journal.list()).entries[0].phase).toBe(JournalPhase.Prepared);
+    await journal.transition(a,JournalPhase.AwaitingReceipt);await journal.transition(a,JournalPhase.Prepared);
+    expect((await journal.list()).entries[0].phase).toBe(JournalPhase.AwaitingReceipt);
+    await expectAsync(journal.transition(a,JournalPhase.Unknown)).toBeRejected();
+  });
+  it('quarantine transition is terminal idempotent storage but remains fail-closed to readers',async()=>{
+    const a=entry();await journal.prepare(a);await journal.transition(a,JournalPhase.Quarantined);await journal.transition(a,JournalPhase.Quarantined);
+    await expectAsync(journal.transition(a,JournalPhase.Resolved)).toBeRejected();const snapshot=await journal.list();
+    expect(snapshot.quarantined).toBeTrue();expect(snapshot.entries).toEqual([]);await expectAsync(journal.prepare(entry())).toBeRejected();
+  });
   it('quarantines syntactically valid altered sale payload without deleting evidence',async()=>{
     const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'22222222-2222-2222-2222-222222222222',operationId:'33333333-3333-3333-3333-333333333333'};
     const command=SaleCommand.create(SaleCommandKind.Commit,identity,2,{reason:'original'});
