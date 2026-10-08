@@ -19,6 +19,7 @@ import {CashSessionStatus,PaymentMethod,PaymentStatus} from '../../core/domain/p
 import {PaymentCoverage} from '../../core/domain/ticket-transition';
 import {API_BASE,ACCOUNTING_API_BASE} from '../../core/api';
 import {commandEnvelope} from '../../core/infrastructure/accounting-command-test-helper';
+import {FOREGROUND_REFRESH} from '../../core/infrastructure/foreground-refresh';
 
 /** Real component, facades, runtime and HTTP; journal persistence is a deterministic test port. */
 describe('Accepted asynchronous Reserve keeps its claim until authoritative Reserved',()=>{
@@ -48,6 +49,7 @@ describe('Accepted asynchronous Reserve keeps its claim until authoritative Rese
     // Match the application's Zone-based change detection; fakeAsync controls polling timers.
     // Never call ApplicationRef/TestBed.tick from this fixture's lifecycle.
     TestBed.configureTestingModule({imports:[SaleTicketComponent],providers:[provideZoneChangeDetection({eventCoalescing:true}),provideHttpClient(),provideHttpClientTesting(),{provide:SessionStore,useValue:session},{provide:IndexedDbCommandJournal,useValue:journal},
+      {provide:FOREGROUND_REFRESH,useValue:{subscribe:()=>()=>{}}},
       {provide:CounterContextService,useValue:{load:()=>{},catalog:signal(null),openSession:signal({id:2,terminalId:10}),blockReason:()=>null}}]});
     http=TestBed.inject(HttpTestingController);runtime=TestBed.inject(CommandRuntimeStore);fixture=TestBed.createComponent(SaleTicketComponent);component=fixture.componentInstance;
     component.sku='SKU';component.productName='Product';component.variantId='variant';

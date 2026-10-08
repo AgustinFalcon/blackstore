@@ -1,5 +1,7 @@
 # CLR-T08-C — reserva asíncrona, ronda 2
 
+Validación externa posterior exacta `7516b0eabb730585ac9e4762150e8bd4913c5d76`: focused **5/5 PASS**, full **194/194 PASS**, typecheck/build PASS y audit productivo **0**, informados por coordinador. Se conserva debajo la corrida fallida 3673658; no se borra historia. Estado vigente C blocked_on_authoritative_read_models; nueva corrección foreground/tests aún NOT_RUN, [evidencia vigente](CLR-T08-C-foreground-20261008.md). Ningún PASS cierra PG16/browser CLR/crash/CI/T08-D.
+
 ## Validación externa de 3673658 y reparación del test
 
 Source exacto `3673658efe72ebe4c4622d7ae8fff06cb65d23b6`: coordinador informa typecheck PASS y build PASS (483.48 kB). Karma completo **189 PASS / 5 FAIL**; focused async-reserve-integration.spec **0 PASS / 5 FAIL**. Todos fallaron antes del flujo por NG0101 ApplicationRef.tick recursively; luego admit esperaba preflight context que no había empezado. Esta corrida es FAIL, no evidencia del recorrido integrado ni cierre de la ronda.

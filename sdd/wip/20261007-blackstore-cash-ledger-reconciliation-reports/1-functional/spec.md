@@ -1,6 +1,6 @@
 # Especificación funcional
 
-Actualización de implementación C 2026-10-08: consola v2, journal común, contexto/lifecycle y recuperación GET preparados sobre B-POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. Estado `implemented_pending_pg16_browser_ci_review`; [evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). Sustituye blocked_on_pos_context de los antecedentes, sin cerrar T08 parcial ni acceptance CLR-010.
+Estado vigente C: `blocked_on_authoritative_read_models`, T08 parcial. Antecedente: consola/journal/contexto v2 preparados sobre B-POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, entonces implemented_pending_pg16_browser_ci_review. T08-D debe acreditar refund→capture y egreso/liquidación. Al volver a foco/visible, controles y handler se bloquean inmediatamente hasta contexto/lifecycle frescos. [Evidencia actual](../evidence/CLR-T08-C-foreground-20261008.md); PG16/browser CLR/crash/CI pendientes.
 
 ## Addendum POS — CLR-004/009/010
 

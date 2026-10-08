@@ -12,16 +12,20 @@ import { CommandHttp } from '../infrastructure/command-http';
 import { commandEnvelope } from '../infrastructure/accounting-command-test-helper';
 import { SessionStore } from './session.store';
 import { CommandRuntimeStore } from './command-runtime.store';
+import {FOREGROUND_REFRESH} from '../infrastructure/foreground-refresh';
+import {PosContextState} from '../domain/pos-execution-context';
 
 describe('CommandRuntimeStore durable admission and recovery', () => {
   const context = { clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',terminalId:10 };
   const envelope = (data:unknown) => ({ code:200,traceId:'test',data });
   let store:CommandRuntimeStore; let entries:JournalEntry[]; let corrupt:boolean;
   let session:any; let api:any; let journal:any;
+  let foreground:()=>void;
+  let unsubscribeForeground:jasmine.Spy;
   const settle = async () => { for(let i=0;i<8;i++) await Promise.resolve(); };
   const command = () => AccountingCommand.create(AccountingCommandKind.Open,{ terminalId:10,cashierId:7,openingCash:'0' });
   beforeEach(async () => {
-    entries=[]; corrupt=false;
+    entries=[]; corrupt=false;unsubscribeForeground=jasmine.createSpy('unsubscribe foreground');
     session={ staff:signal({id:7}),state:signal(SessionState.Authenticated),generation:signal(1),changed:new Subject<void>(),can:()=>true };
     api={
       context:jasmine.createSpy().and.callFake(()=>of(envelope({state:'Available',context}))),
@@ -36,8 +40,35 @@ describe('CommandRuntimeStore durable admission and recovery', () => {
       prepare:jasmine.createSpy().and.callFake(async(e:JournalEntry)=>{ if(entries.some(x=>x.phase!==JournalPhase.Resolved)) throw Error('claim'); entries.push(e); }),
       transition:jasmine.createSpy().and.callFake(async(e:JournalEntry,phase:JournalPhase)=>{entries=entries.map(x=>x.command.commandId===e.command.commandId?{...x,phase}:x);}),
     };
-    TestBed.configureTestingModule({providers:[{provide:SessionStore,useValue:session},{provide:CommandHttp,useValue:api},{provide:IndexedDbCommandJournal,useValue:journal}]});
+    TestBed.configureTestingModule({providers:[{provide:SessionStore,useValue:session},{provide:CommandHttp,useValue:api},{provide:IndexedDbCommandJournal,useValue:journal},
+      {provide:FOREGROUND_REFRESH,useValue:{subscribe:(listener:()=>void)=>{foreground=listener;return unsubscribeForeground;}}}]});
     store=TestBed.inject(CommandRuntimeStore); TestBed.tick(); await settle();
+  });
+  it('teardown releases the foreground subscription',()=>{
+    TestBed.resetTestingModule();expect(unsubscribeForeground.calls.count()).toBe(1);
+  });
+  it('foreground invalidates synchronously before handler POST and restores only fresh Active context',async()=>{
+    const contextResponse=new Subject<unknown>(),lifecycleResponse=new Subject<unknown>();
+    api.context.and.returnValue(contextResponse);api.lifecycle.and.returnValue(lifecycleResponse);foreground();
+    expect(store.canWrite()).toBeFalse();expect(store.context()).toBeNull();await store.execute(command());expect(api.post).not.toHaveBeenCalled();
+    contextResponse.next(envelope({state:PosContextState.Available.wire,context}));lifecycleResponse.next(envelope({state:AccountingLifecycleState.Active.wire,contractVersion:'V2',activationAt:'2026-10-07T00:00:00Z',observedAt:'2026-10-08T00:00:00Z'}));await settle();
+    expect(store.canWrite()).toBeTrue();
+  });
+  for(const state of [AccountingLifecycleState.Unknown,AccountingLifecycleState.Paused]){
+    it('foreground fresh '+state.label+' keeps controls and handlers blocked',async()=>{
+      api.lifecycle.and.returnValue(of(envelope({state:state.wire,contractVersion:'V2',activationAt:'2026-10-07T00:00:00Z',observedAt:'2026-10-08T00:00:00Z'})));foreground();await settle();
+      expect(store.canWrite()).toBeFalse();await store.execute(command());expect(api.post).not.toHaveBeenCalled();
+    });
+  }
+  it('foreground Unknown context cannot rehabilitate writes',async()=>{
+    api.context.and.returnValue(of(null));foreground();await settle();expect(store.canWrite()).toBeFalse();await store.execute(command());expect(api.post).not.toHaveBeenCalled();
+  });
+  it('older foreground response after another observation or session change never rehabilitates',async()=>{
+    const old=new Subject<unknown>();api.context.and.returnValue(old);foreground();
+    api.context.and.returnValue(of(null));foreground();await settle();
+    old.next(envelope({state:PosContextState.Available.wire,context}));await settle();expect(store.canWrite()).toBeFalse();
+    const late=new Subject<unknown>();api.context.and.returnValue(late);foreground();session.staff.set(null);session.generation.set(2);session.changed.next();
+    late.next(envelope({state:PosContextState.Available.wire,context}));await settle();expect(store.canWrite()).toBeFalse();expect(store.context()).toBeNull();expect(api.post).not.toHaveBeenCalled();
   });
   it('confirms prepare and phase transaction before the only POST; resolves only after refresh',async()=>{
     let release!:()=>void; journal.prepare.and.callFake((e:JournalEntry)=>new Promise<void>(resolve=>{release=()=>{entries.push(e);resolve();};}));

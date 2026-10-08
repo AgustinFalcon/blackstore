@@ -1,5 +1,11 @@
 # Progreso inicial
 
+## Estado vigente único
+
+C `blocked_on_authoritative_read_models`; T08 parcial, T08-D/PG16/browser CLR/crash/CI pendientes. Source 7516b0e: focused5/full194/typecheck/build PASS, audit productivo0. Se conserva 3673658 189/5 FAIL. Hook focus/visible añade invalidación inmediata/GET guardado, nuevos tests NOT_RUN. [Evidencia vigente](../evidence/CLR-T08-C-foreground-20261008.md).
+
+## Historial de cortes y validaciones — no estados actuales
+
 Validación externa exacta 3673658: typecheck/build PASS (483.48 kB), Karma **189 PASS/5 FAIL** y focused integrado **0/5 PASS**, por NG0101 del setup antes del recorrido. Reparado lifecycle de fixture/Zone y separado bootstrap de preflight; assertions integradas conservadas, nueva ejecución pendiente sin npm. [Registro](../evidence/CLR-T08-C-async-reserve-review2-20261008.md). No PASS integrado ni cierre T08.
 
 ## Corrección ronda 2 — reserva asíncrona

@@ -2,9 +2,9 @@
 
 Vigente tras review 0a6bb36: C `blocked_on_authoritative_read_models`; T08 parcial. T08-D backend en addendum separado debe aportar refund→capture y lectura de egreso/liquidación antes de integrar funcionalidad completa/cerrar C. Este corte sólo corrige frontend y bloquea explícitamente lo no comprobable. [Evidencia](../evidence/CLR-T08-C-review-corrections-20261008.md). Nueva validación exact-head pendiente, sin npm en este turno; no hereda PASS previo.
 
-Estado actual C 2026-10-08: source frontend implementado sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; `implemented_pending_pg16_browser_ci_review`. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). JSON fija el DAG vigente y conserva T08 parcial. La secuencia/reviews específicos B-POS/ADR-003 y PG16/browser/CI no se consideran aprobados por este corte.
+Antecedente C source 8227177 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: entonces `implemented_pending_pg16_browser_ci_review`, no estado actual. Estado único vigente blocked_on_authoritative_read_models. [Evidencia actual](../evidence/CLR-T08-C-foreground-20261008.md): 7516b0e focused5/full194/typecheck/build PASS; focus/visible nuevo NOT_RUN. T08-D/PG16/browser/crash/CI pendientes.
 
-## Addendum de contexto POS — precedencia vigente
+## Antecedente del addendum de contexto POS — no estado actual de C
 
 2026-10-08: B-POS implementado por encargo explícito sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, estado `implemented_pending_pg16_ci_review`. [Evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md) registra el runner y las pruebas reales. La revisión específica de ADR-003/implementación permanece pendiente, sin heredar GO; C conserva `blocked_on_pos_context` hasta integración/reviews y T08 sigue parcial. Ningún gate PG16/browser/CI se acredita por fixtures preparados.
 

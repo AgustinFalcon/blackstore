@@ -1,5 +1,7 @@
 # CLR-T08-C — correcciones de review sobre 0a6bb36
 
+Actualización de evidencia: validación exacta posterior de source 7516b0e focused5/full194/typecheck/build PASS/audit productivo0; conserva el FAIL 3673658 189/5 y la cronología NOT_RUN de este registro. Estado único actual blocked_on_authoritative_read_models; foreground nuevo no hereda PASS. [Registro vigente](CLR-T08-C-foreground-20261008.md).
+
 Base `0a6bb36af77369253b5a199df900e379747300cd`, branch existente `feat/cash-ledger-frontend-t08c-v2`. Sólo frontend/docs; sin backend, migración, CI ni dependencias. C: `blocked_on_authoritative_read_models`; T08 parcial. Este corte no es totalmente usable ni acredita cierre.
 
 ## Hallazgos y límites

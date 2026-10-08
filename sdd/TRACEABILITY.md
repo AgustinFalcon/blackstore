@@ -1,5 +1,7 @@
 # RTM — `blackstore-pilot`
 
+Estado vigente C único: `blocked_on_authoritative_read_models`, T08 parcial. CLR-001/004/010 → foreground focus/visible: stale inmediato, GET context+lifecycle+journal, bloqueo controls/handler, generación/actor/contexto guardados y cleanup. [Evidencia vigente](wip/20261007-blackstore-cash-ledger-reconciliation-reports/evidence/CLR-T08-C-foreground-20261008.md): 7516b0e focused5/full194/typecheck/build PASS/audit prod0; este nuevo source NOT_RUN. 3673658 189/5 FAIL preservado. T08-D/PG16/browser CLR/crash/CI pendientes. Los registros C anteriores son antecedentes, no estado actual ni aprobación heredada.
+
 Source C 3673658: typecheck/build PASS, Karma 189 PASS/5 FAIL (focused integrado 0/5) por lifecycle NG0101 antes del flujo. Setup reparado con fixture/Zone/bootstrap-preflight explícitos; recorrido/aserciones conservados, nueva validación pendiente. [Evidencia](wip/20261007-blackstore-cash-ledger-reconciliation-reports/evidence/CLR-T08-C-async-reserve-review2-20261008.md); no PASS integrado ni cierre.
 
 CLR-003/004/010 → C ronda 2: Accepted→PendingReservation→Reserved con GET-only acotado y claim antes de capture, timeout/Unknown/NotFound/sesión tardía sin duplicación. [Evidencia](wip/20261007-blackstore-cash-ledger-reconciliation-reports/evidence/CLR-T08-C-async-reserve-review2-20261008.md). Tests integrados añadidos NOT_RUN; C blocked_on_authoritative_read_models/T08 parcial.

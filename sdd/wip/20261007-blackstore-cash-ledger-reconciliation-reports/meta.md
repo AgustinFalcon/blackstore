@@ -1,14 +1,20 @@
 # Libro de caja, arqueo y reportes por período
 
+## Estado único vigente de C
+
+`blocked_on_authoritative_read_models`; T08 parcial/no usable completo. T08-D, PG16/browser CLR/crash/CI pendientes. Source 7516b0e: focused 5/5/full 194/194/typecheck/build PASS, audit productivo 0; 3673658 189/5 FAIL se conserva. Hook preventivo focus/visible invalida inmediatamente y refetch guardado; nuevo source/tests NOT_RUN. [Evidencia vigente](evidence/CLR-T08-C-foreground-20261008.md).
+
+## Antecedentes de C — no son estado actual
+
 Validación externa 3673658: typecheck/build PASS (483.48 kB), tests FAIL 189/5 (focused integrado 0/5) por setup recursivo NG0101. Reparación del test mantiene flujo/assertions; nueva validación pendiente. [Detalle](evidence/CLR-T08-C-async-reserve-review2-20261008.md). C continúa bloqueado/T08 parcial.
 
 Ronda 2 sobre 61ea8ad corrige Reserve asíncrona mediante espera autoritativa GET-only acotada, sin liberar journal/capturar durante Pending. [Evidencia](evidence/CLR-T08-C-async-reserve-review2-20261008.md); tests nuevos NOT_RUN, validación externa pendiente. C sigue blocked_on_authoritative_read_models/T08 parcial.
 
-Estado vigente posterior al review de 0a6bb36: C `blocked_on_authoritative_read_models`, T08 parcial. Fallback explícito: tras cualquier refund no se admiten nuevas reversas; egreso/liquidación admitido no se resuelve sin GET autoritativo. Dependencia T08-D en addendum backend separado. Correcciones de aislamiento/fingerprint y tests añadidos, todavía NOT_RUN para este nuevo source. [Evidencia vigente](evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estados C anteriores sin heredar el PASS de source 8227177.
+Antecedente posterior al review de 0a6bb36: C pasó a `blocked_on_authoritative_read_models`, T08 parcial. Fallback: tras refund no admite nuevas reversas; egreso no se resuelve sin GET autoritativo T08-D. Correcciones/tests se registraron entonces NOT_RUN; posteriormente se validó source7516. [Evidencia histórica](evidence/CLR-T08-C-review-corrections-20261008.md), sin heredar PASS entre sources.
 
 Validación frontend externa exacta `82271775df12d79554aacbfc67030db3843f1445`: npm ci local/typecheck/build PASS y 161/161 unitarios PASS con launcher built-in ChromeHeadlessNoSandbox en unidad temporal T:, luego desmontada. Sin cambios source/CI; PG16/browser CLR/crash/CI/reviews y security triage de 7 high preexistentes siguen pendientes. [Detalle](evidence/CLR-T08-C-frontend-local-20261008.md).
 
-Estado actual de C: `implemented_pending_pg16_browser_ci_review` sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. El source del journal/contexto/lifecycle y los clientes v2 está implementado; [evidencia](evidence/CLR-T08-C-frontend-local-20261008.md). T08 parcial; PG16/browser/crash/CI/reviews pendientes. Las menciones de C bloqueado debajo registran cortes anteriores y no son el estado de implementación actual.
+Antecedente source 8227177 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: entonces `implemented_pending_pg16_browser_ci_review`; [evidencia histórica](evidence/CLR-T08-C-frontend-local-20261008.md). No es estado actual: las brechas de read models mantienen C blocked_on_authoritative_read_models.
 
 ## Estado vigente del addendum POS
 
@@ -28,6 +34,6 @@ Antecedente documental del 2026-10-07: base T08-B `39aa9d6dad199d88328e9c3799911
 - Estrategia: PR de SDD/GO y cuatro cortes de implementación. Este corte sólo publica documentación: no contiene código, migraciones ejecutadas, activación runtime, deploy, publicación ni `/sdd.finish`.
 
 StoreCore permanece fixture/disabled. Dos PostgreSQL, E2E live, fiscal, MP-LIVE-05, activación companion, facturación y Correo Argentino conservan gates externos independientes. La aceptación contable local no los habilita.
-# Estado vigente T08-C — 2026-10-08
+# Antecedente de implementación T08-C — 2026-10-08
 
-Frontend sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: v2 saga/caja/pagos, contexto/lifecycle, journal IndexedDB y recuperación GET implementados. Estado `implemented_pending_pg16_browser_ci_review`; sustituye el bloqueo de implementación de C registrado abajo, sin cerrar gates de B-POS ni ADR-003. T08 parcial, T09 planned. [Evidencia y límites](evidence/CLR-T08-C-frontend-local-20261008.md).
+Frontend source 8227177 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: v2 saga/caja/pagos, contexto/lifecycle y journal implementados en ese corte histórico; estado entonces `implemented_pending_pg16_browser_ci_review`, sustituido por bloqueo de read models. No cierra gates B-POS/ADR-003/T08. [Evidencia histórica](evidence/CLR-T08-C-frontend-local-20261008.md).

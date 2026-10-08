@@ -350,7 +350,7 @@
   "gates": {
     "design": "PASS",
     "contract_extension_design": "T08_A_DESIGN_GO_PASS",
-    "implementation": "PARTIAL_T08_V2_CLIENTS_JOURNAL_IMPLEMENTED_PENDING_ACCEPTANCE",
+    "implementation": "PARTIAL_T08_C_BLOCKED_ON_AUTHORITATIVE_READ_MODELS_T08_D_PENDING",
     "integration": "PG18_T06_PASS_T07_PG_NOT_RUN_PG16_NOT_RUN_BROWSER_NOT_RUN",
     "review": "T07_T08_T08_C_PENDING",
     "homologation": "BLOCKED",
@@ -358,6 +358,9 @@
     "pos_context": "BACKEND_FRONTEND_IMPLEMENTED_PG16_BROWSER_CI_REVIEW_PENDING"
   },
   "evidence": {
+    "frontend_t08c_latest_validated_head": "7516b0eabb730585ac9e4762150e8bd4913c5d76",
+    "frontend_t08c_latest_validation": "FOCUSED_5_5_FULL_194_194_TYPECHECK_BUILD_PASS_AUDIT_PRODUCTION_0",
+    "frontend_t08c_foreground_refresh": "IMMEDIATE_INVALIDATION_FOCUS_VISIBLE_GUARDED_READ_ONLY_REFETCH_NEW_SOURCE_TESTS_NOT_RUN",
     "frontend_t08c_review2_async_reserve": "SOURCE_3673658_TYPECHECK_BUILD_PASS_KARMA_189_PASS_5_FAIL_SETUP_NG0101_TEST_SETUP_REPAIRED_NEW_VALIDATION_PENDING",
     "frontend_t08c_review_corrections": "SOURCE_TESTS_ADDED_NOT_RUN_COORDINATOR_VALIDATION_PENDING_BLOCKED_ON_T08_D_READ_MODELS",
     "frontend_t08c_source_head": "82271775df12d79554aacbfc67030db3843f1445",

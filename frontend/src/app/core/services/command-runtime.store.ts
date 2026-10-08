@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { DestroyRef,Injectable, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { AccountingCommand, AccountingCommandKind, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
@@ -10,6 +10,7 @@ import { CommandHttp } from '../infrastructure/command-http';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
 import { SessionStore } from './session.store';
 import { SaleAdmissionFingerprint } from '../infrastructure/sale-admission-fingerprint';
+import {FOREGROUND_REFRESH} from '../infrastructure/foreground-refresh';
 
 /** Shared coordinator: evidence is durable; a session generation only owns visible observations. */
 @Injectable({ providedIn: 'root' })
@@ -34,11 +35,22 @@ export class CommandRuntimeStore {
     if (staff && this.session.state().isAuthenticated && !this.locked) void this.hydrate(this.session.generation(),staff.id);
   }
   constructor() {
-    this.session.changed.subscribe(() => { ++this.epoch; this.context.set(null); this.contextState.set(PosContextState.Unknown); this.lifecycle.set(AccountingLifecycleState.Unknown); this.pending.set(null); this.hydrated.set(false); this.neutralBlock.set(true); this.notice.set('Comprobando sesión y evidencia…'); });
+    const destroy=inject(DestroyRef);
+    const sessionChange=this.session.changed.subscribe(()=>this.invalidate('Comprobando sesión y evidencia…'));
+    const unsubscribe=inject(FOREGROUND_REFRESH).subscribe(()=>{
+      this.invalidate('Contexto desactualizado. Comprobando contabilidad y evidencia…');
+      const staff=this.session.staff();
+      if(staff && this.session.state().isAuthenticated)void this.hydrate(this.session.generation(),staff.id);
+    });
+    destroy.onDestroy(()=>{++this.epoch;sessionChange.unsubscribe();unsubscribe();});
     effect(() => {
       const staff = this.session.staff(); const generation = this.session.generation();
       if (staff && this.session.state().isAuthenticated) void this.hydrate(generation, staff.id);
     });
+  }
+  private invalidate(notice:string):void{
+    ++this.epoch;this.context.set(null);this.contextState.set(PosContextState.Unknown);this.lifecycle.set(AccountingLifecycleState.Unknown);
+    this.pending.set(null);this.hydrated.set(false);this.neutralBlock.set(true);this.notice.set(notice);
   }
   private current(epoch: number, generation: number, actor: number): boolean {
     return epoch === this.epoch && generation === this.session.generation() && actor === this.session.staff()?.id && this.session.state().isAuthenticated;
