@@ -70,6 +70,12 @@ describe('v2 command HTTP infrastructure',()=>{
     let current=true;const result=firstValueFrom(api.refresh(command,receipt,()=>current,7));current=false;
     http.expectOne(`${ACCOUNTING_API_BASE}/expenses/commands/${command.commandId}/projection`).flush(raw);expect(await result).toBeFalse();
   });
+  it('safe never turns a failed receipt HTTP503 into a successful-looking receipt body',async()=>{
+    const command=AccountingCommand.create(AccountingCommandKind.Expense,{cashSessionId:2,operation:ExpenseOperation.Accrue.wire,amount:'10',category:'supplies'});
+    const result=firstValueFrom(api.receipt(command));
+    http.expectOne(`${ACCOUNTING_API_BASE}/accounting/commands/${command.commandId}`).flush(commandEnvelope(command.commandId,{expenseId:5}),{status:503,statusText:'Unavailable'});
+    expect(await result).toBeNull();http.expectNone(r=>r.method==='POST');
+  });
   it('rejects another reverse before journal when current detail contains a refund',async()=>{
     const command=AccountingCommand.create(AccountingCommandKind.Reverse,{...identity,originalPaymentId:41,reason:'refund',evidenceRef:'ref'},41);
     const result=firstValueFrom(api.references(command,10));

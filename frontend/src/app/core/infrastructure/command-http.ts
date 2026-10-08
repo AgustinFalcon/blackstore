@@ -45,8 +45,9 @@ export class CommandHttp {
   }
   refresh(command: AccountingCommand | SaleCommand, receipt?: CommandReceipt,current:()=>boolean=()=>true,actorId?:number): Observable<boolean> {
     if(command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense)
-      return this.safe(this.http.get(`${ACCOUNTING_API_BASE}/expenses/commands/${command.commandId}/projection`)).pipe(map(raw=>{
-        const observation=PosWireMapper.expenseProjection(raw);
+      return this.safe(this.http.get(`${ACCOUNTING_API_BASE}/expenses/commands/${command.commandId}/projection`,{observe:'response'}),true).pipe(map(raw=>{
+        const transport=raw as {body?:unknown;status?:number}|null;
+        const observation=PosWireMapper.expenseProjection(transport?.body,transport?.status??0);
         return current() && !!actorId && !!receipt && observation.state===ExpenseProjectionState.Found && !!observation.projection &&
           ExpenseProjectionPolicy.accepts(command,receipt,observation.projection,actorId);
       }),catchError(()=>of(false)));
@@ -82,7 +83,15 @@ export class CommandHttp {
       return false;
     }), catchError(() => of(false)));
   }
-  private safe(request: Observable<unknown>): Observable<unknown> { return request.pipe(catchError(error => of(error instanceof HttpErrorResponse ? error.error : null))); }
+  private safe(request: Observable<unknown>,preserveHttpStatus=false): Observable<unknown> {
+    return request.pipe(catchError(error=>{
+      if(!(error instanceof HttpErrorResponse))return of(null);
+      // HTTP failure is never rehabilitated by a successful-looking body.
+      if(preserveHttpStatus)return of(error.status>=400 ? {body:error.error,status:error.status} : null);
+      const body=error.error;
+      return of(error.status>=400 && body && typeof body==='object' && body.code===error.status ? body : null);
+    }));
+  }
 }
 import { sameTicketIdentity as importIdentity } from '../domain/ticket-transition';
 import { concatMap as importConcatMap } from 'rxjs';

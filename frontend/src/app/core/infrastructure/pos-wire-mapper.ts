@@ -29,21 +29,22 @@ import { SaleAdmission, SaleAdmissionOutcome, SaleCommand, SaleCommandKind,SaleA
 
 export class PosWireMapper {
   private constructor() {}
-  static expenseProjection(response:unknown):ExpenseProjectionObservation {
+  static expenseProjection(response:unknown,httpStatus:number):ExpenseProjectionObservation {
     const unknown=Object.freeze({state:ExpenseProjectionState.Unknown,projection:null});
     const envelope=this.record(response),data=this.record(envelope?.['data']);
     if(!envelope || !this.nonempty(envelope['traceId']) || !data)return unknown;
     const state=ExpenseProjectionState.fromWire(data['state']);
     if(state!==ExpenseProjectionState.Found){
       const code=state===ExpenseProjectionState.NotFound?404:state===ExpenseProjectionState.Unavailable?503:null;
-      return code===envelope['code'] && data['projection']===null ? {state,projection:null}:unknown;
+      return code===httpStatus && code===envelope['code'] && data['projection']===null ? {state,projection:null}:unknown;
     }
     const p=this.record(data['projection']),e=this.record(p?.['expense']),a=this.record(p?.['accountingEvidence']),snap=this.record(a?.['snapshot']);
     const instant=(v:unknown):v is string=>typeof v==='string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
     const ids=(v:unknown):v is number[]=>Array.isArray(v) && v.every(id=>this.positiveId(id)) && new Set(v).size===v.length;
     const amount=TicketMoney.fromDecimal(e?.['amount']);
     const operation=ExpenseOperation.fromWire(p?.['operation']);
-    if(envelope['code']!==200 || !p || p['kind']!=='EXPENSE_RECORD' || !this.uuid(p['commandId']) ||
+    if(httpStatus!==200 || envelope['code']!==200 || envelope['errorCode']!==null || envelope['error']!=null ||
+      !p || p['kind']!=='EXPENSE_RECORD' || !this.uuid(p['commandId']) ||
       operation===ExpenseOperation.Unknown || !this.positiveId(p['cashSessionId']) || !this.positiveId(p['expenseId']) ||
       (p['settlementId']!==null && !this.positiveId(p['settlementId'])) || !ids(p['ledgerEventIds']) || !e ||
       !this.positiveId(e['id']) || !this.positiveId(e['cashSessionId']) || !this.positiveId(e['actorId']) ||

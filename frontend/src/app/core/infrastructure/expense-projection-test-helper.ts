@@ -9,7 +9,7 @@ export function expenseProjectionFixture(command:AccountingCommand,actor=7){
     amount:kind===ExpensePostingKind.Accrual?'10':'-10',origin:{kind:'EXPENSE',id:'5'},occurredAt:committedAt,actorId:actor,
     commandId:command.commandId,cashSessionId:2,expenseId:5,accountingVersion:2});
   const postings=operation===ExpenseOperation.Accrue?[posting(1,ExpensePostingKind.Accrual)]:operation===ExpenseOperation.SettleExisting?[posting(2,ExpensePostingKind.Paid)]:[posting(1,ExpensePostingKind.Accrual),posting(2,ExpensePostingKind.Paid)];
-  return {code:200,traceId:'test',data:{state:ExpenseProjectionState.Found.wire,projection:{commandId:command.commandId,kind:'EXPENSE_RECORD',operation:operation.wire,
+  return {code:200,traceId:'test',errorCode:null,message:null,retryable:null,data:{state:ExpenseProjectionState.Found.wire,projection:{commandId:command.commandId,kind:'EXPENSE_RECORD',operation:operation.wire,
     cashSessionId:2,expenseId:5,settlementId:paid?6:null,ledgerEventIds:postings.map(p=>p.id),
     expense:{id:5,cashSessionId:2,category:'supplies',amount:'10',actorId:operation===ExpenseOperation.SettleExisting?9:actor,
       createdAt:operation===ExpenseOperation.SettleExisting?'2026-10-06T12:00:00Z':committedAt,paymentMethod:paid?method.wire:null},

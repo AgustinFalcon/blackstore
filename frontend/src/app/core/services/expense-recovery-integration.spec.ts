@@ -60,6 +60,19 @@ describe('expense journal receipt projection recovery through real command HTTP'
     const c=command(),run=await execute(c);session.staff.set({id:8});session.generation.set(2);session.changed.next();
     run.get.flush(expenseProjectionFixture(c));await run.promise;expect(entries[0].phase).toBe(JournalPhase.ReceiptVerifiedAwaitingRefresh);expect(store.canWrite()).toBeFalse();http.expectNone(r=>r.method==='POST');
   });
+  for(const mode of ['http-failure-success-body','success-body-error-code'] as const){
+    it('keeps journal blocked and consult GET-only for '+mode,async()=>{
+      const c=command(),run=await execute(c),valid=expenseProjectionFixture(c);
+      const raw=mode==='success-body-error-code'?{...valid,errorCode:'UNAVAILABLE'}:valid;
+      const options=mode==='http-failure-success-body'?{status:503,statusText:'Unavailable'}:{status:200,statusText:'OK'};
+      run.get.flush(raw,options);await run.promise;
+      expect(entries[0].phase).toBe(JournalPhase.ReceiptVerifiedAwaitingRefresh);expect(store.canWrite()).toBeFalse();
+      const recovery=store.consult();http.expectOne(`${ACCOUNTING_API_BASE}/accounting/commands/${c.commandId}`).flush(receipt(c));await settle();
+      const get=http.expectOne(`${ACCOUNTING_API_BASE}/expenses/commands/${c.commandId}/projection`);expect(get.request.method).toBe('GET');get.flush(raw,options);await recovery;
+      expect(entries[0].phase).toBe(JournalPhase.ReceiptVerifiedAwaitingRefresh);expect(store.canWrite()).toBeFalse();
+      await store.execute(command());http.expectNone(r=>r.method==='POST');
+    });
+  }
   it('changed fresh context keeps exact Found unresolved and blocks next mutation',async()=>{
     const c=command(),run=await execute(c);run.get.flush(expenseProjectionFixture(c));await settle();refresh(AccountingLifecycleState.Active,true);await run.promise;
     expect(entries[0].phase).toBe(JournalPhase.ReceiptVerifiedAwaitingRefresh);expect(store.canWrite()).toBeFalse();
