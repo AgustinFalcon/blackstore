@@ -1,5 +1,17 @@
 # CLR-T08-D — frontend integrado y validación local
 
+## Corrección P2 de carrera IndexedDB — source y validación vigentes
+
+2026-10-08: source `c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c` parte de `5794c4dff0f63fbc5320086dd07f4fd219cb4b49`, sin reescribir commits. Antecedentes de P2 HTTP e integración debajo conservados.
+
+JournalPhase.nextPhase contiene la regla cerrada del dominio: avances Prepared/AwaitingReceipt→ReceiptVerifiedAwaitingRefresh→Resolved, recuperación directa del receipt desde Prepared, retrocesos conocidos como no-op, misma fase idempotente, Resolved terminal. Unknown y salto directo a Resolved sin receipt verificado se rechazan; Quarantined no escapa por recuperación. IndexedDbCommandJournal.transition lee/decodifica la fila, verifica identidad de intención y aplica política a saved.phase dentro de la misma transacción readwrite que hace put. Un caller con fase stale no sustituye la fase terminal guardada. Si la decisión es no-op, conserva la fila y sólo confirma la transacción. Decoder permite la fase de cuarentena únicamente para evaluar transición; list/prepare siguen fail-closed y sin borrado.
+
+Tests de política, transacción e integración reproducen el orden exacto con dos instancias/conexiones de IndexedDB: la primera hidrata A y deja su GET/receipt pendiente; la otra resuelve A y prepara B; luego llega el receipt/record tardío de A. Ambas transiciones tardías son idempotentes, A permanece Resolved y B es el único unresolved. El refresh/hydrate siguiente permanece hidratado sin neutralBlock/quarantine, consulta únicamente B y no emite POST. También se prueban rechazo atómico de skip/Unknown y cuarentena terminal/idempotente. La carrera usa IndexedDB real de Karma/Chrome, CommandHttp test double y eventos controlados; no es el browser DCT contra backend/PG16.
+
+`npm run typecheck` PASS. Focused con include de journal-phase.spec.ts, indexed-db-command-journal.spec.ts y journal-tab-recovery.spec.ts: **20/20 PASS**. Suite completa, que incluye los 227 previos y siete nuevos: **234/234 PASS**, launcher built-in ChromeHeadlessNoSandbox/chromium-1243. `npm run build` productivo PASS: main 455.47 kB, initial 492.97 kB, transferencia 125.95 kB. `npm audit --omit=dev --json` PASS, 0 vulnerabilidades; diff-check PASS. Se solicitó red puntual para build/audit antes de ejecutarlos, sin desactivar optimización/fonts, sin cambiar lockfile ni CI. T: desmontado.
+
+SDD JSON/stats permanece 15 tareas/2 done. PG16/browser CLR/crash/restart/CI/reviews específicos sobre este source siguen pendientes; sin push/PR/deploy/activación/homologación/publicación. Este fix no se marca APPROVED por sus pruebas locales.
+
 ## Corrección P2 Security — source y validación vigentes
 
 2026-10-08: source nuevo `b0ab8c18ea678e829d2f7dc3ed6f6763335affa3` parte de HEAD integrado `65407e2a89e311b117bde6b72aa431568a529954`, sin reescribir ramas. El registro original debajo se conserva como antecedente.

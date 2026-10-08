@@ -399,6 +399,9 @@
     "accounting_evidence_contract": "T08_D_SPECIFIC_REVIEW_GO_PENDING_BACKEND_BB9E64B_FRONTEND_B8024DC_INTEGRATED_PG16_BROWSER_CI_PENDING"
   },
   "evidence": {
+    "frontend_t08d_journal_p2_source_head": "c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c",
+    "frontend_t08d_journal_p2_validation": "FOCUSED_20_20_FULL_234_234_TYPECHECK_BUILD_PASS_AUDIT_PRODUCTION_0_DIFF_CHECK_PASS",
+    "frontend_t08d_journal_p2_race": "A_RESOLVED_B_PREPARED_LATE_RECORD_A_TERMINAL_B_ONLY_UNRESOLVED_HYDRATE_GET_ONLY",
     "frontend_t08d_security_p2_source_head": "b0ab8c18ea678e829d2f7dc3ed6f6763335affa3",
     "frontend_t08d_security_p2_validation": "TYPECHECK_KARMA_227_227_BUILD_PASS_AUDIT_PRODUCTION_0_DIFF_CHECK_PASS",
     "frontend_t08d_security_p2_http_envelope": "HTTP503_BODY200_FOUND_AND_CODE200_ERRORCODE_UNAVAILABLE_UNKNOWN_JOURNAL_BLOCKED_GET_ONLY",

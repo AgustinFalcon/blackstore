@@ -1,5 +1,9 @@
 # Libro de caja, arqueo y reportes por período
 
+## Corrección P2 IndexedDB T08-D — source vigente
+
+2026-10-08: source `c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c` sobre `5794c4d`. JournalPhase define política cerrada/monotónica; transición decide desde fase persistida dentro de la misma transacción IndexedDB, Resolved terminal e idempotencia segura. Carrera A Resolved→B Prepared→record tardío A preserva sólo B unresolved y hydrate GET-only. Focused 20/20/full 234/234/typecheck/build PASS, audit productivo 0 y diff-check PASS. [Evidencia](evidence/CLR-T08-D-frontend-local-20261008.md). Source/validación anteriores se conservan como antecedentes; PG16/browser/CI/reviews específicos siguen pendientes.
+
 ## Corrección P2 Security T08-D — source vigente
 
 2026-10-08: source `b0ab8c18ea678e829d2f7dc3ed6f6763335affa3` sobre `65407e2` exige HTTP real y envelope coherentes: HTTP503/body200 Found y code200/errorCode UNAVAILABLE quedan Unknown, journal bloqueado y recuperación GET-only. Typecheck/build PASS, Karma completo 227/227 PASS, audit productivo 0 y diff-check PASS. [Evidencia](evidence/CLR-T08-D-frontend-local-20261008.md). Sustituye únicamente source/validación local previos; PG16/browser/CI/reviews específicos siguen pendientes.

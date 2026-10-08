@@ -1,5 +1,9 @@
 # Progreso inicial
 
+## 2026-10-08 — corrección P2 de carrera IndexedDB
+
+Source `c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c`: política JournalPhase.nextPhase de avance/retroceso idempotente/Resolved terminal/Unknown y cuarentena fail-closed, evaluada contra fase persistida dentro de la transacción de transition. Dos conexiones reales y recovery tardío prueban A Resolved, B único unresolved, hydrate normal y cero rePOST. Focused 20/20, full 234/234, typecheck/build/audit productivo 0/diff-check PASS. [Evidencia](../evidence/CLR-T08-D-frontend-local-20261008.md). Sin aceptación DCT/browser PG16 ni aprobación heredada.
+
 ## 2026-10-08 — corrección P2 Security posterior a integración T08-D
 
 Source `b0ab8c18ea678e829d2f7dc3ed6f6763335affa3` sobre `65407e2`: CommandHttp preserva status del GET de proyección y safe considera status al recuperar fallos; PosWireMapper exige HTTP200/code200/errorCode null/error ausente o null para Found. Contradictorios conservan journal y cero rePOST. Typecheck/build PASS, Karma 227/227 PASS, audit productivo 0, diff-check PASS. [Evidencia](../evidence/CLR-T08-D-frontend-local-20261008.md). Ningún gate PG16/browser/CI/review se cierra por esta validación local.
