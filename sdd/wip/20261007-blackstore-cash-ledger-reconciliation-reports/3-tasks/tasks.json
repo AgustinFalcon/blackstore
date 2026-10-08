@@ -286,7 +286,7 @@
     {
       "id": "CLR-T08-C",
       "title": "Clientes saga v2 lifecycle preventivo y journal durable UI",
-      "status": "implemented_pending_local_tests_pg16_browser_ci_review",
+      "status": "implemented_pending_pg16_browser_ci_review",
       "pr_cut": "DURABLE_COMMAND_UI",
       "depends_on": [
         "CLR-T08-B-POS"
@@ -357,6 +357,10 @@
     "pos_context": "BACKEND_FRONTEND_IMPLEMENTED_PG16_BROWSER_CI_REVIEW_PENDING"
   },
   "evidence": {
+    "frontend_t08c_source_head": "82271775df12d79554aacbfc67030db3843f1445",
+    "frontend_t08c_install_typecheck_build": "PASS_LOCAL_LOCKFILE_SOURCE_8227177",
+    "frontend_t08c_unit_tests": "161_161_PASS_BUILTIN_CHROME_HEADLESS_NO_SANDBOX_TEMPORARY_T_DRIVE_REMOVED",
+    "frontend_dependencies_security": "PREEXISTING_NPM_AUDIT_7_HIGH_PENDING_SECURITY_TRIAGE_NO_AUDIT_FIX",
     "postgres16_clean": "NOT_RUN",
     "postgres16_upgrade": "NOT_RUN",
     "crash": "PG18_T06_PASS",

@@ -1,6 +1,6 @@
 # Plan y cortes revisables
 
-Estado actual C 2026-10-08: source frontend implementado sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; `implemented_pending_local_tests_pg16_browser_ci_review`. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). JSON fija el DAG vigente y conserva T08 parcial. La secuencia/reviews específicos B-POS/ADR-003 y PG16/browser/CI no se consideran aprobados por este corte.
+Estado actual C 2026-10-08: source frontend implementado sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; `implemented_pending_pg16_browser_ci_review`. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). JSON fija el DAG vigente y conserva T08 parcial. La secuencia/reviews específicos B-POS/ADR-003 y PG16/browser/CI no se consideran aprobados por este corte.
 
 ## Addendum de contexto POS — precedencia vigente
 

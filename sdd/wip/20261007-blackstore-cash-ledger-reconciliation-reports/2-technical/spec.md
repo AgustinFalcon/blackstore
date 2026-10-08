@@ -1,6 +1,6 @@
 # Especificación técnica
 
-Incremento T08-C 2026-10-08 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: tipos/traductores contexto/lifecycle/admission, journal IndexedDB común y clientes internos v2 implementados. `implemented_pending_local_tests_pg16_browser_ci_review`; T08 sigue parcial. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md) documenta límites y source intermedio validado. Los estados blocked/planned de C en antecedentes siguientes quedan sustituidos para implementación; no cambian aprobación ADR-003 ni aceptación runtime.
+Incremento T08-C 2026-10-08 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: tipos/traductores contexto/lifecycle/admission, journal IndexedDB común y clientes internos v2 implementados. `implemented_pending_pg16_browser_ci_review`; T08 sigue parcial. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md) documenta límites y validación local exacta del source 82271775df12d79554aacbfc67030db3843f1445 (161/161 unitarios, typecheck/build PASS). Los estados blocked/planned de C en antecedentes siguientes quedan sustituidos para implementación; no cambian aprobación ADR-003 ni aceptación runtime.
 
 ## Addendum T08-B-POS — contexto verificado
 

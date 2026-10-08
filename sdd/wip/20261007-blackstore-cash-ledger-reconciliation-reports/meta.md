@@ -1,6 +1,8 @@
 # Libro de caja, arqueo y reportes por período
 
-Estado actual de C: `implemented_pending_local_tests_pg16_browser_ci_review` sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. El source del journal/contexto/lifecycle y los clientes v2 está implementado; [evidencia](evidence/CLR-T08-C-frontend-local-20261008.md). T08 parcial; PG16/browser/crash/CI/reviews pendientes. Las menciones de C bloqueado debajo registran cortes anteriores y no son el estado de implementación actual.
+Validación frontend externa exacta `82271775df12d79554aacbfc67030db3843f1445`: npm ci local/typecheck/build PASS y 161/161 unitarios PASS con launcher built-in ChromeHeadlessNoSandbox en unidad temporal T:, luego desmontada. Sin cambios source/CI; PG16/browser CLR/crash/CI/reviews y security triage de 7 high preexistentes siguen pendientes. [Detalle](evidence/CLR-T08-C-frontend-local-20261008.md).
+
+Estado actual de C: `implemented_pending_pg16_browser_ci_review` sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. El source del journal/contexto/lifecycle y los clientes v2 está implementado; [evidencia](evidence/CLR-T08-C-frontend-local-20261008.md). T08 parcial; PG16/browser/crash/CI/reviews pendientes. Las menciones de C bloqueado debajo registran cortes anteriores y no son el estado de implementación actual.
 
 ## Estado vigente del addendum POS
 
@@ -22,4 +24,4 @@ Antecedente documental del 2026-10-07: base T08-B `39aa9d6dad199d88328e9c3799911
 StoreCore permanece fixture/disabled. Dos PostgreSQL, E2E live, fiscal, MP-LIVE-05, activación companion, facturación y Correo Argentino conservan gates externos independientes. La aceptación contable local no los habilita.
 # Estado vigente T08-C — 2026-10-08
 
-Frontend sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: v2 saga/caja/pagos, contexto/lifecycle, journal IndexedDB y recuperación GET implementados. Estado `implemented_pending_local_tests_pg16_browser_ci_review`; sustituye el bloqueo de implementación de C registrado abajo, sin cerrar gates de B-POS ni ADR-003. T08 parcial, T09 planned. [Evidencia y límites](evidence/CLR-T08-C-frontend-local-20261008.md).
+Frontend sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: v2 saga/caja/pagos, contexto/lifecycle, journal IndexedDB y recuperación GET implementados. Estado `implemented_pending_pg16_browser_ci_review`; sustituye el bloqueo de implementación de C registrado abajo, sin cerrar gates de B-POS ni ADR-003. T08 parcial, T09 planned. [Evidencia y límites](evidence/CLR-T08-C-frontend-local-20261008.md).
