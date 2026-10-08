@@ -16,6 +16,7 @@ import org.mockito.Mockito.mock
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
 import java.math.BigDecimal
+import java.net.URI
 import java.sql.Connection
 import java.sql.SQLException
 import java.time.Duration
@@ -30,6 +31,19 @@ import javax.sql.DataSource
 class AccountingMutationPostgresTest {
     private val staff = AuthenticatedStaff(StaffUserId(1), "Cashier", StaffRole.CASHIER)
     private val owner = AuthenticatedStaff(StaffUserId(2), "Owner", StaffRole.OWNER)
+
+    @Test fun crashHarnessClosedTypesTranslateKnownAndUnknownWireValues() {
+        AccountingCrashBoundary.entries.filter { it != AccountingCrashBoundary.Unknown }.forEach {
+            assertEquals(it, AccountingCrashBoundary.fromWire(it.name))
+        }
+        AccountingCrashOperation.entries.filter { it != AccountingCrashOperation.Unknown }.forEach {
+            assertEquals(it, AccountingCrashOperation.fromWire(it.name))
+        }
+        assertEquals(AccountingCrashBoundary.Unknown, AccountingCrashBoundary.fromWire(null))
+        assertEquals(AccountingCrashBoundary.Unknown, AccountingCrashBoundary.fromWire("AFTER_COMMIT"))
+        assertEquals(AccountingCrashOperation.Unknown, AccountingCrashOperation.fromWire(null))
+        assertEquals(AccountingCrashOperation.Unknown, AccountingCrashOperation.fromWire("REFUND"))
+    }
 
     @Test fun closePersistsSignedSnapshotAndReplayWithoutAdjustment() = database { source ->
         activate(source)
@@ -103,6 +117,231 @@ class AccountingMutationPostgresTest {
         assertEquals(AccountingCommandFailure.Paused, rejected(commands.execute(staff,
             AccountingCommandDraft.ExpenseRecord(UUID.randomUUID(), first.cashSessionId, "supplies", ExpenseInstruction.Accrue("OPERATING", BigDecimal.ONE)))))
         assertEquals(AccountingCommandResult.Committed(first), JdbcAccountingMutationCommands(source).findReceipt(staff, first.commandId))
+    }
+
+    @Test fun v2ChildCrashBeforeAndAfterCommitRecoversByReceiptWithoutDuplication() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val jdbcUrl = source.connection.use { it.metaData.url }
+        require(URI(jdbcUrl.removePrefix("jdbc:")).host in setOf("localhost", "127.0.0.1", "::1")) {
+            "crash harness requires an isolated loopback PostgreSQL"
+        }
+        val role = "clr_crash_${UUID.randomUUID().toString().replace("-", "")}"
+        val password = UUID.randomUUID().toString()
+        sql(source, "CREATE ROLE $role LOGIN NOINHERIT PASSWORD '$password'")
+        sql(source, "GRANT blackstore_app, blackstore_projection_worker TO $role")
+        val reader = Executors.newSingleThreadExecutor()
+        try {
+            for (operation in AccountingCrashOperation.entries.filter {
+                it != AccountingCrashOperation.Unknown && it != AccountingCrashOperation.Recognition }) {
+                for (boundary in AccountingCrashBoundary.entries.filter { it != AccountingCrashBoundary.Unknown }) {
+                    val cash = if (operation == AccountingCrashOperation.Open) null
+                    else applied(commands.execute(staff, opening().copy(commandId = UUID.randomUUID()))).cashSessionId
+                    val identity = if (operation in setOf(AccountingCrashOperation.PaymentCapture, AccountingCrashOperation.PaymentReverse))
+                        sale(source, requireNotNull(cash)) else null
+                    val originalPayment = if (operation == AccountingCrashOperation.PaymentReverse)
+                        applied(commands.execute(staff, AccountingCommandDraft.PaymentCapture(
+                            UUID.randomUUID(), requireNotNull(identity), PaymentMethod.CASH, BigDecimal("10.00")))).paymentId else null
+                    val commandId = UUID.randomUUID()
+                    val command = when (operation) {
+                        AccountingCrashOperation.Open -> AccountingCommandDraft.CashSessionOpen(commandId, 1, 1, BigDecimal.ZERO, "crash harness opening")
+                        AccountingCrashOperation.Expense -> AccountingCommandDraft.ExpenseRecord(commandId, requireNotNull(cash), "crash harness expense",
+                            ExpenseInstruction.AccrueAndSettle("OPERATING", BigDecimal("1.00"), PaymentMethod.CASH))
+                        AccountingCrashOperation.Close -> AccountingCommandDraft.CashSessionClose(commandId, requireNotNull(cash), BigDecimal.ZERO, "crash harness close")
+                        AccountingCrashOperation.PaymentCapture -> AccountingCommandDraft.PaymentCapture(
+                            commandId, requireNotNull(identity), PaymentMethod.CASH, BigDecimal("10.00"))
+                        AccountingCrashOperation.PaymentReverse -> AccountingCommandDraft.PaymentReverse(
+                            commandId, requireNotNull(identity), requireNotNull(originalPayment), "crash harness refund", "crash-harness-evidence")
+                        AccountingCrashOperation.Recognition -> fail("recognition has a dedicated worker crash test")
+                        AccountingCrashOperation.Unknown -> fail("unknown crash operation")
+                    }
+                    val applicationName = "clr-crash-${UUID.randomUUID()}"
+                    val before = factCounts(source)
+                    val child = ProcessBuilder(System.getProperty("java.home") + "/bin/java", "-cp",
+                        System.getProperty("blackstore.test.classpath"), AccountingMutationCrashChild::class.java.name,
+                        boundary.name, operation.name, staff.id.value.toString(), commandId.toString(),
+                        (cash ?: 0).toString(), applicationName)
+                        .redirectErrorStream(true)
+                        .apply {
+                            environment().remove("BLACKSTORE_TEST_JDBC_URL")
+                            environment().remove("BLACKSTORE_TEST_JDBC_USER")
+                            environment().remove("BLACKSTORE_TEST_JDBC_PASSWORD")
+                            environment()["BLACKSTORE_CRASH_JDBC_URL"] = jdbcUrl
+                            environment()["BLACKSTORE_CRASH_JDBC_USER"] = role
+                            environment()["BLACKSTORE_CRASH_JDBC_PASSWORD"] = password
+                            identity?.let {
+                                environment()["BLACKSTORE_CRASH_CLIENT_ID"] = it.clientInstanceId
+                                environment()["BLACKSTORE_CRASH_DEVICE_ID"] = it.deviceId
+                                environment()["BLACKSTORE_CRASH_SALE_ID"] = it.saleId
+                                environment()["BLACKSTORE_CRASH_OPERATION_ID"] = it.operationId
+                            }
+                            originalPayment?.let { environment()["BLACKSTORE_CRASH_PAYMENT_ID"] = it.toString() }
+                        }.start()
+                    try {
+                        val line = reader.submit<String> { child.inputStream.bufferedReader().readLine() }.get(20, TimeUnit.SECONDS)
+                        assertEquals("CLR_CRASH_READY", line,
+                            "operation=$operation boundary=$boundary child failed before the controlled v2 commit boundary")
+                        child.destroyForcibly()
+                        assertTrue(child.waitFor(10, TimeUnit.SECONDS))
+                        awaitNoConnection(source, applicationName)
+
+                        val recovered = JdbcAccountingMutationCommands(source).findReceipt(staff, commandId)
+                        if (boundary == AccountingCrashBoundary.BeforeCommit) {
+                            assertEquals(AccountingCommandResult.NotFound, recovered)
+                            assertEquals(before, factCounts(source), "precommit crash left partial facts for $operation")
+                        } else {
+                            assertTrue(recovered is AccountingCommandResult.Committed,
+                                "operation=$operation boundary=$boundary recovered=$recovered")
+                        }
+                        val replay = applied(JdbcAccountingMutationCommands(source).execute(staff, command))
+                        if (recovered is AccountingCommandResult.Committed) assertEquals(recovered.receipt, replay)
+                        assertEquals("1", scalar(source, "SELECT count(*) FROM accounting_command_receipts WHERE command_id='$commandId'"))
+                        assertEquals("1", scalar(source, "SELECT count(*) FROM audit_events WHERE payload_redacted::text LIKE '%$commandId%'"))
+                        when (operation) {
+                            AccountingCrashOperation.Open -> {
+                                assertEquals("1", scalar(source,
+                                    "SELECT count(*) FROM cash_session_projection WHERE id=${replay.cashSessionId} AND status='OPEN'"))
+                                assertEquals("1", scalar(source,
+                                    "SELECT count(*) FROM cash_accounting_coverage WHERE cash_session_id=${replay.cashSessionId} AND coverage='COMPLETE_FROM_OPENING'"))
+                                assertEquals("OPENING:0.00", scalar(source,
+                                    "SELECT event_type||':'||amount_delta::text FROM cash_ledger_events WHERE command_id='$commandId'"))
+                            }
+                            AccountingCrashOperation.Expense -> {
+                                assertEquals("1", scalar(source, "SELECT count(*) FROM expenses WHERE id=${replay.expenseId}"))
+                                assertEquals("1", scalar(source, "SELECT count(*) FROM expense_settlements WHERE id=${replay.settlementId} AND expense_id=${replay.expenseId} AND amount=1.00"))
+                                assertEquals("EXPENSE_ACCRUAL:1.00,EXPENSE_PAID:-1.00", scalar(source,
+                                    "SELECT string_agg(event_type||':'||amount_delta::text,',' ORDER BY local_sequence) FROM cash_ledger_events WHERE command_id='$commandId'"))
+                            }
+                            AccountingCrashOperation.Close -> {
+                                assertEquals("1", scalar(source, "SELECT count(*) FROM cash_reconciliations WHERE command_id='$commandId'"))
+                                assertEquals("CLOSED", scalar(source, "SELECT status FROM cash_session_projection WHERE id=${replay.cashSessionId}"))
+                                assertEquals("0", scalar(source, "SELECT count(*) FROM cash_ledger_events WHERE command_id='$commandId'"))
+                                assertEquals(1L, requireNotNull(replay.closeSnapshot).localWatermark)
+                            }
+                            AccountingCrashOperation.PaymentCapture -> {
+                                assertEquals("1", scalar(source,
+                                    "SELECT count(*) FROM payments WHERE id=${replay.paymentId} AND status='CAPTURED' AND amount=10.00"))
+                                assertEquals("1", scalar(source, "SELECT count(*) FROM payments WHERE accounting_command_id='$commandId'"))
+                                assertEquals("PAYMENT:10.00", scalar(source,
+                                    "SELECT event_type||':'||amount_delta::text FROM cash_ledger_events WHERE command_id='$commandId'"))
+                            }
+                            AccountingCrashOperation.PaymentReverse -> {
+                                assertEquals("1", scalar(source,
+                                    "SELECT count(*) FROM payments WHERE id=${replay.paymentId} AND status='REFUNDED' AND original_payment_id=$originalPayment AND amount=10.00"))
+                                assertEquals("1", scalar(source, "SELECT count(*) FROM payments WHERE accounting_command_id='$commandId'"))
+                                assertEquals("REFUND:-10.00", scalar(source,
+                                    "SELECT event_type||':'||amount_delta::text FROM cash_ledger_events WHERE command_id='$commandId'"))
+                            }
+                            AccountingCrashOperation.Recognition -> fail("recognition has a dedicated worker crash test")
+                            AccountingCrashOperation.Unknown -> fail("unknown crash operation")
+                        }
+                        if (operation != AccountingCrashOperation.Close) {
+                            sql(source, "UPDATE cash_session_projection SET status='CLOSED',closed_at=clock_timestamp(),closing_cash_declared=0 WHERE id=${replay.cashSessionId}")
+                        }
+                    } finally {
+                        if (child.isAlive) {
+                            child.destroyForcibly()
+                            child.waitFor(10, TimeUnit.SECONDS)
+                        }
+                    }
+                }
+            }
+        } finally {
+            reader.shutdownNow()
+            sql(source, "REVOKE blackstore_app, blackstore_projection_worker FROM $role")
+            sql(source, "DROP ROLE $role")
+        }
+    }
+
+    @Test fun commitConfirmedButResponseLostIsRecoveredByExactReceipt() = database { source ->
+        activate(source)
+        val reliable = JdbcAccountingMutationCommands(source)
+        val cash = applied(reliable.execute(staff, opening())).cashSessionId
+        val command = AccountingCommandDraft.ExpenseRecord(UUID.randomUUID(), cash, "uncertain commit expense",
+            ExpenseInstruction.AccrueAndSettle("OPERATING", BigDecimal("2.00"), PaymentMethod.CASH))
+        assertEquals(AccountingCommandFailure.Unavailable,
+            rejected(JdbcAccountingMutationCommands(ThrowAfterCommitSource(source)).execute(staff, command)))
+        val recovered = reliable.findReceipt(staff, command.commandId) as AccountingCommandResult.Committed
+        assertEquals(recovered.receipt, applied(reliable.execute(staff, command)))
+        assertEquals("1", scalar(source, "SELECT count(*) FROM accounting_command_receipts WHERE command_id='${command.commandId}'"))
+        assertEquals(recovered.receipt.ledgerEventIds.size.toString(), scalar(source,
+            "SELECT count(*) FROM cash_ledger_events WHERE command_id='${command.commandId}'"))
+    }
+
+    @Test fun workerRecognitionChildCrashIsAtomicBeforeAndAfterCommit() = database { source ->
+        activate(source)
+        val commands = JdbcAccountingMutationCommands(source)
+        val jdbcUrl = source.connection.use { it.metaData.url }
+        require(URI(jdbcUrl.removePrefix("jdbc:")).host in setOf("localhost", "127.0.0.1", "::1"))
+        val role = "clr_worker_${UUID.randomUUID().toString().replace("-", "")}"
+        val password = UUID.randomUUID().toString()
+        sql(source, "CREATE ROLE $role LOGIN NOINHERIT PASSWORD '$password'")
+        sql(source, "GRANT blackstore_app, blackstore_projection_worker, blackstore_outbox_worker TO $role")
+        val reader = Executors.newSingleThreadExecutor()
+        try {
+            for (boundary in AccountingCrashBoundary.entries.filter { it != AccountingCrashBoundary.Unknown }) {
+                val fixture = committable(source, commands)
+                val before = workerFactCounts(source, fixture.committed.quadruple.operationId)
+                val applicationName = "clr-worker-crash-${UUID.randomUUID()}"
+                val child = ProcessBuilder(System.getProperty("java.home") + "/bin/java", "-cp",
+                    System.getProperty("blackstore.test.classpath"), AccountingMutationCrashChild::class.java.name,
+                    boundary.name, AccountingCrashOperation.Recognition.name, staff.id.value.toString(), UUID.randomUUID().toString(),
+                    fixture.cashId.toString(), applicationName)
+                    .redirectErrorStream(true)
+                    .apply {
+                        environment().remove("BLACKSTORE_TEST_JDBC_URL")
+                        environment().remove("BLACKSTORE_TEST_JDBC_USER")
+                        environment().remove("BLACKSTORE_TEST_JDBC_PASSWORD")
+                        environment()["BLACKSTORE_CRASH_JDBC_URL"] = jdbcUrl
+                        environment()["BLACKSTORE_CRASH_JDBC_USER"] = role
+                        environment()["BLACKSTORE_CRASH_JDBC_PASSWORD"] = password
+                        environment()["BLACKSTORE_CRASH_CLIENT_ID"] = fixture.committed.quadruple.clientInstanceId
+                        environment()["BLACKSTORE_CRASH_DEVICE_ID"] = fixture.committed.quadruple.deviceId
+                        environment()["BLACKSTORE_CRASH_SALE_ID"] = fixture.committed.quadruple.saleId
+                        environment()["BLACKSTORE_CRASH_OPERATION_ID"] = fixture.committed.quadruple.operationId
+                        environment()["BLACKSTORE_CRASH_CLAIM_ID"] = fixture.claim.id.toString()
+                        environment()["BLACKSTORE_CRASH_CLAIM_TOKEN"] = fixture.claim.claimToken.toString()
+                        environment()["BLACKSTORE_CRASH_CLAIM_EPOCH"] = fixture.claim.claimEpoch.toString()
+                        environment()["BLACKSTORE_CRASH_CLAIM_ATTEMPTS"] = fixture.claim.attempts.toString()
+                        environment()["BLACKSTORE_CRASH_CLAIM_ACTOR"] = fixture.claim.actorId.toString()
+                    }.start()
+                try {
+                    val line = reader.submit<String> { child.inputStream.bufferedReader().readLine() }.get(20, TimeUnit.SECONDS)
+                    assertEquals("CLR_CRASH_READY", line, "worker boundary=$boundary failed before controlled commit")
+                    child.destroyForcibly()
+                    assertTrue(child.waitFor(10, TimeUnit.SECONDS))
+                    awaitNoConnection(source, applicationName)
+                    if (boundary == AccountingCrashBoundary.BeforeCommit) {
+                        assertEquals(before, workerFactCounts(source, fixture.committed.quadruple.operationId))
+                        assertEquals(AttemptOutcome.APPLIED, JdbcDurableSaleRepository(source).applyClaimEvidence(
+                            fixture.claim, fixture.committed, "e".repeat(64), "COMMITTED", fixture.receipt))
+                    } else {
+                        val committed = workerFactCounts(source, fixture.committed.quadruple.operationId)
+                        assertEquals("COMMITTED", committed.saleStatus)
+                        assertEquals("APPLIED", committed.deliveryState)
+                        assertEquals(before.recognitions + 1, committed.recognitions)
+                        assertEquals(before.recognitionReceipts + 1, committed.recognitionReceipts)
+                        assertEquals(AttemptOutcome.LATE_IGNORED, JdbcDurableSaleRepository(source).applyClaimEvidence(
+                            fixture.claim, fixture.committed, "e".repeat(64), "COMMITTED", fixture.receipt))
+                    }
+                    val afterReplay = workerFactCounts(source, fixture.committed.quadruple.operationId)
+                    assertEquals("COMMITTED", afterReplay.saleStatus)
+                    assertEquals("APPLIED", afterReplay.deliveryState)
+                    assertEquals(before.recognitions + 1, afterReplay.recognitions)
+                    assertEquals(before.recognitionReceipts + 1, afterReplay.recognitionReceipts)
+                    assertEquals(before.inboxApplications + 1, afterReplay.inboxApplications)
+                    assertEquals(before.audits + 2, afterReplay.audits)
+                    applied(commands.execute(staff, AccountingCommandDraft.CashSessionClose(
+                        UUID.randomUUID(), fixture.cashId, BigDecimal.TEN, "worker crash scenario cleanup")))
+                } finally {
+                    if (child.isAlive) { child.destroyForcibly(); child.waitFor(10, TimeUnit.SECONDS) }
+                }
+            }
+        } finally {
+            reader.shutdownNow()
+            sql(source, "REVOKE blackstore_app, blackstore_projection_worker, blackstore_outbox_worker FROM $role")
+            sql(source, "DROP ROLE $role")
+        }
     }
 
     @Test fun splitCaptureFullRefundAndRemainingBalanceKeepStructuredEvidence() = database { source ->
@@ -584,6 +823,43 @@ class AccountingMutationPostgresTest {
 
     private fun scalar(source: DataSource, sql: String): String = source.connection.use { c -> c.createStatement().use { s -> s.executeQuery(sql).use { r -> r.next(); r.getString(1) } } }
     private fun sql(source: DataSource, sql: String) { source.connection.use { c -> c.createStatement().use { it.execute(sql) } } }
+    private data class FactCounts(val cash: String, val coverage: String, val expenses: String, val settlements: String,
+        val ledger: String, val reconciliations: String, val receipts: String, val audits: String,
+        val payments: String, val cashProjection: String, val saleProjection: String)
+    private fun factCounts(source: DataSource) = FactCounts(
+        scalar(source, "SELECT count(*) FROM cash_session_projection"),
+        scalar(source, "SELECT count(*) FROM cash_accounting_coverage"),
+        scalar(source, "SELECT count(*) FROM expenses"),
+        scalar(source, "SELECT count(*) FROM expense_settlements"),
+        scalar(source, "SELECT count(*) FROM cash_ledger_events"),
+        scalar(source, "SELECT count(*) FROM cash_reconciliations"),
+        scalar(source, "SELECT count(*) FROM accounting_command_receipts"),
+        scalar(source, "SELECT count(*) FROM audit_events"),
+        scalar(source, "SELECT coalesce(jsonb_agg(jsonb_build_array(id,status,original_payment_id,amount,accounting_command_id) ORDER BY id)::text,'[]') FROM payments"),
+        scalar(source, "SELECT coalesce(jsonb_agg(jsonb_build_array(id,status,closed_at,closing_cash_declared) ORDER BY id)::text,'[]') FROM cash_session_projection"),
+        scalar(source, "SELECT coalesce(jsonb_agg(jsonb_build_array(id,status,version,gross_sales,discounts) ORDER BY id)::text,'[]') FROM sale_state_projection"),
+    )
+    private data class WorkerFactCounts(val saleStatus: String, val deliveryState: String, val saleSnapshot: String,
+        val deliverySnapshot: String, val recognitions: Int,
+        val recognitionReceipts: Int, val inboxApplications: Int, val audits: Int)
+    private fun workerFactCounts(source: DataSource, operationId: String) = WorkerFactCounts(
+        scalar(source, "SELECT status FROM sale_state_projection WHERE operation_id='$operationId'"),
+        scalar(source, "SELECT d.state FROM storecore_command_delivery d JOIN storecore_outbox_commands o ON o.id=d.command_id WHERE o.operation_id='$operationId' AND o.operation_kind='COMMIT'"),
+        scalar(source, "SELECT jsonb_build_array(status,version,gross_sales,discounts,reservation_receipt,updated_at)::text FROM sale_state_projection WHERE operation_id='$operationId'"),
+        scalar(source, "SELECT jsonb_build_array(d.state,d.claim_token,d.claim_epoch,d.lease_until,d.updated_at)::text FROM storecore_command_delivery d JOIN storecore_outbox_commands o ON o.id=d.command_id WHERE o.operation_id='$operationId' AND o.operation_kind='COMMIT'"),
+        scalar(source, "SELECT count(*) FROM commercial_recognitions r JOIN sale_state_projection s ON s.id=r.sale_id WHERE s.operation_id='$operationId'").toInt(),
+        scalar(source, "SELECT count(*) FROM accounting_command_receipts r JOIN sale_state_projection s ON s.id=r.sale_id WHERE s.operation_id='$operationId' AND r.command_kind='COMMERCIAL_RECOGNITION'").toInt(),
+        scalar(source, "SELECT count(*) FROM storecore_inbox_applications a JOIN storecore_outbox_commands o ON o.id=a.command_id WHERE o.operation_id='$operationId'").toInt(),
+        scalar(source, "SELECT count(*) FROM audit_events a JOIN sale_state_projection s ON s.id=a.aggregate_id WHERE a.aggregate_type='sale' AND s.operation_id='$operationId'").toInt(),
+    )
+    private fun awaitNoConnection(source: DataSource, applicationName: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (System.nanoTime() < deadline) {
+            if (scalar(source, "SELECT count(*) FROM pg_stat_activity WHERE application_name='$applicationName'") == "0") return
+            Thread.onSpinWait()
+        }
+        fail<Unit>("crash child connection was not released")
+    }
     private fun database(block: (DataSource) -> Unit) {
         val directUrl = System.getenv("BLACKSTORE_TEST_JDBC_URL")
         if (!directUrl.isNullOrBlank()) {
@@ -626,6 +902,19 @@ class AccountingMutationPostgresTest {
                     throw SQLException("test failure at final audit")
                 try { method.invoke(connection, *(arguments ?: emptyArray())) }
                 catch (error: InvocationTargetException) { throw error.targetException }
+            } as Connection
+        }
+    }
+
+    private class ThrowAfterCommitSource(private val delegate: DataSource) : DataSource by delegate {
+        private val armed = AtomicBoolean(true)
+        override fun getConnection(): Connection {
+            val connection = delegate.connection
+            return Proxy.newProxyInstance(Connection::class.java.classLoader, arrayOf(Connection::class.java)) { _, method, arguments ->
+                val result = try { method.invoke(connection, *(arguments ?: emptyArray())) }
+                catch (error: InvocationTargetException) { throw error.targetException }
+                if (method.name == "commit" && armed.compareAndSet(true, false)) throw SQLException("test-only response loss after commit")
+                result
             } as Connection
         }
     }
