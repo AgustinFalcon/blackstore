@@ -1,0 +1,14 @@
+{
+  "feature": "blackstore-pos-cart-explicit-payment",
+  "status": "proposed_pending_design_review",
+  "base_commit": "79c612c78160135df0e9011d5bcd93533d14d4e8",
+  "stats": {"total": 5, "done": 0},
+  "gates": {"design": "REVIEW_PENDING", "implementation": "NOT_RUN", "integration": "NOT_RUN", "homologation": "BLOCKED", "publication": "NOT_RUN"},
+  "tasks": [
+    {"id": "POSC-D", "title": "SDD y revisión de contrato multiline compatible", "status": "in_review", "depends_on": [], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-005", "POSC-006", "POSC-007", "POSC-008"]},
+    {"id": "POSC-B", "title": "Backend multiline versionado y persistencia compatible", "status": "planned", "depends_on": ["POSC-D"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-005", "POSC-006", "POSC-007", "POSC-008"]},
+    {"id": "POSC-T", "title": "Tipos, traductores y journal por versión", "status": "planned", "depends_on": ["POSC-B"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-006", "POSC-007", "POSC-008"]},
+    {"id": "POSC-U", "title": "Carrito y cobro explícito en mostrador", "status": "planned", "depends_on": ["POSC-T"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-005"]},
+    {"id": "POSC-E", "title": "PG16, browser, restart, CI y revisiones", "status": "planned", "depends_on": ["POSC-U"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-005", "POSC-006", "POSC-007", "POSC-008"]}
+  ]
+}
