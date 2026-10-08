@@ -1,5 +1,9 @@
 # Especificación técnica
 
+## Addendum T08-B-POS — contexto verificado
+
+[ADR-003](adr/ADR-003-pos-execution-context.md) proposed sobre `39aa9d6dad199d88328e9c3799911e355a9cbddd`: PosExecutionContext cerrado, binding V11 explícito/inmutable, GET /api/v2/pos/context con WorkspaceRead/no-store y concordancia de conector. Nueva Reserve valida contexto/caja dentro de transacción después de replay autorizado. Historia conserva cuádruple y permisos; ninguna autoridad desde browser. T08-C pasa de planned a `blocked_on_pos_context` hasta backend addendum integrado/revisado. Esta decisión requiere revisión propia y no hereda GO T08-A.
+
 ## Ampliación contractual T08-A — GO de diseño
 
 Base exacta `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`. [ADR-002](adr/ADR-002-sale-v2-lifecycle-command-journal.md) accepted fija el diseño para cerrar los residuales de T08: POST v2 de reserve/commit/release con commandId y recibo durable de admisión, GET de lifecycle y journal IndexedDB de intenciones antes del POST. GO de diseño explícito del usuario y APPROVE documental/Security sobre `0b4cddc7f26ec6965ad81443ec4cde74aadd2ce5`, sin afirmar endpoints implementados ni aprobación runtime. En el corte histórico T08-A, T08-B backend/schema y T08-C UI/recovery quedaron `planned`; el estado vigente de T08-B se registra en tasks/progress/evidence y permanece `implemented_pending_pg16_ci_review`, mientras T08-C continúa `planned` con gates propios.

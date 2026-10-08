@@ -1,5 +1,9 @@
 # Progreso inicial
 
+## 2026-10-07 — addendum documental POS
+
+Inspección de base T08-B `39aa9d6dad199d88328e9c3799911e355a9cbddd`: sesión sin dispositivo, workspace desde seed y Reserve nueva sin binding. [ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) registra solución y límites. CLR-T08-B-POS planned; CLR-T08-C `blocked_on_pos_context`; CLR-T08 continúa parcial. Implementación/migración nueva/PG16/browser NOT_RUN; review específica pendiente. No se heredan aprobaciones T08-A/B. [Evidencia](../evidence/CLR-T08-B-POS-sdd-20261007.md). Este registro sustituye estados planned de C en antecedentes, sin borrar evidencias previas.
+
 ## Corte T08-B — backend/schema local, 2026-10-07
 
 Base exacta `6a8a32473f60cd1ab5f9bed33868a07f0f35e918`, branch `feat/cash-ledger-backend-t08b`. Implementa dominio cerrado de comandos y recibos de admisión, fingerprint versionado, puertos/application, admisión JDBC propia de reserve/commit/release v2 con conexión física compartida y sin dispatch HTTP; GET de recibo read-only, query lifecycle separada, permisos y rutas SID/CSRF. V10 es aditiva, append-only, sin backfill, con correspondencia intención/outbox y grants mínimos. Captura rechaza explícitamente campos no soportados, incluido feeAmount null/cero. Recibos contables revalidan permiso del kind original; FEE conserva replay interno OWNER y no se publica.

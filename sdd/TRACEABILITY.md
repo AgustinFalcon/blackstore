@@ -1,5 +1,9 @@
 # RTM — `blackstore-pilot`
 
+## CLR — contexto POS verificado (addendum 2026-10-07)
+
+CLR-004/009 → CLR-T08-B-POS: binding V11, consulta de contexto, validación de nueva Reserve, replay previo/autoridad, historia conservada. CLR-001/009 → B-POS/C: PosExecutionContext cerrado, mapper único y bloqueo Unknown. CLR-004/010 → C/T09: journal origen/instalación/dispositivo lógico, SID nuevo/actor/tab/contexto, browser/PG16/carreras sin duplicación automática. [ADR-003](wip/20261007-blackstore-cash-ledger-reconciliation-reports/2-technical/adr/ADR-003-pos-execution-context.md) y [evidencia documental](wip/20261007-blackstore-cash-ledger-reconciliation-reports/evidence/CLR-T08-B-POS-sdd-20261007.md). T08-C blocked_on_pos_context; T08 parcial; implementación/review/PG16/browser propios pendientes.
+
 ## CLR — ampliación contractual T08-A, 2026-10-07
 
 Base exacta `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`; documentación solamente. [ADR-002](wip/20261007-blackstore-cash-ledger-reconciliation-reports/2-technical/adr/ADR-002-sale-v2-lifecycle-command-journal.md), [plan](wip/20261007-blackstore-cash-ledger-reconciliation-reports/3-tasks/plan.md) y [tareas](wip/20261007-blackstore-cash-ledger-reconciliation-reports/3-tasks/tasks.json) proponen el cierre de residuales; no sustituyen evidencia de ejecución.

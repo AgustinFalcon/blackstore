@@ -1,5 +1,9 @@
 # Especificación funcional
 
+## Addendum POS — CLR-004/009/010
+
+[ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) fija contexto de instalación/terminal lógica provisionado por servidor antes de nueva intención. SID autentica al actor, no identifica dispositivo. Contexto ausente/contradictorio bloquea; journal conserva evidencia ante nuevo SID, cambio de actor/contexto o pérdida de respuesta. No inventar IDs de instalación en browser ni reinterpretar historia. IndexedDB sólo coordina mismo origen/perfil, no acredita identidad física ni exclusión entre perfiles. T08-C `blocked_on_pos_context`; T08 parcial. Backend addendum/reviews y aceptación browser/PG16 pendientes.
+
 ## Objetivo y vocabulario
 
 CLR-001. Un único libro durable conserva hechos contables inmutables con origen, componente, actor, medio y versión. Apertura, pago, devolución, comisión efectivamente pagada, devengo, egreso pagado y corrección son tipos cerrados. Un valor externo desconocido se traduce a Unknown; bloquea escrituras y hace incompleto el resultado. Nunca se presenta el texto crudo como estado válido.
