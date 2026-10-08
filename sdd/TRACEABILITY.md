@@ -77,6 +77,10 @@ estado vigente anterior. El RTM `blackstore-pos-core-v1.0.0` es histórico.
 
 ## Adapter dependency map
 
+## Carrito y cobro explícito POSC
+
+[WIP POSC](wip/20261008-blackstore-pos-cart-explicit-payment/meta.md), base `79c612c78160135df0e9011d5bcd93533d14d4e8`, propuesto: POSC-001 carrito → B/T/U/E; POSC-002 cobro y POSC-003 finalización → B/T/U/E; POSC-004 recovery → B/T/E; POSC-005 autoridad/accesibilidad → B/U/E; POSC-006 contrato, POSC-007 compatibilidad y POSC-008 atomicidad → B/T/E. [A01–A12](wip/20261008-blackstore-pos-cart-explicit-payment/4-implementation/acceptance.md) son especificaciones NOT_RUN; no heredan PASS de DCT/CLR.
+
 ## Frontera durable de caja
 
 Corrección P2 2026-10-07: auditoría JSON→`JdbcBlackStoreWriter`/test PG con controles; paridad visibilidad→`InMemoryCashMutationCommandsTest` + PG dual blocker en ambos órdenes. Enfocada 17 PASS, amplia nativa compatible 148 PASS; run fallido retenido y teardown documentados en `evidence/DCT-review-p2-resolution.md`. Nueva revisión independiente pendiente; no cierra browser/PG16/CI ni Integration global.
