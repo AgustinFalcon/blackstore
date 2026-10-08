@@ -18,6 +18,7 @@ import { BaseResponse } from '../models/base-response';
 import { CapturedPayment, PaymentAttempt, PaymentCoverage, TicketIdentity, TicketMoney, TicketSnapshot, sameTicketIdentity } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
 import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary } from '../domain/durable-sale';
+import { AccountingFormula, AccountingMetric, AccountingReport, AccountingReportRequest, CompletenessCause, CoveredValue, DataCompleteness, FormulaVersion, MetricCoverage, Reconciliation, ReconciliationOutcome, ReportFailure } from '../domain/accounting-report';
 
 export class PosWireMapper {
   private constructor() {}
@@ -64,6 +65,108 @@ export class PosWireMapper {
       formulaName: ReportFormula.fromWire(raw.formulaName),
       periodKind: ReportPeriod.fromWire(raw.periodKind),
     };
+  }
+
+  static reportFailure(status: unknown): ReportFailure { return ReportFailure.fromWire(status); }
+
+  static accountingReport(response: unknown, request: AccountingReportRequest): AccountingReport | null {
+    const raw = PosWireMapper.payload(response);
+    const bounds = PosWireMapper.record(raw?.['bounds']);
+    const formula = PosWireMapper.record(raw?.['formula']);
+    const completeness = PosWireMapper.record(raw?.['completeness']);
+    const totals = PosWireMapper.record(raw?.['totalsByMethod']);
+    const instant = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value)) && /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
+    if (!raw || !bounds || !formula || !completeness || !totals ||
+        !instant(bounds['start']) || !instant(bounds['endExclusive']) || Date.parse(bounds['start']) >= Date.parse(bounds['endExclusive']) ||
+        !instant(raw['cutoff']) || !instant(raw['zoneEffectiveAt']) || !PosWireMapper.nonempty(raw['snapshot']) ||
+        !PosWireMapper.nonempty(raw['zone']) || !PosWireMapper.nonempty(raw['zoneVersion']) ||
+        !PosWireMapper.positiveId(raw['accountingVersion']) || typeof raw['provisional'] !== 'boolean') return null;
+    const unknownCoverage: MetricCoverage = Object.freeze({ state: DataCompleteness.Unknown, causes: Object.freeze([CompletenessCause.Unknown]) });
+    const coverage = (value: unknown): MetricCoverage => {
+      const row = PosWireMapper.record(value);
+      const state = DataCompleteness.fromWire(row?.['state']);
+      if (!row || !Array.isArray(row['causes']) || state === DataCompleteness.Unknown) return unknownCoverage;
+      const causes = row['causes'].map(value => CompletenessCause.fromWire(value));
+      if (causes.includes(CompletenessCause.Unknown) || (state === DataCompleteness.Complete) !== (causes.length === 0)) return unknownCoverage;
+      return Object.freeze({ state, causes: Object.freeze(causes) });
+    };
+    const covered = (metric: AccountingMetric, value: unknown, source: MetricCoverage): CoveredValue => {
+      const money = TicketMoney.fromDecimal(value);
+      const valid = value === null || (!!money && money.cents >= 0n);
+      const effective = valid && (source.state !== DataCompleteness.Complete || money !== null) ? source : unknownCoverage;
+      return Object.freeze({ metric, value: effective.state.permitsValue ? money : null, coverage: effective });
+    };
+    const metricCoverage = new Map(AccountingMetric.all.map(metric => [metric, coverage(completeness[metric.wire])] as const));
+    // Unknown extra metrics invalidate the coverage claim without rendering their raw keys.
+    if (Object.keys(completeness).some(key => AccountingMetric.fromWire(key) === AccountingMetric.Unknown)) {
+      AccountingMetric.all.forEach(metric => metricCoverage.set(metric, unknownCoverage));
+    }
+    const gross = TicketMoney.fromDecimal(raw['grossSales']);
+    const discounts = TicketMoney.fromDecimal(raw['discounts']);
+    const net = TicketMoney.fromDecimal(raw['netSales']);
+    const commercialValid = raw['netSales'] === null || (!!gross && !!discounts && !!net &&
+      gross.cents >= 0n && discounts.cents >= 0n && net.cents === gross.cents - discounts.cents);
+    const netSales = covered(AccountingMetric.NetSales, raw['netSales'], commercialValid ? metricCoverage.get(AccountingMetric.NetSales)! : unknownCoverage);
+    metricCoverage.set(AccountingMetric.NetSales, netSales.coverage);
+    const financialFields = ['collected', 'refunds', 'feesPaid', 'expensesPaid'] as const;
+    const totalsByMethod = Object.entries(totals).map(([key, value]) => {
+      const method = PaymentMethod.fromWire(key);
+      const row = PosWireMapper.record(value);
+      const values = AccountingMetric.financial.map((metric, index) => covered(metric, row?.[financialFields[index]],
+        method === PaymentMethod.Unknown ? unknownCoverage : metricCoverage.get(metric)!));
+      const flow = TicketMoney.fromDecimal(row?.['operatingCashFlow']);
+      const expected = values.every(item => item.value !== null) ? values[0].value!.cents - values[1].value!.cents - values[2].value!.cents - values[3].value!.cents : null;
+      return Object.freeze({ method, values: Object.freeze(values), operatingCashFlow: flow && flow.cents === expected ? flow : null });
+    });
+    // An omitted method is missing evidence, never a synthetic zero row.
+    for (const method of PaymentMethod.selectable) {
+      if (!totalsByMethod.some(row => row.method === method)) totalsByMethod.push(Object.freeze({ method,
+        values: Object.freeze(AccountingMetric.financial.map(metric => covered(metric, null, unknownCoverage))), operatingCashFlow: null }));
+    }
+    for (const metric of AccountingMetric.financial) {
+      if (totalsByMethod.some(row => row.values.some(value => value.metric === metric && value.coverage.state === DataCompleteness.Unknown))) metricCoverage.set(metric, unknownCoverage);
+    }
+    const kind = AccountingFormula.fromWire(formula['kind']);
+    const version = FormulaVersion.fromWire(formula['version']);
+    const formulaValue = TicketMoney.fromDecimal(formula['value']);
+    let formulaCoverage = kind === AccountingFormula.Unknown || version === FormulaVersion.Unknown ? unknownCoverage : coverage(formula['completeness']);
+    if (kind !== AccountingFormula.Contribution && kind !== AccountingFormula.Unknown) formulaCoverage = Object.freeze({
+      state: DataCompleteness.Unavailable, causes: Object.freeze([CompletenessCause.FormulaNotApproved]) });
+    const contributionInputsKnown = [AccountingMetric.NetSales, AccountingMetric.FeesPaid, AccountingMetric.ExpensesPaid]
+      .every(metric => metricCoverage.get(metric)?.state !== DataCompleteness.Unknown);
+    if (kind === AccountingFormula.Contribution && !contributionInputsKnown) formulaCoverage = unknownCoverage;
+    if (kind === AccountingFormula.Contribution && formulaCoverage.state.permitsValue && !formulaValue) formulaCoverage = unknownCoverage;
+    metricCoverage.set(AccountingMetric.Contribution, formulaCoverage);
+    const coverageRows = AccountingMetric.all.map(metric => Object.freeze({ metric, value: null, coverage: metricCoverage.get(metric)! }));
+    let reconciliation: Reconciliation | null = null;
+    if (raw['reconciliation'] !== null) {
+      const row = PosWireMapper.record(raw['reconciliation']);
+      const expectedCash = TicketMoney.fromDecimal(row?.['expectedCash']);
+      const declaredCash = TicketMoney.fromDecimal(row?.['declaredCash']);
+      const difference = TicketMoney.fromDecimal(row?.['difference']);
+      let outcome = ReconciliationOutcome.fromWire(row?.['outcome']);
+      const differenceValid = !!expectedCash && !!declaredCash && !!difference && difference.cents === declaredCash.cents - expectedCash.cents;
+      const outcomeValid = (outcome === ReconciliationOutcome.Unavailable && row?.['difference'] === null &&
+        (raw['provisional'] === true || row?.['expectedCash'] === null)) ||
+        (differenceValid && ((outcome === ReconciliationOutcome.Balanced && difference!.cents === 0n) ||
+          (outcome === ReconciliationOutcome.Shortage && difference!.cents < 0n) || (outcome === ReconciliationOutcome.Overage && difference!.cents > 0n)));
+      if (!outcomeValid || (declaredCash && declaredCash.cents < 0n)) outcome = ReconciliationOutcome.Unknown;
+      reconciliation = Object.freeze({ expectedCash: outcome === ReconciliationOutcome.Unknown ? null : expectedCash,
+        declaredCash: declaredCash && declaredCash.cents >= 0n ? declaredCash : null,
+        difference: outcomeValid && outcome !== ReconciliationOutcome.Unavailable ? difference : null, outcome,
+        localWatermark: typeof row?.['localWatermark'] === 'number' && Number.isSafeInteger(row['localWatermark']) && row['localWatermark'] >= 0 ? row['localWatermark'] : null });
+    }
+    const report: AccountingReport = Object.freeze({ period: ReportPeriod.fromWire(raw['periodKind']),
+      cashSessionId: PosWireMapper.positiveId(raw['cashSessionId']) ? raw['cashSessionId'] as number : null,
+      localDate: typeof raw['localDate'] === 'string' ? raw['localDate'] : null,
+      start: bounds['start'], endExclusive: bounds['endExclusive'], cutoff: raw['cutoff'], snapshot: raw['snapshot'] as string,
+      zone: raw['zone'] as string, zoneVersion: raw['zoneVersion'] as string, zoneEffectiveAt: raw['zoneEffectiveAt'],
+      accountingVersion: raw['accountingVersion'] as number, provisional: raw['provisional'],
+      grossSales: netSales.coverage.state.permitsValue ? gross : null,
+      discounts: netSales.coverage.state.permitsValue ? discounts : null,
+      netSales, coverage: Object.freeze(coverageRows), totalsByMethod: Object.freeze(totalsByMethod),
+      formula: Object.freeze({ kind, version, value: kind === AccountingFormula.Contribution && formulaCoverage.state.permitsValue ? formulaValue : null, coverage: formulaCoverage }), reconciliation });
+    return request.matches(report) ? report : null;
   }
 
   static saleStatus(raw: { status: unknown } | null | undefined): SaleStatus {
