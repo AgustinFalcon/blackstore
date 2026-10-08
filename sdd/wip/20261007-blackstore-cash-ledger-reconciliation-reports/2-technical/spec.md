@@ -1,5 +1,13 @@
 # Especificación técnica
 
+## Ampliación contractual T08-A — GO de diseño
+
+Base exacta `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`. [ADR-002](adr/ADR-002-sale-v2-lifecycle-command-journal.md) accepted fija el diseño para cerrar los residuales de T08: POST v2 de reserve/commit/release con commandId y recibo durable de admisión, GET de lifecycle y journal IndexedDB de intenciones antes del POST. GO de diseño explícito del usuario y APPROVE documental/Security sobre `0b4cddc7f26ec6965ad81443ec4cde74aadd2ce5`, sin afirmar endpoints implementados ni aprobación runtime. T08-B backend/schema y T08-C UI/recovery siguen planned con gates propios.
+
+`SaleCommandAdmissionReceipt.Accepted` acredita admisión local/outbox, nunca venta COMMITTED ni recibo contable. Conserva endpoints y tabla propios; terminalidad/reconocimiento provienen de evidencia autoritativa. La migración propuesta V10 es forward-only después de V9, sin reescribir historia. Los contratos v1 mutantes conservan el fence vigente; esta consola no hará fallback a v1 y se bloqueará preventivamente en PreActivation/Paused/Unknown.
+
+La propuesta detalla permiso AccountingRuntimeRead (incluido auditor sin ampliar sus permisos de venta), autorización actual de recibos por kind/ownership, replay no mutante, locks, crash/pausa y rehidratación por actor/ámbito/pestaña sin guardar SID/CSRF. PaymentCapture v2 rechaza la presencia de feeAmount; FeeRecord sigue OWNER interno y fuera del browser. [Plan](../3-tasks/plan.md) y [tareas](../3-tasks/tasks.json) separan documentación preparada de implementación/aceptación todavía pendientes.
+
 ## Brechas verificadas y diseño
 
 Base bajo backend/src/main: V1 ya tiene cash_ledger_events y restricciones append-only, pero carece de identidad durable de comando/componente/medio. JdbcCounterEntryStore.savePayment bloquea venta, escribe payment/audit y no posting de caja. JdbcCashMutationCommands cubre atomicidad DCT de caja/egreso, no ledger; el egreso actual no acredita paid_at. JdbcCounterEntryStore.figures suma globalmente. ReportFormulas/CounterApplicationService usan formulaName/periodKind string. No se toma la existencia de esas tablas como contabilidad implementada.
