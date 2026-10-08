@@ -20,8 +20,56 @@ import { PaymentMethod } from '../domain/pos-types';
 import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary } from '../domain/durable-sale';
 import { AccountingFormula, AccountingMetric, AccountingReport, AccountingReportRequest, CompletenessCause, CoveredValue, DataCompleteness, FormulaVersion, MetricCoverage, Reconciliation, ReconciliationOutcome, ReportFailure } from '../domain/accounting-report';
 
+import { AccountingCommand, AccountingCommandKind, AccountingCoverage, CommandFailure, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
+
 export class PosWireMapper {
   private constructor() {}
+  static commandPath(command: AccountingCommand): string {
+    if (command.kind === AccountingCommandKind.Open) return '/cash-sessions';
+    if (command.kind === AccountingCommandKind.Close) return `/cash-sessions/${command.aggregateId}/close`;
+    if (command.kind === AccountingCommandKind.Expense) return '/expenses';
+    if (command.kind === AccountingCommandKind.Capture) return '/payments';
+    return `/payments/${command.aggregateId}/reversals`;
+  }
+
+  static commandReceipt(response: unknown, commandId: string): CommandReceipt {
+    const unknown: CommandReceipt = { outcome: CommandOutcome.Unknown, failure: CommandFailure.Unknown,
+      commandId: null, cashSessionId: null, paymentId: null, expenseId: null, settlementId: null, closeSnapshot: null };
+    const envelope = this.record(response);
+    if (!envelope || !this.nonempty(envelope['traceId']) || typeof envelope['code'] !== 'number') return unknown;
+    const raw = this.record(envelope['data']);
+    if (!raw) return { ...unknown, failure: CommandFailure.fromWire(envelope['errorCode']) };
+    const outcome = CommandOutcome.fromWire(raw['outcome']);
+    const failure = CommandFailure.fromWire(raw['failure']);
+    if (outcome === CommandOutcome.Committed && (envelope['code'] !== 200 || raw['commandId'] !== commandId ||
+      failure !== CommandFailure.None || !this.nonempty(raw['committedAt']) || !Number.isFinite(Date.parse(raw['committedAt'] as string)) ||
+      !this.positiveId(raw['cashSessionId']) || !Array.isArray(raw['ledgerEventIds']) ||
+      !raw['ledgerEventIds'].every(item => this.positiveId(item)) ||
+      new Set(raw['ledgerEventIds']).size !== raw['ledgerEventIds'].length)) return unknown;
+    for (const key of ['paymentId', 'expenseId', 'settlementId']) {
+      if (raw[key] != null && !this.positiveId(raw[key])) return unknown;
+    }
+    const close = this.record(raw['closeSnapshot']);
+    const declared = TicketMoney.fromDecimal(close?.['declaredCash']);
+    const expected = TicketMoney.fromDecimal(close?.['expectedCash']);
+    const difference = TicketMoney.fromDecimal(close?.['difference']);
+    if (raw['closeSnapshot'] != null && (!close || !declared || declared.cents < 0n ||
+      (close['expectedCash'] != null && !expected) || (close['difference'] != null && !difference))) return unknown;
+    const coverage = AccountingCoverage.fromWire(close?.['coverage']);
+    const reconciliation = ReconciliationOutcome.fromWire(close?.['outcome']);
+    if (close && (coverage === AccountingCoverage.Unknown || reconciliation === ReconciliationOutcome.Unknown ||
+      (coverage === AccountingCoverage.Complete && (!expected || !difference || !declared ||
+        difference.cents !== declared.cents - expected.cents ||
+        (difference.cents === 0n ? reconciliation !== ReconciliationOutcome.Balanced :
+          difference.cents < 0n ? reconciliation !== ReconciliationOutcome.Shortage : reconciliation !== ReconciliationOutcome.Overage))) ||
+      (coverage === AccountingCoverage.LegacyIncomplete && (expected !== null || difference !== null || reconciliation !== ReconciliationOutcome.Unavailable)))) return unknown;
+    return Object.freeze({ outcome, failure, commandId: outcome === CommandOutcome.Committed ? commandId : null,
+      cashSessionId: this.positiveId(raw['cashSessionId']) ? raw['cashSessionId'] as number : null,
+      paymentId: raw['paymentId'] as number ?? null, expenseId: raw['expenseId'] as number ?? null,
+      settlementId: raw['settlementId'] as number ?? null,
+      closeSnapshot: close && declared ? Object.freeze({ declared, expected, difference,
+        outcome: reconciliation, coverage }) : null });
+  }
 
   static cashMutationOutcome(response: unknown, httpStatus: number): CashMutationOutcome {
     const raw = PosWireMapper.record(response);

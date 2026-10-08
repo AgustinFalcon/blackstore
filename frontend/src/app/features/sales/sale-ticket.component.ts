@@ -2,14 +2,16 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, OnInit, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AccountingCommand, AccountingCommandKind, CommandOutcome } from '../../core/domain/accounting-command';
+import { AccountingCommandsStore } from '../../core/services/accounting-commands.store';
 import { API_BASE } from '../../core/api';
-import { PaymentMethod, SaleAction } from '../../core/domain/pos-types';
+import { PaymentMethod, PaymentStatus, SaleAction } from '../../core/domain/pos-types';
 import { SessionStore } from '../../core/services/session.store';
 import { StaffPermission } from '../../core/domain/session-types';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
 import { CounterContextService } from '../../core/services/counter-context.service';
-import { concatMap, finalize, takeUntil, throwError } from 'rxjs';
+import { concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
 import { PaymentAttempt, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, StartNewSale } from './ticket-steps';
 
@@ -79,7 +81,7 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
           <label>Importe efectivo
             <input name="amount" type="number" class="money" [(ngModel)]="amount" min="0.01" required />
           </label>
-          <label>Comisión <input name="fee" type="number" class="money" [(ngModel)]="fee" min="0" required /></label>
+          <p>Las comisiones pagadas se registran por el circuito operativo del titular.</p>
           <label>Motivo de operación sobre caja ajena <input name="operationReason" [(ngModel)]="operationReason" /></label>
           <label>
             Segundo medio
@@ -99,6 +101,10 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
           <button type="button" (click)="clearAmount()">C</button>
         </div>
       </div>
+      @if (commands.unresolved(); as command) {
+        <p>Comando {{ command.commandId }} pendiente de comprobación.</p>
+        <button type="button" (click)="consultReceipt()" [disabled]="busy()">Consultar recibo</button>
+      }
       @if (message()) {
         <div class="card">
           <p>{{ message() }}</p>
@@ -134,6 +140,7 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
 })
 export class SaleTicketComponent implements OnInit {
   private readonly http = inject(HttpClient);
+  readonly commands = inject(AccountingCommandsStore);
   private readonly identity = inject(SessionStore);
   private readonly destroyRef = inject(DestroyRef);
   readonly counter = inject(CounterContextService);
@@ -144,7 +151,7 @@ export class SaleTicketComponent implements OnInit {
   originalUnitPrice = 20;
   discountAmount = 2;
   amount = 18;
-  fee = 0.5;
+  fee = 0;
   readonly paymentMethods = PaymentMethod.selectable;
   secondMethod: PaymentMethod = PaymentMethod.Card;
   secondAmount = 0;
@@ -159,9 +166,17 @@ export class SaleTicketComponent implements OnInit {
   private readonly snapshot = signal<TicketSnapshot | null>(null);
   private readonly port: TicketFlowPort = {
     reserve: (body) => this.http.post<unknown>(`${API_BASE}/sales/reservations`, { ...body, reason: this.operationReason }),
-    capture: (attempt) => this.http.post<unknown>(`${API_BASE}/payments`, {
-      ...attempt.identity, method: attempt.method.wire, amount: attempt.amount.decimal, feeAmount: attempt.fee.decimal, reason: this.operationReason,
-    }),
+    capture: () => throwError(() => new Error('El contrato de captura anterior está deshabilitado.')),
+    capturePayment: (attempt) => {
+      if (!this.identity.can(StaffPermission.PaymentCapture) || attempt.fee.cents !== 0n) return throwError(() => new Error('Captura no autorizada o comisión no admitida.'));
+      const command = AccountingCommand.create(AccountingCommandKind.Capture, {
+        ...attempt.identity, paymentMethod: attempt.method.wire, amount: attempt.amount.decimal, reason: this.operationReason,
+      });
+      return this.commands.execute(command).pipe(map(receipt => {
+        if (receipt.outcome !== CommandOutcome.Committed || !receipt.paymentId) throw new Error(receipt.failure.label || receipt.outcome.label);
+        return Object.freeze({ paymentId: receipt.paymentId, status: PaymentStatus.Captured, amount: attempt.amount, fee: attempt.fee });
+      }));
+    },
     refresh: (identity) => this.http.get<unknown>(`${API_BASE}/sales/${identity.operationId}`),
   };
   private readonly refreshStep = new RefreshTicketStep(this.port);
@@ -197,6 +212,9 @@ export class SaleTicketComponent implements OnInit {
   }
 
   blockReason(): string | null {
+    if (this.commands.unresolved()) return 'Hay un comando pendiente. Consultá su recibo antes de operar.';
+    if (this.commands.blocked().blocksWrites) return this.commands.blocked().label;
+    if (!this.identity.can(StaffPermission.PaymentCapture)) return 'Permiso insuficiente para cobrar.';
     if (!this.identity.can(StaffPermission.SaleReserve)) return 'Permiso insuficiente para operar ventas.';
     return this.counter.blockReason();
   }
@@ -241,7 +259,7 @@ export class SaleTicketComponent implements OnInit {
     const price = TicketMoney.fromDecimal(this.originalUnitPrice);
     const discount = TicketMoney.fromDecimal(this.discountAmount);
     const decision = TicketTransitionPolicy.reservationAmounts({ price, discount, amount, fee, extra, secondMethod: this.secondMethod });
-    if (!decision.permitsWrite || !price || !discount || !amount || !fee || !extra) {
+    if (fee?.cents !== 0n || !decision.permitsWrite || !price || !discount || !amount || !fee || !extra) {
       this.message.set(decision.label);
       this.busy.set(false);
       return;
@@ -330,7 +348,7 @@ export class SaleTicketComponent implements OnInit {
 
   canFinish(action: SaleAction): boolean {
     const permission = action === SaleAction.Commit ? StaffPermission.SaleCommit : action === SaleAction.Release ? StaffPermission.SaleRelease : action === SaleAction.Reverse ? StaffPermission.PaymentReverse : StaffPermission.Unknown;
-    if (!this.identity.can(permission)) return false;
+    if (!this.identity.can(permission) || this.commands.unresolved() || this.commands.blocked().blocksWrites) return false;
     const decision = TicketTransitionPolicy.decide(this.snapshot(), action);
     return !this.busy() && (action === SaleAction.Reverse ? decision.permitsWrite : decision.permitsRequest);
   }
@@ -345,6 +363,22 @@ export class SaleTicketComponent implements OnInit {
     return error instanceof Error && !(error instanceof HttpErrorResponse) ? error.message : 'No se pudo comprobar la operación. Consultá su estado.';
   }
 
+  consultReceipt(): void {
+    const context = this.attempt;
+    const command = this.commands.unresolved();
+    if (!command || this.busy()) return;
+    this.busy.set(true);
+    this.commands.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.identity.changed),
+      takeUntilDestroyed(this.destroyRef)).subscribe(receipt => {
+      this.snapshot.set(null);
+      if (context && this.attempt === context && receipt.outcome === CommandOutcome.Committed) {
+        if (command?.kind === AccountingCommandKind.Capture && receipt.paymentId) this.paymentId.set(receipt.paymentId);
+        if (command?.kind === AccountingCommandKind.Reverse) this.paymentId.set(null);
+      }
+      this.message.set(`${receipt.failure.label || receipt.outcome.label}. Consultá la venta antes de continuar.`);
+    });
+  }
+
   reverse(paymentId: number): void {
     const context = this.attempt;
     if (!context || !this.canFinish(SaleAction.Reverse) || paymentId !== this.paymentId()) return;
@@ -353,21 +387,16 @@ export class SaleTicketComponent implements OnInit {
     this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
       const decision = TicketTransitionPolicy.decide(snapshot, SaleAction.Reverse);
       if (this.attempt !== context || !decision.permitsWrite) return throwError(() => new Error(decision.label));
-      return this.http.post<BaseResponse<{ status: unknown }>>(`${API_BASE}/payments/${paymentId}/reversals`, {
-        ...context.identity,
-        reason: this.reversalReason,
-        evidenceRef: `rev-${paymentId}`,
-      }, {
-        headers: {
-          'X-Trace-Id': crypto.randomUUID(),
-        },
-      });
+      return this.commands.execute(AccountingCommand.create(AccountingCommandKind.Reverse, {
+        ...context.identity, originalPaymentId: paymentId,
+        reason: this.reversalReason, evidenceRef: `rev-${paymentId}`,
+      }, paymentId));
     }), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef),
     finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
         next: (response) => {
           if (this.attempt !== context) return;
-          this.paymentId.set(null);
-          this.message.set(`Reversa ${PosWireMapper.paymentStatus(response.data).label}. Consultá la venta antes de continuar.`);
+          if (response.outcome === CommandOutcome.Committed) this.paymentId.set(null);
+          this.message.set(`${response.failure.label || response.outcome.label}. Consultá la venta antes de continuar.`);
         },
         error: (err: unknown) => { if (this.attempt === context) this.message.set(this.failureMessage(err)); },
       });
