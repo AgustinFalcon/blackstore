@@ -3,12 +3,14 @@ import { ReconciliationOutcome } from './accounting-report';
 import { TicketMoney } from './ticket-transition';
 
 export class AccountingCommandKind {
-  static readonly Open = new AccountingCommandKind(StaffPermission.CashSessionOpen);
-  static readonly Close = new AccountingCommandKind(StaffPermission.CashSessionClose);
-  static readonly Expense = new AccountingCommandKind(StaffPermission.ExpenseRecord);
-  static readonly Capture = new AccountingCommandKind(StaffPermission.PaymentCapture);
-  static readonly Reverse = new AccountingCommandKind(StaffPermission.PaymentReverse);
-  private constructor(readonly permission: StaffPermission) {}
+  static readonly Open = new AccountingCommandKind('Open', StaffPermission.CashSessionOpen);
+  static readonly Close = new AccountingCommandKind('Close', StaffPermission.CashSessionClose);
+  static readonly Expense = new AccountingCommandKind('Expense', StaffPermission.ExpenseRecord);
+  static readonly Capture = new AccountingCommandKind('Capture', StaffPermission.PaymentCapture);
+  static readonly Reverse = new AccountingCommandKind('Reverse', StaffPermission.PaymentReverse);
+  static readonly Unknown = new AccountingCommandKind('Unknown', StaffPermission.Unknown);
+  private constructor(readonly wire: string, readonly permission: StaffPermission) {}
+  static fromWire(raw: unknown): AccountingCommandKind { return [this.Open, this.Close, this.Expense, this.Capture, this.Reverse].find(value => value.wire === raw) ?? this.Unknown; }
 }
 
 export class ExpenseOperation {
@@ -77,6 +79,9 @@ export interface CommandReceipt {
 export class AccountingCommand {
   private constructor(readonly kind: AccountingCommandKind, readonly commandId: string,
     readonly body: Readonly<Record<string, unknown>>, readonly aggregateId?: number) {}
+  static fromJournal(kind: AccountingCommandKind, commandId: string, body: Readonly<Record<string, unknown>>, aggregateId?: number): AccountingCommand {
+    return new AccountingCommand(kind, commandId, Object.freeze({ ...body }), aggregateId);
+  }
   static create(kind: AccountingCommandKind, body: Readonly<Record<string, unknown>>, aggregateId?: number): AccountingCommand {
     const commandId = crypto.randomUUID();
     // PaymentCaptureV2Request defaults its optional reason to null; blank text is invalid.
