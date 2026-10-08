@@ -4,6 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AccountingCommand, AccountingCommandKind, CommandOutcome } from '../../core/domain/accounting-command';
 import { AccountingCommandsStore } from '../../core/services/accounting-commands.store';
+import { SaleCommandsStore } from '../../core/services/sale-commands.store';
+import { SaleCommand, SaleCommandKind, SaleAdmissionOutcome } from '../../core/domain/sale-command';
+import { CommandHttp } from '../../core/infrastructure/command-http';
 import { API_BASE } from '../../core/api';
 import { PaymentMethod, PaymentStatus, SaleAction } from '../../core/domain/pos-types';
 import { SessionStore } from '../../core/services/session.store';
@@ -12,7 +15,7 @@ import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
 import { CounterContextService } from '../../core/services/counter-context.service';
 import { concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
-import { PaymentAttempt, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
+import { PaymentAttempt, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, StartNewSale } from './ticket-steps';
 
 @Component({
@@ -48,7 +51,7 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
             </tr>
           </tbody>
         </table>
-        <p>Cobrado <span class="money">{{ amount }}</span> · comisiones <span class="money">{{ fee }}</span></p>
+        <p>Cobrado <span class="money">{{ amount }}</span></p>
       </div>
       <div class="card">
         <form (ngSubmit)="reserve()">
@@ -105,6 +108,11 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
         <p>Comando {{ command.commandId }} pendiente de comprobación.</p>
         <button type="button" (click)="consultReceipt()" [disabled]="busy()">Consultar recibo</button>
       }
+      <p role="status">{{ commands.runtime.notice() }}</p>
+      <button type="button" (click)="commands.runtime.refresh()" [disabled]="busy()">Comprobar contexto y evidencia</button>
+      @if (sales.unresolved()) {
+        <button type="button" (click)="consultSaleReceipt()" [disabled]="busy()">Consultar admisión pendiente</button>
+      }
       @if (message()) {
         <div class="card">
           <p>{{ message() }}</p>
@@ -141,6 +149,8 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
 export class SaleTicketComponent implements OnInit {
   private readonly http = inject(HttpClient);
   readonly commands = inject(AccountingCommandsStore);
+  readonly sales = inject(SaleCommandsStore);
+  private readonly commandHttp = inject(CommandHttp);
   private readonly identity = inject(SessionStore);
   private readonly destroyRef = inject(DestroyRef);
   readonly counter = inject(CounterContextService);
@@ -151,7 +161,6 @@ export class SaleTicketComponent implements OnInit {
   originalUnitPrice = 20;
   discountAmount = 2;
   amount = 18;
-  fee = 0;
   readonly paymentMethods = PaymentMethod.selectable;
   secondMethod: PaymentMethod = PaymentMethod.Card;
   secondAmount = 0;
@@ -165,7 +174,12 @@ export class SaleTicketComponent implements OnInit {
   private attempt: TicketAttemptContext | null = null;
   private readonly snapshot = signal<TicketSnapshot | null>(null);
   private readonly port: TicketFlowPort = {
-    reserve: (body) => this.http.post<unknown>(`${API_BASE}/sales/reservations`, { ...body, reason: this.operationReason }),
+    reserve: (body) => {
+      const identity: TicketIdentity = { clientInstanceId: body['clientInstanceId'] as string, deviceId: body['deviceId'] as string, saleId: body['saleId'] as string, operationId: body['operationId'] as string };
+      const command = SaleCommand.create(SaleCommandKind.Reserve, identity, Number(body['cashSessionId']), { ...body, reason: this.operationReason });
+      return this.sales.execute(command).pipe(concatMap(result => result.outcome === SaleAdmissionOutcome.Accepted
+        ? this.commandHttp.ticket(command.identity) : throwError(() => new Error(result.outcome.label))));
+    },
     capture: () => throwError(() => new Error('El contrato de captura anterior está deshabilitado.')),
     capturePayment: (attempt) => {
       if (!this.identity.can(StaffPermission.PaymentCapture) || attempt.fee.cents !== 0n) return throwError(() => new Error('Captura no autorizada o comisión no admitida.'));
@@ -177,9 +191,9 @@ export class SaleTicketComponent implements OnInit {
         return Object.freeze({ paymentId: receipt.paymentId, status: PaymentStatus.Captured, amount: attempt.amount, fee: attempt.fee });
       }));
     },
-    refresh: (identity) => this.http.get<unknown>(`${API_BASE}/sales/${identity.operationId}`),
+    refresh: (identity) => this.commandHttp.ticket(identity),
   };
-  private readonly refreshStep = new RefreshTicketStep(this.port);
+  private readonly refreshStep = new RefreshTicketStep(this.port,PaymentLedgerSemantics.Net);
   readonly operationRef = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly paymentId = signal<number | null>(null);
@@ -212,6 +226,7 @@ export class SaleTicketComponent implements OnInit {
   }
 
   blockReason(): string | null {
+    if (!this.commands.runtime.canWrite()) return this.commands.runtime.notice();
     if (this.commands.unresolved()) return 'Hay un comando pendiente. Consultá su recibo antes de operar.';
     if (this.commands.blocked().blocksWrites) return this.commands.blocked().label;
     if (!this.identity.can(StaffPermission.PaymentCapture)) return 'Permiso insuficiente para cobrar.';
@@ -254,7 +269,7 @@ export class SaleTicketComponent implements OnInit {
     // Acquire before UUID creation: synchronous double submit cannot create another identity.
     this.busy.set(true);
     const amount = TicketMoney.fromDecimal(this.amount);
-    const fee = TicketMoney.fromDecimal(this.fee);
+    const fee = TicketMoney.fromDecimal(0);
     const extra = TicketMoney.fromDecimal(this.secondAmount);
     const price = TicketMoney.fromDecimal(this.originalUnitPrice);
     const discount = TicketMoney.fromDecimal(this.discountAmount);
@@ -264,9 +279,10 @@ export class SaleTicketComponent implements OnInit {
       this.busy.set(false);
       return;
     }
+    const pos = this.commands.runtime.context();
+    if (!pos || this.counter.openSession()?.terminalId !== pos.terminalId) { this.busy.set(false); this.message.set('Caja y contexto POS no coinciden.'); return; }
     const identity: TicketIdentity = Object.freeze({
-      clientInstanceId: '11111111-1111-1111-1111-111111111111',
-      deviceId: 'terminal-1', saleId: crypto.randomUUID(), operationId: crypto.randomUUID(),
+      clientInstanceId: pos.clientInstanceId, deviceId: pos.deviceId, saleId: crypto.randomUUID(), operationId: crypto.randomUUID(),
     });
     const payments: PaymentAttempt[] = [Object.freeze({ identity, method: PaymentMethod.Cash, amount, fee })];
     if (extra.cents > 0n) payments.push(Object.freeze({ identity, method: this.secondMethod, amount: extra, fee: TicketMoney.fromDecimal(0)! }));
@@ -331,8 +347,10 @@ export class SaleTicketComponent implements OnInit {
     this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
       if (this.attempt !== context) return throwError(() => new Error('El intento ya no está activo.'));
       const decision = TicketTransitionPolicy.decide(snapshot, action);
-      if (!decision.permitsRequest) return throwError(() => new Error(decision.label));
-      return this.http.post<unknown>(`${API_BASE}/sales/${context.identity.operationId}/${action.wire}`, { reason: this.operationReason });
+      if (!decision.permitsWrite) return throwError(() => new Error(decision.label));
+      const kind = action === SaleAction.Commit ? SaleCommandKind.Commit : SaleCommandKind.Release;
+      return this.sales.execute(SaleCommand.create(kind, context.identity, Number(this.counter.openSession()?.id), { reason: this.operationReason })).pipe(
+        concatMap(result => result.outcome === SaleAdmissionOutcome.Accepted ? this.commandHttp.ticket(context.identity) : throwError(() => new Error(result.outcome.label))));
     }), concatMap((response) => {
       const snapshot = PosWireMapper.ticket(response, context.identity);
       if (!snapshot.evidenceValid) return throwError(() => new Error('Respuesta de venta no válida. Consultá el estado.'));
@@ -347,10 +365,11 @@ export class SaleTicketComponent implements OnInit {
   }
 
   canFinish(action: SaleAction): boolean {
+    if (!this.commands.runtime.canWrite()) return false;
     const permission = action === SaleAction.Commit ? StaffPermission.SaleCommit : action === SaleAction.Release ? StaffPermission.SaleRelease : action === SaleAction.Reverse ? StaffPermission.PaymentReverse : StaffPermission.Unknown;
     if (!this.identity.can(permission) || this.commands.unresolved() || this.commands.blocked().blocksWrites) return false;
     const decision = TicketTransitionPolicy.decide(this.snapshot(), action);
-    return !this.busy() && (action === SaleAction.Reverse ? decision.permitsWrite : decision.permitsRequest);
+    return !this.busy() && decision.permitsWrite;
   }
 
   private recordJourneyProgress(result: TicketFlowResult): void {
@@ -377,6 +396,12 @@ export class SaleTicketComponent implements OnInit {
       }
       this.message.set(`${receipt.failure.label || receipt.outcome.label}. Consultá la venta antes de continuar.`);
     });
+  }
+  consultSaleReceipt(): void {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.sales.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef))
+      .subscribe(result => { this.snapshot.set(null); this.message.set(result.outcome.label); });
   }
 
   reverse(paymentId: number): void {

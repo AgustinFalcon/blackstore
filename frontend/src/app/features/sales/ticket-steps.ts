@@ -1,6 +1,7 @@
-import { Observable, concatMap, map, of, throwError, timer } from 'rxjs';
+import { Observable, concatMap, map, of, throwError } from 'rxjs';
+import {AwaitReservationReadStep,ReservationReadState} from '../../core/infrastructure/await-reservation-read-step';
 import { SaleAction, SaleStatus } from '../../core/domain/pos-types';
-import { CapturedPayment, PaymentAttempt, TicketIdentity, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
+import { CapturedPayment, PaymentAttempt, PaymentLedgerSemantics, TicketIdentity, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 
 export interface TicketFlowPort {
@@ -29,23 +30,11 @@ export class AwaitReservationStep {
     private readonly delayMs = 100,
   ) {}
 
-  execute(identity: TicketIdentity, snapshot: TicketSnapshot, read = 0): Observable<TicketSnapshot> {
-    if (snapshot.status === SaleStatus.Reserved) {
-      return snapshot.evidenceValid
-        ? of(snapshot)
-        : throwError(() => new Error('No se pudo comprobar la identidad o evidencia de la reserva.'));
-    }
-    if (snapshot.status !== SaleStatus.PendingReservation) {
-      return throwError(() => new Error('La reserva no habilita el cobro. Consultá el estado de la operación.'));
-    }
-    if (read >= this.maxReads) {
-      return throwError(() => new Error('La reserva sigue pendiente. Consultá el estado antes de cobrar.'));
-    }
-    return timer(this.delayMs).pipe(
-      concatMap(() => this.port.refresh(identity)),
-      map((response) => PosWireMapper.ticket(response, identity)),
-      concatMap((next) => this.execute(identity, next, read + 1)),
-    );
+  execute(identity: TicketIdentity, snapshot: TicketSnapshot): Observable<TicketSnapshot> {
+    return new AwaitReservationReadStep(()=>this.port.refresh(identity).pipe(map(response=>PosWireMapper.ticket(response,identity))),
+      next=>next.status===SaleStatus.Reserved && next.evidenceValid ? ReservationReadState.Reserved :
+        next.status===SaleStatus.PendingReservation ? ReservationReadState.Pending : ReservationReadState.Unknown,
+      ()=>true,this.maxReads,this.delayMs).execute(snapshot);
   }
 }
 
@@ -82,10 +71,10 @@ export class CapturePaymentStep {
 }
 
 export class RefreshTicketStep {
-  constructor(private readonly port: TicketFlowPort) {}
+  constructor(private readonly port: TicketFlowPort, private readonly semantics = PaymentLedgerSemantics.Legacy) {}
   execute(identity: TicketIdentity): Observable<TicketSnapshot> {
     return this.port.refresh(identity).pipe(map((response) => {
-      const snapshot = PosWireMapper.ticket(response, identity);
+      const snapshot = PosWireMapper.ticket(response, identity, this.semantics);
       if (!snapshot.evidenceValid) throw new Error('No se pudo comprobar la identidad o evidencia de la venta.');
       return snapshot;
     }));

@@ -33,8 +33,8 @@ export class DurableSaleState {
     if (!this.acceptsCommands || !sale.valid || !sale.allowedActions.includes(action)) return false;
     if (action === AllowedAction.CapturePayment) return (sale.coverage === PaymentCoverage.Partial || sale.coverage === PaymentCoverage.Unpaid) && !!sale.pending && sale.pending.cents > 0n;
     if (action === AllowedAction.Commit) return sale.coverage === PaymentCoverage.Paid && sale.pending?.cents === 0n;
-    if (action === AllowedAction.Release) return this === DurableSaleState.Reserved && sale.coverage === PaymentCoverage.Unpaid && sale.hasPaymentHistory === false;
-    if (action === AllowedAction.ReversePayment) return sale.hasPaymentHistory === true && sale.payments.some(payment => payment.status === PaymentStatus.Captured);
+    if (action === AllowedAction.Release) return sale.coverage === PaymentCoverage.Unpaid && !!sale.total && sale.pending?.cents === sale.total.cents;
+    if (action === AllowedAction.ReversePayment) return sale.hasPaymentHistory === true && sale.payments.some(payment => payment.reversibility.permitsReverse);
     return false;
   }
 }
@@ -54,11 +54,27 @@ export interface DurableSaleLine {
   readonly total: TicketMoney | null;
 }
 export interface DurableSalePayment {
+  readonly originalPaymentId: number | null;
+  readonly reversibility: PaymentReversibility;
   readonly paymentId: number;
   readonly status: PaymentStatus;
   readonly method: PaymentMethod;
   readonly amount: TicketMoney | null;
   readonly fee: TicketMoney | null;
+}
+/** Current detail contract cannot prove per-capture reversibility after any refund. */
+export class PaymentReversibility {
+  static readonly Reversible = new PaymentReversibility('Puede reversarse',true);
+  static readonly NotCapture = new PaymentReversibility('No es una captura',false);
+  static readonly Unknown = new PaymentReversibility('Reversibilidad no comprobada',false);
+  private constructor(readonly label:string,readonly permitsReverse:boolean) {}
+  static forPayment(payment:Pick<DurableSalePayment,'paymentId'|'status'|'amount'|'method'>,payments:readonly Pick<DurableSalePayment,'paymentId'|'status'|'amount'|'method'|'originalPaymentId'>[]):PaymentReversibility {
+    if(payment.status!==PaymentStatus.Captured) return this.NotCapture;
+    const refunds=payments.filter(p=>p.status===PaymentStatus.Refunded);
+    // Current contract omits refund→capture linkage. Even an unexpected field cannot grant authority.
+    if(refunds.length>0)return this.Unknown;
+    return this.Reversible;
+  }
 }
 export interface DurableSaleDetail extends DurableSaleSummary {
   readonly pending: TicketMoney | null;

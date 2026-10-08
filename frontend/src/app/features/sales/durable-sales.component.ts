@@ -31,6 +31,11 @@ import { DurableSalesStore } from '../../core/services/durable-sales.store';
         }
       </div>
       @if (store.notice()) { <p class="banner warn" role="alert">{{ store.notice() }}</p> }
+      <p role="status">{{ store.commands.runtime.notice() }}</p>
+      <button type="button" (click)="store.commands.runtime.refresh()" [disabled]="store.busy()">Comprobar contexto y evidencia</button>
+      @if (store.sales.unresolved()) {
+        <button type="button" (click)="store.consultReceipt()" [disabled]="store.busy()">Consultar admisión pendiente</button>
+      }
       @if (store.commands.unresolved(); as command) {
         <p>Comando {{ command.commandId }} pendiente de comprobación.</p>
         <button type="button" (click)="store.consultReceipt()" [disabled]="store.busy()">Consultar recibo</button>
@@ -48,8 +53,9 @@ import { DurableSalesStore } from '../../core/services/durable-sales.store';
           @for (line of sale.lines; track $index) { <p>{{ line.sku }} · {{ line.productName }} · {{ line.quantity }} · {{ line.total?.decimal ?? 'No comprobado' }}</p> }
           @for (payment of sale.payments; track payment.paymentId) {
             <p>Pago {{ payment.paymentId }} · {{ payment.method.label }} · {{ payment.status.label }} · {{ payment.amount?.decimal ?? 'No comprobado' }} · comisión {{ payment.fee?.decimal ?? 'No comprobado' }}</p>
-            @if (payment.status === captured && store.can(actions.ReversePayment)) {
-              <button type="button" (click)="store.execute(actions.ReversePayment, reason, undefined, undefined, method, payment.paymentId)" [disabled]="!reason.trim()">Reversar pago {{ payment.paymentId }}</button>
+            <p>{{ payment.reversibility.label }}. Tras una devolución, las nuevas reversas requieren evidencia por pago del backend.</p>
+            @if (payment.reversibility.permitsReverse && store.can(actions.ReversePayment)) {
+              <button type="button" (click)="store.execute(actions.ReversePayment, reason, undefined, method, payment.paymentId)" [disabled]="!reason.trim()">Reversar pago {{ payment.paymentId }}</button>
             }
           }
           @if (!sale.status.acceptsCommands || !sale.valid) { <p role="status">Sólo consulta. Reintentá consultar o solicitá reconciliación a una persona autorizada.</p> }
@@ -58,7 +64,7 @@ import { DurableSalesStore } from '../../core/services/durable-sales.store';
             <label>Importe a completar <input type="number" min="0.01" [(ngModel)]="amount" /></label>
             <p>Las comisiones pagadas se registran por el circuito operativo del titular.</p>
             <label>Medio <select [(ngModel)]="method">@for (option of methods; track option.wire) { <option [ngValue]="option">{{ option.label }}</option> }</select></label>
-            <button type="button" (click)="store.execute(actions.CapturePayment, reason, amount, fee, method)">Completar pago</button>
+            <button type="button" (click)="store.execute(actions.CapturePayment, reason, amount, method)">Completar pago</button>
           }
           @if (store.can(actions.Commit)) { <button type="button" (click)="store.execute(actions.Commit, reason)">Confirmar venta</button> }
           @if (store.can(actions.Release)) { <button type="button" (click)="store.execute(actions.Release, reason)">Liberar reserva</button> }
@@ -78,7 +84,6 @@ export class DurableSalesComponent implements OnInit {
   filter: DurableSaleState | null = null;
   reason = '';
   amount = 0;
-  fee = 0;
   method = PaymentMethod.Cash;
   ngOnInit(): void { this.store.list(); }
 }

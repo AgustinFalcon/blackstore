@@ -76,6 +76,8 @@ import { CashSessionSelection } from '../../core/domain/cash-session-selection';
         <p>Comando {{ command.commandId }} pendiente de comprobación.</p>
         <button type="button" (click)="consultReceipt()" [disabled]="mutationPending()">Consultar recibo</button>
       }
+      <p role="status">{{ commands.runtime.notice() }}</p>
+      <button type="button" (click)="commands.runtime.refresh()" [disabled]="mutationPending()">Comprobar contexto y evidencia</button>
       @if (commands.receipt()?.closeSnapshot; as snapshot) {
         <p>Arqueo de caja {{ commands.receipt()?.cashSessionId }}: {{ snapshot.outcome.label }} · {{ snapshot.coverage.label }}.
         Esperado {{ snapshot.expected?.decimal ?? 'no disponible' }} · declarado {{ snapshot.declared.decimal }} · diferencia {{ snapshot.difference?.decimal ?? 'no disponible' }}</p>
@@ -96,7 +98,7 @@ export class CashSessionComponent {
   readonly permissions = StaffPermission;
   readonly commands = inject(AccountingCommandsStore);
 
-  private readonly requestedTerminal = signal(10);
+  private readonly requestedTerminal = signal(0);
   private readonly requestedCashier = signal<number | null>(this.identity.staff()?.id ?? null);
   private initializedWorkstation = false;
   get terminalId(): number { return this.requestedTerminal(); }
