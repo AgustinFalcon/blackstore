@@ -15,3 +15,11 @@ Validación local:
 - `git diff --check`: PASS. BootJar/backend suites: NOT_RUN (no backend productivo cambiado). CI/reviews exact-head: PENDING. El job existente construye JAR exacto, npm ci, Chromium y PG16; la reparación queda reproducible allí.
 
 Teardown: no container adquirido, ningún Java/Angular iniciado; `stop()` intentó recuperación por nombre único sin tocar recursos externos. No push/PR/deploy ni activación productiva. Aceptación CLR/DCT permanece pendiente hasta PG16/browser completo; sin homologación ni publicación.
+
+## Review P3 — refuerzo sobre `94316853a7278a3664c7693afd4328f21eacc9a7`
+
+Los tres casos opacos (caja ajena abierta, inexistente, ajena cerrada) ahora verifican ausencia/null de command/cash/sale/payment/expense/settlement/actor/terminal/device/client IDs, committedAt/payloadHash/closeSnapshot y ledgerEventIds vacío. Se compara la respuesta completa (status, cache-control, envelope/data) excluyendo únicamente traceId. No se exige data=null: un recibo tipado neutro sigue permitido, cualquier evidencia sensible falla.
+
+Fixture/spec parametrizan SQL de activación/pausa con `AccountingLifecycleState.Active.wire` y `.Paused.wire`, reutilizando el tipo cerrado de dominio sin importar infrastructure/UI.
+
+Validación sobre el refuerzo: `npm run typecheck:dct`, `npm run test:dct -- --list` (2 tests), compilación tsc del harness y `git diff --check` PASS. PG16/browser continúa NOT_RUN por el bloqueo Docker ya registrado; no se repitió adquisición ni se iniciaron servicios. Nuevo commit separado, sin amend/push/PR; worktree entregado limpio.

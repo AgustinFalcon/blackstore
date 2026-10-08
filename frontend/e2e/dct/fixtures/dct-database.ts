@@ -7,6 +7,7 @@ import { DctAuditEvent } from './dct-audit-event';
 import { AccountingCoverage, CommandOutcome } from '../../../src/app/core/domain/accounting-command';
 import { ReconciliationOutcome } from '../../../src/app/core/domain/accounting-report';
 import { DctLedgerKind } from './dct-ledger-kind';
+import { AccountingLifecycleState } from '../../../src/app/core/domain/accounting-lifecycle';
 
 export interface TestStaff { id: number; login: string; password: string; displayName: string; role: StaffRole }
 
@@ -65,7 +66,7 @@ export class DctDatabase {
     try {
       await this.query(`INSERT INTO pos_terminal_context(terminal_id,client_instance_id,device_id,provisioned_by_ref,installation_evidence_ref)
         VALUES($1,$2,$3,'isolated-dct-fixture','isolated-pg16-browser-v11')`, [terminalId, clientInstanceId, 'dct-browser-device']);
-      await this.query("UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp() WHERE singleton");
+      await this.query('UPDATE accounting_runtime SET state=$1,accounting_activation_at=clock_timestamp() WHERE singleton', [AccountingLifecycleState.Active.wire]);
       await this.query('COMMIT');
     } catch (error) { await this.query('ROLLBACK'); throw error; }
   }

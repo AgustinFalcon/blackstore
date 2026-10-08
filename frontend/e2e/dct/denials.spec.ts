@@ -6,6 +6,7 @@ import { CashSessionPage } from './pages/cash-session-page';
 import { CashMutationOutcome, PaymentMethod, StaffRole } from '../../src/app/core/domain/pos-types';
 import { PosWireMapper } from '../../src/app/core/infrastructure/pos-wire-mapper';
 import { DctAuditEvent } from './fixtures/dct-audit-event';
+import { AccountingLifecycleState } from '../../src/app/core/domain/accounting-lifecycle';
 
 /** Requests run in Chromium with its real HttpOnly cookie and the server-issued CSRF. */
 async function mutate(page: Page, path: string, body: object, invalidCsrf = false) {
@@ -17,6 +18,20 @@ async function mutate(page: Page, path: string, body: object, invalidCsrf = fals
     });
     return { status: response.status, cacheControl: response.headers.get('cache-control'), body: await response.json() };
   }, { path, body, invalidCsrf });
+}
+
+/** A typed denial may contain data, but never identifiers, facts or snapshots. */
+function opaqueDenial(response: Awaited<ReturnType<typeof mutate>>) {
+  const data = response.body.data;
+  expect(data == null || typeof data === 'object' && !Array.isArray(data)).toBe(true);
+  for (const key of ['commandId', 'cashSessionId', 'saleId', 'paymentId', 'expenseId', 'settlementId',
+    'actorId', 'terminalId', 'clientInstanceId', 'deviceId', 'committedAt', 'payloadHash', 'closeSnapshot']) {
+    expect(data?.[key] ?? null, `Opaque denial must not reveal ${key}`).toBeNull();
+  }
+  expect(data?.ledgerEventIds ?? []).toEqual([]);
+  const body = { ...response.body };
+  delete body.traceId; // the sole per-request difference allowed in opaque responses
+  return { status: response.status, cacheControl: response.cacheControl, body };
 }
 
 test('denials: real authority/CSRF/unknown method and stale UI conflict never create a partial mutation', async ({ runtime, browser, page }) => {
@@ -60,7 +75,7 @@ test('denials: real authority/CSRF/unknown method and stale UI conflict never cr
     const otherPage = await authenticated(other);
     const foreign = await denied(otherPage, '/api/v2/expenses', expense, CashMutationOutcome.NotVisible);
     const missing = await denied(otherPage, '/api/v2/expenses', { ...expense, cashSessionId: Number.MAX_SAFE_INTEGER }, CashMutationOutcome.NotVisible);
-    expect(foreign.body.message).toBe(missing.body.message);
+    expect(opaqueDenial(foreign)).toEqual(opaqueDenial(missing));
     const ownerPage = await authenticated(owner);
     await denied(ownerPage, `/api/v2/cash-sessions/${cashId}/close`, { cashSessionId: cashId, declaredCash: 0, reason: '' }, CashMutationOutcome.Validation);
     await denied(page, '/api/v2/expenses', { ...expense, paymentMethod: PaymentMethod.Unknown.wire }, CashMutationOutcome.Validation);
@@ -74,7 +89,7 @@ test('denials: real authority/CSRF/unknown method and stale UI conflict never cr
     await closingCash.close(cashId, '100');
     const closed = await runtime.database.facts(cashId);
     const foreignClosed = await denied(otherPage, '/api/v2/expenses', expense, CashMutationOutcome.NotVisible);
-    expect(foreignClosed.body.message).toBe(foreign.body.message);
+    expect(opaqueDenial(foreignClosed)).toEqual(opaqueDenial(foreign));
     await denied(page, '/api/v2/expenses', expense, CashMutationOutcome.Conflict);
     let posts = 0;
     let cashReads = 0;
@@ -100,7 +115,7 @@ test('denials: real authority/CSRF/unknown method and stale UI conflict never cr
     const legacy = await mutate(page, '/api/v1/expenses', { cashSessionId: cashId, category: 'insumos', reason: 'bolsas', amount: 7.25, method: PaymentMethod.Cash.wire });
     expect(legacy.status).toBe(409);
     expect(PosWireMapper.commandReceipt(legacy.body, '').failure).toBe(CommandFailure.LegacyDisabled);
-    await runtime.database.query("UPDATE accounting_runtime SET state='PAUSED' WHERE singleton");
+    await runtime.database.query('UPDATE accounting_runtime SET state=$1 WHERE singleton', [AccountingLifecycleState.Paused.wire]);
     const paused = await mutate(page, '/api/v2/expenses', expense);
     expect(paused.status).toBe(409);
     expect(PosWireMapper.commandReceipt(paused.body, '').failure).toBe(CommandFailure.Paused);
