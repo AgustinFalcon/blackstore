@@ -182,7 +182,7 @@
     {
       "id": "CLR-T08",
       "title": "UI tipos mapper recibos arqueo períodos y estados incompletos",
-      "status": "partial_v2_operations_receipts_pending_saga_contract_browser_review",
+      "status": "partial_v2_clients_journal_pending_acceptance",
       "pr_cut": "UI_ACCEPTANCE",
       "depends_on": [
         "CLR-T07"
@@ -286,7 +286,7 @@
     {
       "id": "CLR-T08-C",
       "title": "Clientes saga v2 lifecycle preventivo y journal durable UI",
-      "status": "blocked_on_pos_context",
+      "status": "implemented_pending_local_tests_pg16_browser_ci_review",
       "pr_cut": "DURABLE_COMMAND_UI",
       "depends_on": [
         "CLR-T08-B-POS"
@@ -349,12 +349,12 @@
   "gates": {
     "design": "PASS",
     "contract_extension_design": "T08_A_DESIGN_GO_PASS",
-    "implementation": "PARTIAL_T08_V2_OPERATIONS_PENDING_SAGA_CONTRACT",
+    "implementation": "PARTIAL_T08_V2_CLIENTS_JOURNAL_IMPLEMENTED_PENDING_ACCEPTANCE",
     "integration": "PG18_T06_PASS_T07_PG_NOT_RUN_PG16_NOT_RUN_BROWSER_NOT_RUN",
-    "review": "T07_T08_PENDING",
+    "review": "T07_T08_T08_C_PENDING",
     "homologation": "BLOCKED",
     "publication": "NOT_RUN",
-    "pos_context": "LOCAL_BACKEND_205_TESTS_PASS_PG16_BLOCKED_BROWSER_CI_REVIEW_PENDING_T08_C_BLOCKED"
+    "pos_context": "BACKEND_FRONTEND_IMPLEMENTED_PG16_BROWSER_CI_REVIEW_PENDING"
   },
   "evidence": {
     "postgres16_clean": "NOT_RUN",

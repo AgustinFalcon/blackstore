@@ -33,7 +33,7 @@ export class DurableSaleState {
     if (!this.acceptsCommands || !sale.valid || !sale.allowedActions.includes(action)) return false;
     if (action === AllowedAction.CapturePayment) return (sale.coverage === PaymentCoverage.Partial || sale.coverage === PaymentCoverage.Unpaid) && !!sale.pending && sale.pending.cents > 0n;
     if (action === AllowedAction.Commit) return sale.coverage === PaymentCoverage.Paid && sale.pending?.cents === 0n;
-    if (action === AllowedAction.Release) return this === DurableSaleState.Reserved && sale.coverage === PaymentCoverage.Unpaid && sale.hasPaymentHistory === false;
+    if (action === AllowedAction.Release) return sale.coverage === PaymentCoverage.Unpaid && !!sale.total && sale.pending?.cents === sale.total.cents;
     if (action === AllowedAction.ReversePayment) return sale.hasPaymentHistory === true && sale.payments.some(payment => payment.status === PaymentStatus.Captured);
     return false;
   }

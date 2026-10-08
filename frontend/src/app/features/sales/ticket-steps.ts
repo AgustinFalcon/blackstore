@@ -1,6 +1,6 @@
 import { Observable, concatMap, map, of, throwError, timer } from 'rxjs';
 import { SaleAction, SaleStatus } from '../../core/domain/pos-types';
-import { CapturedPayment, PaymentAttempt, TicketIdentity, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
+import { CapturedPayment, PaymentAttempt, PaymentLedgerSemantics, TicketIdentity, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 
 export interface TicketFlowPort {
@@ -82,10 +82,10 @@ export class CapturePaymentStep {
 }
 
 export class RefreshTicketStep {
-  constructor(private readonly port: TicketFlowPort) {}
+  constructor(private readonly port: TicketFlowPort, private readonly semantics = PaymentLedgerSemantics.Legacy) {}
   execute(identity: TicketIdentity): Observable<TicketSnapshot> {
     return this.port.refresh(identity).pipe(map((response) => {
-      const snapshot = PosWireMapper.ticket(response, identity);
+      const snapshot = PosWireMapper.ticket(response, identity, this.semantics);
       if (!snapshot.evidenceValid) throw new Error('No se pudo comprobar la identidad o evidencia de la venta.');
       return snapshot;
     }));

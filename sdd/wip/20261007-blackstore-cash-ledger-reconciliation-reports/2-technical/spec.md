@@ -1,5 +1,7 @@
 # Especificación técnica
 
+Incremento T08-C 2026-10-08 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: tipos/traductores contexto/lifecycle/admission, journal IndexedDB común y clientes internos v2 implementados. `implemented_pending_local_tests_pg16_browser_ci_review`; T08 sigue parcial. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md) documenta límites y source intermedio validado. Los estados blocked/planned de C en antecedentes siguientes quedan sustituidos para implementación; no cambian aprobación ADR-003 ni aceptación runtime.
+
 ## Addendum T08-B-POS — contexto verificado
 
 Implementación 2026-10-08 sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`: V11 vacío/inmutable, referencias de provisión/evidencia obligatorias, app SELECT-only; terminal FOR SHARE mediante función definer estrecha sin UPDATE runtime. Configuración explícita de terminal/conector capturada al iniciar, sin inferencia de seed/companion. Query read-only y validación nueva Reserve con misma conexión después de autoridad/replay, caja→terminal→venta→delivery. [Runbook](../../../../backend/POS-CONTEXT-PROVISIONING.md) y [evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md). Estado implementado con aceptación PG16/browser/CI/reviews pendiente; C bloqueado y ADR-003 proposed sin aprobación heredada.

@@ -1,5 +1,7 @@
 # Plan y cortes revisables
 
+Estado actual C 2026-10-08: source frontend implementado sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; `implemented_pending_local_tests_pg16_browser_ci_review`. [Evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). JSON fija el DAG vigente y conserva T08 parcial. La secuencia/reviews específicos B-POS/ADR-003 y PG16/browser/CI no se consideran aprobados por este corte.
+
 ## Addendum de contexto POS — precedencia vigente
 
 2026-10-08: B-POS implementado por encargo explícito sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, estado `implemented_pending_pg16_ci_review`. [Evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md) registra el runner y las pruebas reales. La revisión específica de ADR-003/implementación permanece pendiente, sin heredar GO; C conserva `blocked_on_pos_context` hasta integración/reviews y T08 sigue parcial. Ningún gate PG16/browser/CI se acredita por fixtures preparados.

@@ -15,15 +15,55 @@ import {
 } from '../models/pos-models';
 import { ReportFormula, ReportPeriod } from '../domain/pos-types';
 import { BaseResponse } from '../models/base-response';
-import { CapturedPayment, PaymentAttempt, PaymentCoverage, TicketIdentity, TicketMoney, TicketSnapshot, sameTicketIdentity } from '../domain/ticket-transition';
+import { CapturedPayment, PaymentAttempt, PaymentCoverage, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, sameTicketIdentity } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
 import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary } from '../domain/durable-sale';
 import { AccountingFormula, AccountingMetric, AccountingReport, AccountingReportRequest, CompletenessCause, CoveredValue, DataCompleteness, FormulaVersion, MetricCoverage, Reconciliation, ReconciliationOutcome, ReportFailure } from '../domain/accounting-report';
 
 import { AccountingCommand, AccountingCommandKind, AccountingCoverage, CommandFailure, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
+import { PosContextObservation, PosContextState } from '../domain/pos-execution-context';
+import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
+import { SaleAdmission, SaleAdmissionOutcome, SaleCommand, SaleCommandKind } from '../domain/sale-command';
 
 export class PosWireMapper {
   private constructor() {}
+  static posContext(response: unknown): PosContextObservation {
+    const unknown = Object.freeze({ state: PosContextState.Unknown, context: null });
+    const envelope = this.record(response); const data = this.record(envelope?.['data']);
+    if (!envelope || !this.nonempty(envelope['traceId']) || !data) return unknown;
+    const state = PosContextState.fromWire(data['state']);
+    if (state === PosContextState.Unavailable && envelope['code'] === 503 && data['context'] === null) return { state, context: null };
+    const raw = this.record(data['context']);
+    if (state !== PosContextState.Available || envelope['code'] !== 200 || !raw || !this.uuid(raw['clientInstanceId']) ||
+      !this.positiveId(raw['terminalId']) || !this.nonempty(raw['deviceId']) || String(raw['deviceId']).length > 80 || raw['deviceId'] !== String(raw['deviceId']).trim()) return unknown;
+    return Object.freeze({ state, context: Object.freeze({ clientInstanceId: raw['clientInstanceId'] as string, deviceId: raw['deviceId'] as string, terminalId: raw['terminalId'] as number }) });
+  }
+  static lifecycle(response: unknown): AccountingLifecycleState {
+    const envelope = this.record(response); const data = this.record(envelope?.['data']);
+    const instant = (value: unknown) => typeof value === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
+    if (!envelope || envelope['code'] !== 200 || !this.nonempty(envelope['traceId']) || !data || data['contractVersion'] !== 'V2' || !instant(data['observedAt'])) return AccountingLifecycleState.Unknown;
+    const state = AccountingLifecycleState.fromWire(data['state']);
+    return (state === AccountingLifecycleState.PreActivation ? data['activationAt'] === null : instant(data['activationAt'])) ? state : AccountingLifecycleState.Unknown;
+  }
+  static saleAdmission(response: unknown, command: SaleCommand, actorId: number): SaleAdmission {
+    const unknown = { outcome: SaleAdmissionOutcome.Unknown, receipt: null };
+    const envelope = this.record(response); const data = this.record(envelope?.['data']);
+    if (!envelope || !this.nonempty(envelope['traceId']) || !data) return unknown;
+    const outcome = SaleAdmissionOutcome.fromWire(data['outcome']);
+    if (outcome !== SaleAdmissionOutcome.Accepted) {
+      const expected = outcome === SaleAdmissionOutcome.NotFound ? 404 : outcome === SaleAdmissionOutcome.Unavailable ? 503 : null;
+      return expected === envelope['code'] && data['receipt'] === null ? { outcome, receipt: null } : unknown;
+    }
+    const raw = this.record(data['receipt']); const identity = this.identity(raw); const kind = SaleCommandKind.fromWire(raw?.['kind']);
+    if (!raw || !identity || kind === SaleCommandKind.Unknown || ![200, 202].includes(envelope['code'] as number) || data['failure'] !== null ||
+      !this.uuid(raw['commandId']) || !this.positiveId(raw['actorId']) || !this.positiveId(raw['cashSessionId']) || !this.positiveId(raw['intentId']) || !this.positiveId(raw['outboxId']) ||
+      !/^[0-9a-f]{64}$/.test(String(raw['payloadHash'])) || typeof raw['acceptedAt'] !== 'string' || !/(?:Z|[+-]\d{2}:\d{2})$/.test(raw['acceptedAt']) || !Number.isFinite(Date.parse(raw['acceptedAt']))) return unknown;
+    const receipt = Object.freeze({ ...identity, kind, commandId: raw['commandId'] as string, actorId: raw['actorId'] as number,
+      cashSessionId: raw['cashSessionId'] as number, payloadHash: raw['payloadHash'] as string, intentId: raw['intentId'] as number,
+      outboxId: raw['outboxId'] as number, acceptedAt: raw['acceptedAt'] });
+    return command.accepts(receipt, actorId) ? { outcome, receipt } : unknown;
+  }
+  static uuid(raw: unknown): raw is string { return typeof raw === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw); }
   static commandPath(command: AccountingCommand): string {
     if (command.kind === AccountingCommandKind.Open) return '/cash-sessions';
     if (command.kind === AccountingCommandKind.Close) return `/cash-sessions/${command.aggregateId}/close`;
@@ -225,7 +265,7 @@ export class PosWireMapper {
     return PaymentStatus.fromWire(raw?.status);
   }
 
-  static ticket(response: unknown, expected: TicketIdentity): TicketSnapshot {
+  static ticket(response: unknown, expected: TicketIdentity, semantics = PaymentLedgerSemantics.Legacy): TicketSnapshot {
     const raw = PosWireMapper.payload(response);
     const identity = PosWireMapper.identity(raw);
     const total = TicketMoney.fromDecimal(raw?.['totalAmount']);
@@ -235,13 +275,14 @@ export class PosWireMapper {
     const receipt = PosWireMapper.nonempty(raw?.['receipt']);
     const reservationRef = PosWireMapper.nonempty(raw?.['reservationRef']);
     const balanceValid = !!total && !!pending && total.cents > 0n && pending.cents >= 0n && pending.cents <= total.cents;
-    const coverageValid = balanceValid && (
-      (coverage === PaymentCoverage.Unpaid && pending!.cents === total!.cents && history === false) ||
+    const coverageValid = semantics !== PaymentLedgerSemantics.Unknown && balanceValid && (
+      (coverage === PaymentCoverage.Unpaid && pending!.cents === total!.cents && (history === false || semantics === PaymentLedgerSemantics.Net && history === true)) ||
       (coverage === PaymentCoverage.Partial && pending!.cents > 0n && pending!.cents < total!.cents && history === true) ||
       (coverage === PaymentCoverage.Paid && pending!.cents === 0n && history === true));
     const evidenceValid = !!identity && sameTicketIdentity(identity, expected) && raw?.['evidenceValid'] === true &&
       !!receipt && !!reservationRef && typeof raw?.['blocked'] === 'boolean' && typeof raw?.['retired'] === 'boolean';
     return Object.freeze({
+      ledgerSemantics: semantics,
       identity: identity ?? expected,
       status: SaleStatus.fromWire(raw?.['status']),
       evidenceValid,
@@ -294,7 +335,7 @@ export class PosWireMapper {
     const coverage = PaymentCoverage.fromWire(raw['paymentCoverage']);
     const history = typeof raw['hasPaymentHistory'] === 'boolean' ? raw['hasPaymentHistory'] : null;
     const balance = !!summary.total && summary.total.cents > 0n && !!pending && pending.cents >= 0n && pending.cents <= summary.total.cents;
-    const validCoverage = balance && ((coverage === PaymentCoverage.Unpaid && pending!.cents === summary.total!.cents && history === false) ||
+    const validCoverage = balance && ((coverage === PaymentCoverage.Unpaid && pending!.cents === summary.total!.cents && history !== null) ||
       (coverage === PaymentCoverage.Partial && pending!.cents > 0n && pending!.cents < summary.total!.cents && history === true) ||
       (coverage === PaymentCoverage.Paid && pending!.cents === 0n && history === true));
     const lines = Array.isArray(raw['lines']) ? raw['lines'].map(value => {
@@ -312,11 +353,13 @@ export class PosWireMapper {
     const command = raw['pendingCommand'] == null ? null : DurableCommandKind.fromWire(PosWireMapper.record(raw['pendingCommand'])?.['kind']);
     const receipt = PosWireMapper.nonempty(raw['receipt']);
     const reservationRef = PosWireMapper.nonempty(raw['reservationRef']);
-    const valid = summary.createdBy !== null && !!validCoverage && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
+    const net = payments.reduce((sum,payment) => payment.amount ? sum + (payment.status === PaymentStatus.Captured ? payment.amount.cents : payment.status === PaymentStatus.Refunded ? -payment.amount.cents : 0n) : sum,0n);
+    const ledgerValid = !!summary.total && !!pending && net === summary.total.cents - pending.cents && (history === true ? payments.length > 0 : payments.length === 0);
+    const valid = summary.createdBy !== null && !!validCoverage && ledgerValid && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
       !allowedActions.includes(AllowedAction.Unknown) && Array.isArray(raw['lines']) && Array.isArray(raw['payments']) &&
       raw['lines'].every(value => { const line = PosWireMapper.record(value); return !!PosWireMapper.nonempty(line?.['sku']) && !!PosWireMapper.nonempty(line?.['productName']); }) &&
       lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents >= 0n) &&
-      payments.every(payment => payment.paymentId > 0 && payment.status !== PaymentStatus.Unknown && payment.method !== PaymentMethod.Unknown &&
+      payments.every(payment => payment.paymentId > 0 && (payment.status === PaymentStatus.Captured || payment.status === PaymentStatus.Refunded) && payment.method !== PaymentMethod.Unknown &&
         !!payment.amount && payment.amount.cents > 0n && !!payment.fee && payment.fee.cents >= 0n) &&
       new Set(payments.map(payment => payment.paymentId)).size === payments.length && command !== DurableCommandKind.Unknown && !!receipt && !!reservationRef;
     return Object.freeze({ ...summary, pending, coverage: validCoverage ? coverage : PaymentCoverage.InvalidUnknown, hasPaymentHistory: history,

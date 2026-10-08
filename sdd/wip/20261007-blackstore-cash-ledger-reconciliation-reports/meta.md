@@ -1,5 +1,7 @@
 # Libro de caja, arqueo y reportes por período
 
+Estado actual de C: `implemented_pending_local_tests_pg16_browser_ci_review` sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. El source del journal/contexto/lifecycle y los clientes v2 está implementado; [evidencia](evidence/CLR-T08-C-frontend-local-20261008.md). T08 parcial; PG16/browser/crash/CI/reviews pendientes. Las menciones de C bloqueado debajo registran cortes anteriores y no son el estado de implementación actual.
+
 ## Estado vigente del addendum POS
 
 2026-10-08: CLR-T08-B-POS implementado por encargo explícito del coordinador sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, branch `feat/cash-ledger-pos-context-backend`. Dominio/query/HTTP, V11, provisión administrativa documentada y validación transaccional Reserve/replay preparados. Estado `implemented_pending_pg16_ci_review`; ADR-003 conserva revisión específica pendiente y no hereda aprobación. [Evidencia del backend](evidence/CLR-T08-B-POS-backend-local-20261008.md) registra pruebas y límites. T08-C sigue `blocked_on_pos_context` hasta integración/reviews; T08 parcial, T09 planned. PG16/browser/CI/reviews no se declaran PASS por implementación.
@@ -18,3 +20,6 @@ Antecedente documental del 2026-10-07: base T08-B `39aa9d6dad199d88328e9c3799911
 - Estrategia: PR de SDD/GO y cuatro cortes de implementación. Este corte sólo publica documentación: no contiene código, migraciones ejecutadas, activación runtime, deploy, publicación ni `/sdd.finish`.
 
 StoreCore permanece fixture/disabled. Dos PostgreSQL, E2E live, fiscal, MP-LIVE-05, activación companion, facturación y Correo Argentino conservan gates externos independientes. La aceptación contable local no los habilita.
+# Estado vigente T08-C — 2026-10-08
+
+Frontend sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: v2 saga/caja/pagos, contexto/lifecycle, journal IndexedDB y recuperación GET implementados. Estado `implemented_pending_local_tests_pg16_browser_ci_review`; sustituye el bloqueo de implementación de C registrado abajo, sin cerrar gates de B-POS ni ADR-003. T08 parcial, T09 planned. [Evidencia y límites](evidence/CLR-T08-C-frontend-local-20261008.md).

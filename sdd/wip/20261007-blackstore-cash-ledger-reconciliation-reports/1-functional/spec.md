@@ -1,5 +1,7 @@
 # Especificación funcional
 
+Actualización de implementación C 2026-10-08: consola v2, journal común, contexto/lifecycle y recuperación GET preparados sobre B-POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. Estado `implemented_pending_local_tests_pg16_browser_ci_review`; [evidencia](../evidence/CLR-T08-C-frontend-local-20261008.md). Sustituye blocked_on_pos_context de los antecedentes, sin cerrar T08 parcial ni acceptance CLR-010.
+
 ## Addendum POS — CLR-004/009/010
 
 [ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) fija contexto de instalación/terminal lógica provisionado por servidor antes de nueva intención. SID autentica al actor, no identifica dispositivo. Contexto ausente/contradictorio bloquea; journal conserva evidencia ante nuevo SID, cambio de actor/contexto o pérdida de respuesta. No inventar IDs de instalación en browser ni reinterpretar historia. IndexedDB sólo coordina mismo origen/perfil, no acredita identidad física ni exclusión entre perfiles. T08-C `blocked_on_pos_context`; T08 parcial. Backend addendum/reviews y aceptación browser/PG16 pendientes.
