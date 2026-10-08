@@ -4,7 +4,7 @@ import { AccountingCommand, AccountingCommandKind, CommandOutcome, CommandReceip
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
 import { JournalEntry, JournalFamily, JournalPhase, JournalScope, sameScope } from '../domain/command-journal';
 import { PosContextState, PosExecutionContext } from '../domain/pos-execution-context';
-import { SaleAdmission, SaleAdmissionOutcome, SaleCommand,SaleAdmissionVerification } from '../domain/sale-command';
+import { SaleAdmission, SaleAdmissionOutcome, SaleCommand,SaleCommandKind,SaleAdmissionVerification } from '../domain/sale-command';
 import { IndexedDbCommandJournal } from '../infrastructure/indexed-db-command-journal';
 import { CommandHttp } from '../infrastructure/command-http';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
@@ -120,10 +120,16 @@ export class CommandRuntimeStore {
     await this.journal.transition(entry,JournalPhase.ReceiptVerifiedAwaitingRefresh);
     if (!this.current(epoch,generation,actor)) return unknown;
     this.pending.set({ ...entry, phase: JournalPhase.ReceiptVerifiedAwaitingRefresh }); this.notice.set('Recibo comprobado. Falta refresh autoritativo.');
-    const refreshed = await firstValueFrom(this.api.refresh(command, command instanceof AccountingCommand ? result as CommandReceipt : undefined));
+    if(command instanceof SaleCommand && command.kind===SaleCommandKind.Reserve)
+      this.notice.set('Reserva admitida. Esperando comprobación autoritativa; sólo consultas, sin cobro.');
+    const refreshed = await firstValueFrom(this.api.refresh(command, command instanceof AccountingCommand ? result as CommandReceipt : undefined,
+      ()=>this.current(epoch,generation,actor) && this.pending()?.command.commandId===command.commandId && this.pending()?.family===entry.family &&
+        !!this.context() && sameScope(entry.scope,{origin:globalThis.location.origin,...this.context()!}) && this.session.can(command.kind.permission)));
     if (!this.current(epoch,generation,actor) || !refreshed) {
       if(this.current(epoch,generation,actor) && command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense)
         this.notice.set('Egreso admitido; falta evidencia autoritativa de egreso/liquidación. Operación bloqueada hasta T08-D.');
+      if(this.current(epoch,generation,actor) && command instanceof SaleCommand && command.kind===SaleCommandKind.Reserve)
+        this.notice.set('Reserva aún no comprobada. Intención conservada; consultá sin reenviar ni cobrar.');
       return unknown;
     }
     await this.journal.transition(entry,JournalPhase.Resolved);

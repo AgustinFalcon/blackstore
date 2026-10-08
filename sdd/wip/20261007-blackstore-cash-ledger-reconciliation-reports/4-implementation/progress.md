@@ -1,5 +1,9 @@
 # Progreso inicial
 
+## Corrección ronda 2 — reserva asíncrona
+
+Sobre 61ea8ad, refresh Reserve usa espera GET-only acotada (20 lecturas/100 ms/deadline 5 s) compartida con AwaitReservationStep. Pending conserva claim; sólo Reserved válido resuelve antes de capture. Unknown/NotFound/timeout/sesión tardía no rePOST/capture. Tests integrados y del objeto común añadidos, ejecución NOT_RUN sin npm. [Evidencia](../evidence/CLR-T08-C-async-reserve-review2-20261008.md). C sigue blocked_on_authoritative_read_models/T08 parcial.
+
 ## Correcciones de review C — 2026-10-08
 
 Sobre 0a6bb36: reversibilidad cerrada y fallback tras refund antes de journal; Expense/Settle awaitingRefresh sin falso Resolved; guard por actor/generación después de shareReplay y antes de defer; fingerprint exacto sale-admission-v1 persistido/recalculado/correlacionado y cuarentena. Tests fuente de mapper/store/HTTP/IDB/DOM añadidos, ejecución NOT_RUN por instrucción del coordinador, sin npm. C `blocked_on_authoritative_read_models`; T08 parcial, no usable completo. T08-D read-models backend se formaliza aparte. [Evidencia vigente](../evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estado C previo; validación histórica 161/161 pertenece sólo a source 8227177.

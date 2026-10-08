@@ -1,5 +1,7 @@
 # Libro de caja, arqueo y reportes por período
 
+Ronda 2 sobre 61ea8ad corrige Reserve asíncrona mediante espera autoritativa GET-only acotada, sin liberar journal/capturar durante Pending. [Evidencia](evidence/CLR-T08-C-async-reserve-review2-20261008.md); tests nuevos NOT_RUN, validación externa pendiente. C sigue blocked_on_authoritative_read_models/T08 parcial.
+
 Estado vigente posterior al review de 0a6bb36: C `blocked_on_authoritative_read_models`, T08 parcial. Fallback explícito: tras cualquier refund no se admiten nuevas reversas; egreso/liquidación admitido no se resuelve sin GET autoritativo. Dependencia T08-D en addendum backend separado. Correcciones de aislamiento/fingerprint y tests añadidos, todavía NOT_RUN para este nuevo source. [Evidencia vigente](evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estados C anteriores sin heredar el PASS de source 8227177.
 
 Validación frontend externa exacta `82271775df12d79554aacbfc67030db3843f1445`: npm ci local/typecheck/build PASS y 161/161 unitarios PASS con launcher built-in ChromeHeadlessNoSandbox en unidad temporal T:, luego desmontada. Sin cambios source/CI; PG16/browser CLR/crash/CI/reviews y security triage de 7 high preexistentes siguen pendientes. [Detalle](evidence/CLR-T08-C-frontend-local-20261008.md).

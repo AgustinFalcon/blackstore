@@ -9,6 +9,7 @@ import { PaymentStatus } from '../domain/pos-types';
 import { DurableSaleState } from '../domain/durable-sale';
 import { TicketMoney } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
+import {AwaitReservationReadStep,ReservationReadState} from './await-reservation-read-step';
 @Injectable({ providedIn: 'root' })
 export class CommandHttp {
   private readonly http = inject(HttpClient);
@@ -41,9 +42,17 @@ export class CommandHttp {
       return session && session.terminalId === terminalId && session.status.isOpen ? session.id : false as const;
     }))),catchError(() => of(false as const)));
   }
-  refresh(command: AccountingCommand | SaleCommand, receipt?: CommandReceipt): Observable<boolean> {
+  refresh(command: AccountingCommand | SaleCommand, receipt?: CommandReceipt,current:()=>boolean=()=>true): Observable<boolean> {
     // Current API has no authoritative expense/settlement read. Keep the journal unresolved.
     if(command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense) return of(false);
+    if(command instanceof SaleCommand && command.kind===SaleCommandKind.Reserve){
+      const read=()=>this.http.get(`${API_BASE}/sales/operations/${encodeURIComponent(command.identity.operationId)}`).pipe(map(raw=>PosWireMapper.durableDetail(raw,command.identity.operationId)));
+      return new AwaitReservationReadStep(read,detail=>{
+        if(!detail || !importIdentity(detail.identity,command.identity) || detail.cashSessionId!==command.cashSessionId)return ReservationReadState.Unknown;
+        if(detail.status===DurableSaleState.PendingReservation)return ReservationReadState.Pending;
+        return detail.status===DurableSaleState.Reserved && detail.valid ? ReservationReadState.Reserved : ReservationReadState.Unknown;
+      },current).execute().pipe(map(()=>true),catchError(()=>of(false)));
+    }
     if (command instanceof SaleCommand || command.kind === AccountingCommandKind.Capture || command.kind === AccountingCommandKind.Reverse) {
       const identity = command instanceof SaleCommand ? command.identity : command.body as unknown as import('../domain/ticket-transition').TicketIdentity;
       return this.http.get(`${API_BASE}/sales/operations/${encodeURIComponent(identity.operationId)}`).pipe(map(raw => {
