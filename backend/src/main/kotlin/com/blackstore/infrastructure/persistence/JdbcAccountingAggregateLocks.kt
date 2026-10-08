@@ -4,7 +4,7 @@ import com.blackstore.domain.model.OperationQuadruple
 import java.sql.Connection
 import java.util.UUID
 
-/** Shared lock protocol for every accounting/commercial writer: cash, then sale, then delivery. */
+/** Shared order: cash, optional terminal for new POS Reserve, sale, then delivery. */
 internal class JdbcAccountingAggregateLocks {
     data class LockedSale(val projectionId: Long, val cashSessionId: Long, val identity: OperationQuadruple)
 

@@ -2,6 +2,8 @@
 
 ## Addendum de contexto POS — precedencia vigente
 
+2026-10-08: B-POS implementado por encargo explícito sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, estado `implemented_pending_pg16_ci_review`. [Evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md) registra el runner y las pruebas reales. La revisión específica de ADR-003/implementación permanece pendiente, sin heredar GO; C conserva `blocked_on_pos_context` hasta integración/reviews y T08 sigue parcial. Ningún gate PG16/browser/CI se acredita por fixtures preparados.
+
 [ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) separa CLR-T08-B-POS (backend/schema) de T08-C. Base T08-B exacta `39aa9d6dad199d88328e9c3799911e355a9cbddd`. Orden: SDD/revisión específica → B-POS → C → T09; no mezclar migración/endpoints con frontend. B-POS depende B; C depende B-POS y queda `blocked_on_pos_context`. T08 sigue parcial, B conserva sus gates previos. Las menciones planned de C debajo son antecedentes, sustituidos por este estado. JSON es fuente del DAG vigente.
 
 B-POS entrega dominio/puerto/query/context validator, V11 tras comprobar numeración, provisión explícita de harness, contrato HTTP y validación transaccional Reserve/replay. No enrollment browser ni identificación física. Aceptación: constraints/grants, PG16 clean/upgrade, autoridad/opacidad, conector concordante, terminal/caja/contexto inválidos sin efectos, carrera desactivación, recuperación histórica y reviews bugs/seguridad/SDD exact-head. C cubre mapper/store/journal/actor/tab/generación; T09 prueba browser/PG16/restart propios. Ninguno se marca done por documentación.

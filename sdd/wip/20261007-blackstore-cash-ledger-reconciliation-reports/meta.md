@@ -2,7 +2,9 @@
 
 ## Estado vigente del addendum POS
 
-Base T08-B `39aa9d6dad199d88328e9c3799911e355a9cbddd`; [ADR-003](2-technical/adr/ADR-003-pos-execution-context.md) proposed, revisión específica pendiente. CLR-T08-B conserva implemented_pending_pg16_ci_review; nuevo CLR-T08-B-POS planned. CLR-T08-C `blocked_on_pos_context`, T08 parcial y T09 planned. Las referencias anteriores a B/C planned son antecedentes. Sólo documentación; no GO nuevo, código, migración ejecutada, runtime ni homologación.
+2026-10-08: CLR-T08-B-POS implementado por encargo explícito del coordinador sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, branch `feat/cash-ledger-pos-context-backend`. Dominio/query/HTTP, V11, provisión administrativa documentada y validación transaccional Reserve/replay preparados. Estado `implemented_pending_pg16_ci_review`; ADR-003 conserva revisión específica pendiente y no hereda aprobación. [Evidencia del backend](evidence/CLR-T08-B-POS-backend-local-20261008.md) registra pruebas y límites. T08-C sigue `blocked_on_pos_context` hasta integración/reviews; T08 parcial, T09 planned. PG16/browser/CI/reviews no se declaran PASS por implementación.
+
+Antecedente documental del 2026-10-07: base T08-B `39aa9d6dad199d88328e9c3799911e355a9cbddd`; [ADR-003](2-technical/adr/ADR-003-pos-execution-context.md) proposed, revisión específica pendiente. CLR-T08-B conserva implemented_pending_pg16_ci_review; CLR-T08-B-POS estaba planned. CLR-T08-C `blocked_on_pos_context`, T08 parcial y T09 planned. Ese corte sólo entregó documentación y no acreditó implementación ni homologación; el registro del 2026-10-08 arriba fija el estado vigente de B-POS.
 
 - Feature: `blackstore-cash-ledger-reconciliation-reports`.
 - Backlog: TODO-007. Fecha: 2026-10-07. Idioma: español.

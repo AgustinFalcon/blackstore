@@ -1,5 +1,13 @@
 # Progreso inicial
 
+## 2026-10-08 — implementación CLR-T08-B-POS
+
+Base exacta `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, branch `feat/cash-ledger-pos-context-backend`, implementación encargada explícitamente por el coordinador. Contexto cerrado y traductor único, query read-only/GET SID WorkspaceRead no-store, V11 vacío con provisión explícita/evidencia/inmutabilidad/grants, validación nueva Reserve en la misma conexión y lock terminal después de caja antes de venta. Replay autorizado conserva receipt antes de binding actual, incluso cerrado/Paused; comandos históricos no requieren identidad nueva. Fixtures PG16 incluyen upgrade V10 sin backfill, rechazos sin efectos, grants y carreras terminal en ambos órdenes con barreras. [Evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md) conserva comandos/resultados reales y bloqueos.
+
+Estado `implemented_pending_pg16_ci_review`; T08-C `blocked_on_pos_context`, T08 parcial, T09 planned. ADR-003/reviews específicas pendientes sin aprobación heredada. No activación, servicios persistentes, deploy, push/PR, homologación ni publicación.
+
+Validación final local PASS: 55 suites/205 tests/0 failures/errors/skips sobre el source final; incluye dominio/HTTP/SID/arquitectura/indisponibilidad y regresión backend no-Docker. JDK21/init externo/offline, build conserva17. PG16 real intentado pero BLOCKED antes de assertions por Docker no disponible; clean/upgrade/races/grants siguen NOT_RUN, fixtures compilan. JSON/diff/links PASS. Teardown: sin procesos Java remanentes ni servicio propio iniciado.
+
 ## 2026-10-07 — addendum documental POS
 
 Inspección de base T08-B `39aa9d6dad199d88328e9c3799911e355a9cbddd`: sesión sin dispositivo, workspace desde seed y Reserve nueva sin binding. [ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) registra solución y límites. CLR-T08-B-POS planned; CLR-T08-C `blocked_on_pos_context`; CLR-T08 continúa parcial. Implementación/migración nueva/PG16/browser NOT_RUN; review específica pendiente. No se heredan aprobaciones T08-A/B. [Evidencia](../evidence/CLR-T08-B-POS-sdd-20261007.md). Este registro sustituye estados planned de C en antecedentes, sin borrar evidencias previas.

@@ -32,7 +32,11 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
     @Value("\${blackstore.storecore.contract.canonical-path}") private val path: String,
     @Value("\${blackstore.storecore.contract.version}") private val version: String,
     @Value("\${blackstore.storecore.contract.sha256}") private val digest: String,
-    @Value("\${blackstore.companion.stored.environment:TEST}") private val environment: String = "TEST") : SaleMutationCommands {
+    @Value("\${blackstore.companion.stored.environment:TEST}") private val environment: String = "TEST",
+    @Value("\${blackstore.pos.terminal-id:0}") terminalId: Long = 0,
+    @Value("\${blackstore.storecore.transport.client-instance-id:}") connectorClientInstanceId: String = "") : SaleMutationCommands {
+    private val contextReader = JdbcPosContextReader(terminalId,connectorClientInstanceId)
+    private val contextValidation = com.blackstore.application.pos.PosContextValidationStep()
     private val lifecycle = JdbcAccountingLifecycleAdmission()
     private val locks = JdbcAccountingAggregateLocks()
     private val durable = JdbcDurableSaleRepository(source)
@@ -45,6 +49,7 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
     private val replay = ReceiptReplayStep()
     private val aggregate = AggregateStep()
     private val admission = LifecycleAdmissionStep()
+    private val posContext = PosContextAdmissionStep()
     private val persistence = PersistAdmissionStep()
 
     override fun execute(staff: AuthenticatedStaff, command: SaleCommand): SaleCommandResult = safely(staff) {
@@ -55,8 +60,18 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
             val scope=aggregate.lock(c,command,saved)
             val actor=authority.current(c,staff,command,scope.cash)
             replay.resolve(command,saved,actor,scope.cash)?.let { return@transaction it }
+            if(command is SaleCommand.Reserve) {
+                if(projection(c,command.identity.operationId)!=null) {
+                    // Existing operations require full identity visibility before conflict disclosure.
+                    // No terminal lock/binding is needed because this path cannot admit an intention.
+                    aggregate.verify(c,command,scope.cash)
+                    reject(SaleCommandFailure.ExistingOperationCommand)
+                }
+                admission.requireNew(c,scope.cash)
+                posContext.require(c,command,scope.cash)
+            }
             val stored=aggregate.verify(c,command,scope.cash)
-            admission.requireNew(c,scope.cash)
+            if(command !is SaleCommand.Reserve) admission.requireNew(c,scope.cash)
             persistence.write(c,actor,command,scope.cash.id,stored)
         }
     }
@@ -105,6 +120,14 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
     }
     private inner class LifecycleAdmissionStep {
         fun requireNew(c: Connection,cash: OwnedCashSession) { SaleLifecycleAdmissionStep().failure(lifecycle.state(c),cash.open)?.let(::reject) }
+    }
+    private inner class PosContextAdmissionStep {
+        fun require(c: Connection,command: SaleCommand.Reserve,cash: OwnedCashSession) {
+            // Global order: fence -> command/operation -> cash -> terminal -> sale -> delivery.
+            val cashTerminal = scalar(c,"SELECT terminal_id FROM cash_session_projection WHERE id=?",cash.id) { it.getLong(1) }
+                ?: reject(SaleCommandFailure.NotVisible)
+            contextValidation.failure(contextReader.read(c,true),command.identity,cashTerminal)?.let(::reject)
+        }
     }
     private inner class PersistAdmissionStep {
         fun write(c: Connection,actor: AuthenticatedStaff,command: SaleCommand,cashId: Long,stored: StoredSale?): SaleCommandResult.Accepted {
