@@ -62,18 +62,30 @@ export interface DurableSalePayment {
   readonly amount: TicketMoney | null;
   readonly fee: TicketMoney | null;
 }
-/** Current detail contract cannot prove per-capture reversibility after any refund. */
+/** Linkage is validated over the entire sale snapshot before any capture can be reversed. */
 export class PaymentReversibility {
   static readonly Reversible = new PaymentReversibility('Puede reversarse',true);
   static readonly NotCapture = new PaymentReversibility('No es una captura',false);
+  static readonly AlreadyRefunded = new PaymentReversibility('Captura ya reversada',false);
   static readonly Unknown = new PaymentReversibility('Reversibilidad no comprobada',false);
   private constructor(readonly label:string,readonly permitsReverse:boolean) {}
   static forPayment(payment:Pick<DurableSalePayment,'paymentId'|'status'|'amount'|'method'>,payments:readonly Pick<DurableSalePayment,'paymentId'|'status'|'amount'|'method'|'originalPaymentId'>[]):PaymentReversibility {
+    if(!this.validLedger(payments))return this.Unknown;
     if(payment.status!==PaymentStatus.Captured) return this.NotCapture;
-    const refunds=payments.filter(p=>p.status===PaymentStatus.Refunded);
-    // Current contract omits refund→capture linkage. Even an unexpected field cannot grant authority.
-    if(refunds.length>0)return this.Unknown;
-    return this.Reversible;
+    return payments.some(p=>p.originalPaymentId===payment.paymentId) ? this.AlreadyRefunded : this.Reversible;
+  }
+  static validLedger(payments:readonly Pick<DurableSalePayment,'paymentId'|'status'|'amount'|'method'|'originalPaymentId'>[]):boolean {
+    if(new Set(payments.map(p=>p.paymentId)).size!==payments.length)return false;
+    const referenced=new Set<number>();
+    return payments.every(p=>{
+      if(!Number.isSafeInteger(p.paymentId) || p.paymentId<=0 || p.method===PaymentMethod.Unknown || !p.amount || p.amount.cents<=0n)return false;
+      if(p.status===PaymentStatus.Captured)return p.originalPaymentId===null;
+      if(p.status!==PaymentStatus.Refunded || !p.originalPaymentId || referenced.has(p.originalPaymentId))return false;
+      referenced.add(p.originalPaymentId);
+      const original=payments.find(c=>c.paymentId===p.originalPaymentId);
+      return !!original && original!==p && original.status===PaymentStatus.Captured && original.originalPaymentId===null &&
+        p.method!==PaymentMethod.Unknown && original.method===p.method && !!p.amount && p.amount.cents>0n && original.amount?.cents===p.amount.cents;
+    });
   }
 }
 export interface DurableSaleDetail extends DurableSaleSummary {

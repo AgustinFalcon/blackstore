@@ -23,10 +23,63 @@ import { AccountingFormula, AccountingMetric, AccountingReport, AccountingReport
 import { AccountingCommand, AccountingCommandKind, AccountingCoverage, CommandFailure, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
 import { PosContextObservation, PosContextState } from '../domain/pos-execution-context';
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
+import { ExpenseOperation } from '../domain/accounting-command';
+import { ExpenseProjectionObservation, ExpenseProjectionState, ExpensePostingKind, ExpenseFact, ExpenseSettlement, ExpensePosting } from '../domain/expense-projection';
 import { SaleAdmission, SaleAdmissionOutcome, SaleCommand, SaleCommandKind,SaleAdmissionVerification } from '../domain/sale-command';
 
 export class PosWireMapper {
   private constructor() {}
+  static expenseProjection(response:unknown):ExpenseProjectionObservation {
+    const unknown=Object.freeze({state:ExpenseProjectionState.Unknown,projection:null});
+    const envelope=this.record(response),data=this.record(envelope?.['data']);
+    if(!envelope || !this.nonempty(envelope['traceId']) || !data)return unknown;
+    const state=ExpenseProjectionState.fromWire(data['state']);
+    if(state!==ExpenseProjectionState.Found){
+      const code=state===ExpenseProjectionState.NotFound?404:state===ExpenseProjectionState.Unavailable?503:null;
+      return code===envelope['code'] && data['projection']===null ? {state,projection:null}:unknown;
+    }
+    const p=this.record(data['projection']),e=this.record(p?.['expense']),a=this.record(p?.['accountingEvidence']),snap=this.record(a?.['snapshot']);
+    const instant=(v:unknown):v is string=>typeof v==='string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
+    const ids=(v:unknown):v is number[]=>Array.isArray(v) && v.every(id=>this.positiveId(id)) && new Set(v).size===v.length;
+    const amount=TicketMoney.fromDecimal(e?.['amount']);
+    const operation=ExpenseOperation.fromWire(p?.['operation']);
+    if(envelope['code']!==200 || !p || p['kind']!=='EXPENSE_RECORD' || !this.uuid(p['commandId']) ||
+      operation===ExpenseOperation.Unknown || !this.positiveId(p['cashSessionId']) || !this.positiveId(p['expenseId']) ||
+      (p['settlementId']!==null && !this.positiveId(p['settlementId'])) || !ids(p['ledgerEventIds']) || !e ||
+      !this.positiveId(e['id']) || !this.positiveId(e['cashSessionId']) || !this.positiveId(e['actorId']) ||
+      !this.nonempty(e['category']) || !amount || amount.cents<=0n || !instant(e['createdAt']) || !a ||
+      a['accountingVersion']!==2 || DataCompleteness.fromWire(a['completeness'])!==DataCompleteness.Complete ||
+      !Array.isArray(a['causes']) || a['causes'].length!==0 || !instant(a['committedAt']) || !snap ||
+      !this.nonempty(snap['id']) || !instant(snap['cutoff']) || !instant(snap['asOf']) ||
+      Date.parse(a['committedAt'])>Date.parse(snap['cutoff']) || Date.parse(snap['cutoff'])>Date.parse(snap['asOf']) ||
+      !Array.isArray(a['postings']))return unknown;
+    const expenseMethod=e['paymentMethod']===null?null:PaymentMethod.fromWire(e['paymentMethod']);
+    if(expenseMethod===PaymentMethod.Unknown)return unknown;
+    const expense:ExpenseFact=Object.freeze({id:e['id'] as number,cashSessionId:e['cashSessionId'] as number,actorId:e['actorId'] as number,
+      category:e['category'] as string,amount,createdAt:e['createdAt'],paymentMethod:expenseMethod});
+    let settlement:ExpenseSettlement|null=null;
+    if(p['settlement']!==null){
+      const s=this.record(p['settlement']),money=TicketMoney.fromDecimal(s?.['amount']),method=PaymentMethod.fromWire(s?.['paymentMethod']);
+      if(!s || !['id','expenseId','cashSessionId','actorId'].every(k=>this.positiveId(s[k])) || !this.uuid(s['commandId']) ||
+        !money || money.cents<=0n || method===PaymentMethod.Unknown || !instant(s['paidAt']))return unknown;
+      settlement=Object.freeze({id:s['id'] as number,expenseId:s['expenseId'] as number,cashSessionId:s['cashSessionId'] as number,
+        actorId:s['actorId'] as number,commandId:s['commandId'],amount:money,paymentMethod:method,paidAt:s['paidAt']});
+    }
+    const postings:ExpensePosting[]=[];
+    for(const raw of a['postings']){
+      const v=this.record(raw),origin=this.record(v?.['origin']),money=TicketMoney.fromDecimal(v?.['amount']);
+      const kind=ExpensePostingKind.fromWire(v?.['kind'],v?.['component']),method=PaymentMethod.fromWire(v?.['paymentMethod']);
+      if(!v || !['id','cashSessionId','expenseId','actorId'].every(k=>this.positiveId(v[k])) || !this.uuid(v['commandId']) ||
+        !instant(v['occurredAt']) || v['accountingVersion']!==2 || kind===ExpensePostingKind.Unknown || method===PaymentMethod.Unknown ||
+        !money || !origin || origin['kind']!=='EXPENSE' || origin['id']!==String(p['expenseId']))return unknown;
+      postings.push(Object.freeze({id:v['id'] as number,kind,commandId:v['commandId'],cashSessionId:v['cashSessionId'] as number,
+        expenseId:v['expenseId'] as number,actorId:v['actorId'] as number,amount:money,paymentMethod:method,occurredAt:v['occurredAt']}));
+    }
+    return Object.freeze({state,projection:Object.freeze({commandId:p['commandId'],operation,cashSessionId:p['cashSessionId'] as number,
+      expenseId:p['expenseId'] as number,settlementId:p['settlementId'] as number|null,ledgerEventIds:Object.freeze([...p['ledgerEventIds']]),
+      expense,settlement,committedAt:a['committedAt'],postings:Object.freeze(postings),
+      snapshot:Object.freeze({id:snap['id'] as string,cutoff:snap['cutoff'],asOf:snap['asOf']})})});
+  }
   static posContext(response: unknown): PosContextObservation {
     const unknown = Object.freeze({ state: PosContextState.Unknown, context: null });
     const envelope = this.record(response); const data = this.record(envelope?.['data']);
@@ -109,6 +162,8 @@ export class PosWireMapper {
       cashSessionId: this.positiveId(raw['cashSessionId']) ? raw['cashSessionId'] as number : null,
       paymentId: raw['paymentId'] as number ?? null, expenseId: raw['expenseId'] as number ?? null,
       settlementId: raw['settlementId'] as number ?? null,
+      committedAt: outcome===CommandOutcome.Committed ? raw['committedAt'] as string : null,
+      ledgerEventIds: outcome===CommandOutcome.Committed ? Object.freeze([...(raw['ledgerEventIds'] as number[])]) : Object.freeze([]),
       closeSnapshot: close && declared ? Object.freeze({ declared, expected, difference,
         outcome: reconciliation, coverage }) : null });
   }
@@ -349,7 +404,7 @@ export class PosWireMapper {
       const payment = PosWireMapper.record(value);
       return Object.freeze({ paymentId: PosWireMapper.positiveId(payment?.['paymentId']) ? payment!['paymentId'] as number : 0,
         status: PaymentStatus.fromWire(payment?.['status']), method: PaymentMethod.fromWire(payment?.['method']),
-        originalPaymentId: PosWireMapper.positiveId(payment?.['originalPaymentId']) ? payment!['originalPaymentId'] as number : null,
+        originalPaymentId: payment?.['originalPaymentId']===null ? null : PosWireMapper.positiveId(payment?.['originalPaymentId']) ? payment!['originalPaymentId'] as number : 0,
         amount: TicketMoney.fromDecimal(payment?.['amount']), fee: TicketMoney.fromDecimal(payment?.['feeAmount']) });
     }) : [];
     const payments = paymentRows.map(payment=>Object.freeze({...payment,reversibility:PaymentReversibility.forPayment(payment,paymentRows)}));
@@ -358,7 +413,7 @@ export class PosWireMapper {
     const receipt = PosWireMapper.nonempty(raw['receipt']);
     const reservationRef = PosWireMapper.nonempty(raw['reservationRef']);
     const net = payments.reduce((sum,payment) => payment.amount ? sum + (payment.status === PaymentStatus.Captured ? payment.amount.cents : payment.status === PaymentStatus.Refunded ? -payment.amount.cents : 0n) : sum,0n);
-    const ledgerValid = !!summary.total && !!pending && net === summary.total.cents - pending.cents && (history === true ? payments.length > 0 : payments.length === 0);
+    const ledgerValid = PaymentReversibility.validLedger(payments) && !!summary.total && !!pending && net === summary.total.cents - pending.cents && (history === true ? payments.length > 0 : payments.length === 0);
     const valid = summary.createdBy !== null && !!validCoverage && ledgerValid && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
       !allowedActions.includes(AllowedAction.Unknown) && Array.isArray(raw['lines']) && Array.isArray(raw['payments']) &&
       raw['lines'].every(value => { const line = PosWireMapper.record(value); return !!PosWireMapper.nonempty(line?.['sku']) && !!PosWireMapper.nonempty(line?.['productName']); }) &&

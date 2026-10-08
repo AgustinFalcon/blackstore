@@ -32,7 +32,7 @@ describe('Accepted asynchronous Reserve keeps its claim until authoritative Rese
   };
   const cash=()=>http.expectOne(`${API_BASE}/cash-sessions`).flush(envelope([{id:2,terminalId:10,cashierId:7,status:CashSessionStatus.Open.wire,openingCash:0}]));
   const detail=(status:DurableSaleState,paid=false)=>envelope({...identity,cashSessionId:2,cashierId:7,createdBy:7,status:status.wire,totalAmount:'18',pendingAmount:paid?'0':'18',paymentCoverage:(paid?PaymentCoverage.Paid:PaymentCoverage.Unpaid).wire,hasPaymentHistory:paid,evidenceValid:status!==DurableSaleState.PendingReservation,blocked:false,retired:false,receipt:'receipt',reservationRef:'ref',pendingCommand:null,allowedActions:[AllowedAction.CapturePayment.wire],
-    lines:[{sku:'SKU',productName:'Product',quantity:1,totalAmount:'18'}],payments:paid?[{paymentId:41,status:PaymentStatus.Captured.wire,method:PaymentMethod.Cash.wire,amount:'18',feeAmount:'0'}]:[]});
+    lines:[{sku:'SKU',productName:'Product',quantity:1,totalAmount:'18'}],payments:paid?[{paymentId:41,status:PaymentStatus.Captured.wire, originalPaymentId:null,method:PaymentMethod.Cash.wire,amount:'18',feeAmount:'0'}]:[]});
   const operationRead=()=>http.expectOne(`${API_BASE}/sales/operations/${identity.operationId}`);
   const admit=()=>{
     expect(runtime.hydrated()).toBeTrue();expect(runtime.canWrite()).toBeTrue();expect(component.blockReason()).toBeNull();

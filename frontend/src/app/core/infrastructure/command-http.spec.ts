@@ -11,6 +11,8 @@ import {firstValueFrom} from 'rxjs';
 import {PosWireMapper} from './pos-wire-mapper';
 import {commandEnvelope} from './accounting-command-test-helper';
 import { SaleCommand,SaleCommandKind } from '../domain/sale-command';
+import { expenseProjectionFixture } from './expense-projection-test-helper';
+import { ExpenseProjectionState } from '../domain/expense-projection';
 describe('v2 command HTTP infrastructure',()=>{
   let api:CommandHttp;let http:HttpTestingController;
   const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'22222222-2222-2222-2222-222222222222',operationId:'33333333-3333-3333-3333-333333333333'};
@@ -36,12 +38,38 @@ describe('v2 command HTTP infrastructure',()=>{
     http.expectNone(r=>r.method==='POST');
   });
   for(const operation of [ExpenseOperation.Accrue,ExpenseOperation.AccrueAndSettle,ExpenseOperation.SettleExisting]){
+    it('resolves '+operation.wire+' only by command scoped GET with exact receipt facts',async()=>{
+      const command=AccountingCommand.create(AccountingCommandKind.Expense,{cashSessionId:2,operation:operation.wire,amount:'10',category:'supplies',expenseId:5,paymentMethod:PaymentMethod.Cash.wire});
+      const projection=expenseProjectionFixture(command),p=projection.data.projection;
+      const receipt=PosWireMapper.commandReceipt(commandEnvelope(command.commandId,{expenseId:5,settlementId:p.settlementId,ledgerEventIds:p.ledgerEventIds}),command.commandId);
+      const result=firstValueFrom(api.refresh(command,receipt,()=>true,7));
+      const get=http.expectOne(`${ACCOUNTING_API_BASE}/expenses/commands/${command.commandId}/projection`);expect(get.request.method).toBe('GET');get.flush(projection);
+      expect(await result).toBeTrue();http.expectNone(r=>r.method==='POST');
+    });
     it('cannot resolve '+operation.wire+' from an open cash session and receipt ids',async()=>{
       const command=AccountingCommand.create(AccountingCommandKind.Expense,{cashSessionId:2,operation:operation.wire,amount:'10',category:'supplies',expenseId:5});
       const receipt=PosWireMapper.commandReceipt(commandEnvelope(command.commandId,{expenseId:5,settlementId:6}),command.commandId);
-      expect(await firstValueFrom(api.refresh(command,receipt))).toBeFalse();http.expectNone(r=>true);
+      const result=firstValueFrom(api.refresh(command,receipt,()=>true,7));
+      const get=http.expectOne(`${ACCOUNTING_API_BASE}/expenses/commands/${command.commandId}/projection`);expect(get.request.method).toBe('GET');
+      get.flush({code:404,traceId:'test',data:{state:'NOT_FOUND',projection:null}},{status:404,statusText:'Not Found'});
+      expect(await result).toBeFalse();http.expectNone(r=>r.method==='POST');
     });
   }
+  for(const [state,code] of [[ExpenseProjectionState.NotFound,404],[ExpenseProjectionState.Unavailable,503],[ExpenseProjectionState.Unknown,503]] as const){
+    it('keeps '+state.wire+' recovery GET-only',async()=>{
+      const command=AccountingCommand.create(AccountingCommandKind.Expense,{cashSessionId:2,operation:ExpenseOperation.Accrue.wire,amount:'10',category:'supplies'});
+      const receipt=PosWireMapper.commandReceipt(commandEnvelope(command.commandId,{expenseId:5}),command.commandId);
+      const result=firstValueFrom(api.refresh(command,receipt,()=>true,7));
+      http.expectOne(`${ACCOUNTING_API_BASE}/expenses/commands/${command.commandId}/projection`).flush({code,traceId:'test',data:{state:state.wire,projection:null}},{status:code,statusText:'Unavailable'});
+      expect(await result).toBeFalse();http.expectNone(r=>r.method==='POST');
+    });
+  }
+  it('discards a Found projection arriving after the generation/context guard expired',async()=>{
+    const command=AccountingCommand.create(AccountingCommandKind.Expense,{cashSessionId:2,operation:ExpenseOperation.Accrue.wire,amount:'10',category:'supplies'}),raw=expenseProjectionFixture(command);
+    const receipt=PosWireMapper.commandReceipt(commandEnvelope(command.commandId,{expenseId:5}),command.commandId);
+    let current=true;const result=firstValueFrom(api.refresh(command,receipt,()=>current,7));current=false;
+    http.expectOne(`${ACCOUNTING_API_BASE}/expenses/commands/${command.commandId}/projection`).flush(raw);expect(await result).toBeFalse();
+  });
   it('rejects another reverse before journal when current detail contains a refund',async()=>{
     const command=AccountingCommand.create(AccountingCommandKind.Reverse,{...identity,originalPaymentId:41,reason:'refund',evidenceRef:'ref'},41);
     const result=firstValueFrom(api.references(command,10));

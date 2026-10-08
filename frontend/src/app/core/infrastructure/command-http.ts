@@ -10,6 +10,7 @@ import { DurableSaleState } from '../domain/durable-sale';
 import { TicketMoney } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
 import {AwaitReservationReadStep,ReservationReadState} from './await-reservation-read-step';
+import { ExpenseProjectionPolicy, ExpenseProjectionState } from '../domain/expense-projection';
 @Injectable({ providedIn: 'root' })
 export class CommandHttp {
   private readonly http = inject(HttpClient);
@@ -42,9 +43,13 @@ export class CommandHttp {
       return session && session.terminalId === terminalId && session.status.isOpen ? session.id : false as const;
     }))),catchError(() => of(false as const)));
   }
-  refresh(command: AccountingCommand | SaleCommand, receipt?: CommandReceipt,current:()=>boolean=()=>true): Observable<boolean> {
-    // Current API has no authoritative expense/settlement read. Keep the journal unresolved.
-    if(command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense) return of(false);
+  refresh(command: AccountingCommand | SaleCommand, receipt?: CommandReceipt,current:()=>boolean=()=>true,actorId?:number): Observable<boolean> {
+    if(command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense)
+      return this.safe(this.http.get(`${ACCOUNTING_API_BASE}/expenses/commands/${command.commandId}/projection`)).pipe(map(raw=>{
+        const observation=PosWireMapper.expenseProjection(raw);
+        return current() && !!actorId && !!receipt && observation.state===ExpenseProjectionState.Found && !!observation.projection &&
+          ExpenseProjectionPolicy.accepts(command,receipt,observation.projection,actorId);
+      }),catchError(()=>of(false)));
     if(command instanceof SaleCommand && command.kind===SaleCommandKind.Reserve){
       const read=()=>this.http.get(`${API_BASE}/sales/operations/${encodeURIComponent(command.identity.operationId)}`).pipe(map(raw=>PosWireMapper.durableDetail(raw,command.identity.operationId)));
       return new AwaitReservationReadStep(read,detail=>{
@@ -65,7 +70,7 @@ export class CommandHttp {
         }
         return detail.cashSessionId === receipt?.cashSessionId && !!receipt?.paymentId && detail.payments.some(p => p.paymentId === receipt.paymentId &&
           (command.kind === AccountingCommandKind.Capture ? p.status === PaymentStatus.Captured && p.amount?.cents === TicketMoney.fromDecimal(command.body['amount'])?.cents &&
-            p.method === PaymentMethod.fromWire(command.body['paymentMethod']) : p.status === PaymentStatus.Refunded || p.status === PaymentStatus.Voided));
+            p.method === PaymentMethod.fromWire(command.body['paymentMethod']) : p.status === PaymentStatus.Refunded && p.originalPaymentId===command.body['originalPaymentId']));
       }), catchError(() => of(false)));
     }
     return this.http.get<import('../models/base-response').BaseResponse<import('../models/pos-models').CashSessionWire[]>>(`${API_BASE}/cash-sessions`).pipe(map(response => {

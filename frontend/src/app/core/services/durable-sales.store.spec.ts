@@ -27,7 +27,7 @@ const detail = (status = DurableSaleState.Reserved, coverage = PaymentCoverage.P
   paymentCoverage: coverage.wire, hasPaymentHistory: coverage !== PaymentCoverage.Unpaid,
   evidenceValid: true, receipt: 'receipt', reservationRef: 'reservation', blocked: false, retired: false,
   lines: [{ sku: 'SKU', productName: 'Producto persistido', quantity: 1, totalAmount: '18' }],
-  payments: coverage === PaymentCoverage.Unpaid ? [] : [{ paymentId: 41, status: PaymentStatus.Captured.wire, method: PaymentMethod.Cash.wire, amount: coverage === PaymentCoverage.Paid ? '18' : '10', feeAmount: '0' }],
+  payments: coverage === PaymentCoverage.Unpaid ? [] : [{ paymentId: 41, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount: coverage === PaymentCoverage.Paid ? '18' : '10', feeAmount: '0' }],
   pendingCommand: null, allowedActions: AllowedAction.values.map(action => action.wire), ...overrides });
 
 describe('DurableSale closed types and DTO boundary', () => {
@@ -52,7 +52,7 @@ describe('DurableSale closed types and DTO boundary', () => {
   it('invalidates malformed lines, unknown actions, mismatched identity and evidence', () => {
     for (const overrides of [{ lines: [{ quantity: 0, totalAmount: '18' }] }, { lines: [{ quantity: 1, totalAmount: null }] },
       { allowedActions: ['UNRECOGNIZED_ACTION'] }, { evidenceValid: false }, { pendingAmount: '18', paymentCoverage: PaymentCoverage.Partial.wire },
-      { payments: [{ paymentId: 1, status: PaymentStatus.Captured.wire, method: PaymentMethod.Cash.wire, amount: '1.001', feeAmount: '0' }] }]) {
+      { payments: [{ paymentId: 1, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount: '1.001', feeAmount: '0' }] }]) {
       expect(PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved, PaymentCoverage.Partial, overrides)), identity.operationId)?.valid).toBeFalse();
     }
     expect(PosWireMapper.durableDetail(envelope(detail()), identity.saleId)).toBeNull();
@@ -100,22 +100,22 @@ describe('DurableSalesStore v2 existing sale entry',()=>{
     open();store.execute(AllowedAction.CapturePayment,'motivo','8',PaymentMethod.Card);http.expectOne(url).flush(envelope(detail()));
     const command=accounting.execute.calls.mostRecent().args[0];expect(command.body['feeAmount']).toBeUndefined();expect(command.body['paymentMethod']).toBe(PaymentMethod.Card.wire);
   });
-  it('blocks every new reverse after a refund even while another capture remains',()=>{
+  it('blocks the refunded capture while the other split capture stays reversible',()=>{
     const payments=[
-      {paymentId:41,status:PaymentStatus.Captured.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
-      {paymentId:42,status:PaymentStatus.Captured.wire,method:PaymentMethod.Card.wire,amount:'8',feeAmount:'0'},
+      {paymentId:41,status:PaymentStatus.Captured.wire, originalPaymentId:null,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
+      {paymentId:42,status:PaymentStatus.Captured.wire, originalPaymentId:null,method:PaymentMethod.Card.wire,amount:'8',feeAmount:'0'},
       {paymentId:43,status:PaymentStatus.Refunded.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0',originalPaymentId:41},
     ];
     store.open(identity.operationId);http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured,PaymentCoverage.Partial,{pendingAmount:'10',payments})));
     expect(store.detail()?.valid).toBeTrue();expect(store.detail()?.payments[2].originalPaymentId).toBe(41);
-    for(const payment of store.detail()!.payments.filter(p=>p.status===PaymentStatus.Captured))expect(payment.reversibility).toBe(PaymentReversibility.Unknown);
-    expect(store.can(AllowedAction.ReversePayment)).toBeFalse();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
-    store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Card,42);
+    expect(store.detail()?.payments[0].reversibility).toBe(PaymentReversibility.AlreadyRefunded);
+    expect(store.detail()?.payments[1].reversibility).toBe(PaymentReversibility.Reversible);
+    expect(store.can(AllowedAction.ReversePayment)).toBeTrue();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
     expect(accounting.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST'||r.url===url);
   });
   it('checks newly refunded evidence again before handing a reverse to the journal',()=>{
     open();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
-    const payments=[{paymentId:41,status:PaymentStatus.Captured.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
+    const payments=[{paymentId:41,status:PaymentStatus.Captured.wire, originalPaymentId:null,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
       {paymentId:42,status:PaymentStatus.Refunded.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'}];
     http.expectOne(url).flush(envelope(detail(DurableSaleState.PaymentCaptured,PaymentCoverage.Unpaid,{hasPaymentHistory:true,payments})));
     expect(accounting.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');

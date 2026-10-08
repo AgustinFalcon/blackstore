@@ -72,6 +72,7 @@ export interface CloseSnapshot {
   readonly outcome: ReconciliationOutcome; readonly coverage: AccountingCoverage;
 }
 export interface CommandReceipt {
+  readonly committedAt?: string | null; readonly ledgerEventIds?: readonly number[];
   readonly outcome: CommandOutcome; readonly failure: CommandFailure; readonly commandId: string | null;
   readonly cashSessionId: number | null; readonly paymentId: number | null; readonly expenseId: number | null; readonly settlementId: number | null;
   readonly closeSnapshot: CloseSnapshot | null;
@@ -95,8 +96,12 @@ export class AccountingCommand {
     if (receipt.outcome !== CommandOutcome.Committed) return true;
     if (this.kind === AccountingCommandKind.Close) return receipt.cashSessionId === this.aggregateId && !!receipt.closeSnapshot &&
       receipt.closeSnapshot.declared.cents === TicketMoney.fromDecimal(this.body['declaredCash'])?.cents;
-    if (this.kind === AccountingCommandKind.Expense) return receipt.cashSessionId === this.body['cashSessionId'] && !!receipt.expenseId &&
-      (this.body['operation'] !== ExpenseOperation.AccrueAndSettle.wire || !!receipt.settlementId);
+    if (this.kind === AccountingCommandKind.Expense) {
+      const operation=ExpenseOperation.fromWire(this.body['operation']);
+      return operation!==ExpenseOperation.Unknown && receipt.cashSessionId === this.body['cashSessionId'] && !!receipt.expenseId &&
+        (operation===ExpenseOperation.Accrue ? receipt.settlementId===null : !!receipt.settlementId) &&
+        (operation!==ExpenseOperation.SettleExisting || receipt.expenseId===this.body['expenseId']);
+    }
     if (this.kind === AccountingCommandKind.Capture) return !!receipt.paymentId;
     if (this.kind === AccountingCommandKind.Reverse) return !!receipt.paymentId && receipt.paymentId !== this.aggregateId;
     return !!receipt.cashSessionId;

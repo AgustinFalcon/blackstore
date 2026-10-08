@@ -140,7 +140,7 @@ describe('CommandRuntimeStore durable admission and recovery', () => {
   it('expense receipt remains awaiting authoritative evidence with no resolved journal',async()=>{
     api.references.and.returnValue(of(2));api.post.and.callFake((c:AccountingCommand)=>of(commandEnvelope(c.commandId,{expenseId:5,settlementId:6})));api.refresh.and.returnValue(of(false));
     const c=AccountingCommand.create(AccountingCommandKind.Expense,{cashSessionId:2,amount:'10',operation:ExpenseOperation.AccrueAndSettle.wire,category:'supplies'});
-    await store.execute(c);expect(entries[0].phase).toBe(JournalPhase.ReceiptVerifiedAwaitingRefresh);expect(store.canWrite()).toBeFalse();expect(store.notice()).toContain('T08-D');
+    await store.execute(c);expect(entries[0].phase).toBe(JournalPhase.ReceiptVerifiedAwaitingRefresh);expect(store.canWrite()).toBeFalse();
   });
   it('quarantines a sale receipt with a syntactically valid mismatched hash',async()=>{
     const identity={...context,saleId:'22222222-2222-2222-2222-222222222222',operationId:'33333333-3333-3333-3333-333333333333'};

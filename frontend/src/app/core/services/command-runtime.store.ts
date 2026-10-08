@@ -136,13 +136,22 @@ export class CommandRuntimeStore {
       this.notice.set('Reserva admitida. Esperando comprobación autoritativa; sólo consultas, sin cobro.');
     const refreshed = await firstValueFrom(this.api.refresh(command, command instanceof AccountingCommand ? result as CommandReceipt : undefined,
       ()=>this.current(epoch,generation,actor) && this.pending()?.command.commandId===command.commandId && this.pending()?.family===entry.family &&
-        !!this.context() && sameScope(entry.scope,{origin:globalThis.location.origin,...this.context()!}) && this.session.can(command.kind.permission)));
+        !!this.context() && sameScope(entry.scope,{origin:globalThis.location.origin,...this.context()!}) && this.session.can(command.kind.permission),actor));
     if (!this.current(epoch,generation,actor) || !refreshed) {
       if(this.current(epoch,generation,actor) && command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense)
-        this.notice.set('Egreso admitido; falta evidencia autoritativa de egreso/liquidación. Operación bloqueada hasta T08-D.');
+        this.notice.set('Egreso admitido; proyección no comprobada. Intención conservada: consultá sin reenviar.');
       if(this.current(epoch,generation,actor) && command instanceof SaleCommand && command.kind===SaleCommandKind.Reserve)
         this.notice.set('Reserva aún no comprobada. Intención conservada; consultá sin reenviar ni cobrar.');
       return unknown;
+    }
+    if(command instanceof AccountingCommand && command.kind===AccountingCommandKind.Expense){
+      const [contextRaw,lifecycleRaw]=await Promise.all([firstValueFrom(this.api.context()),firstValueFrom(this.api.lifecycle())]);
+      if(!this.current(epoch,generation,actor) || !this.session.can(command.kind.permission))return unknown;
+      const context=PosWireMapper.posContext(contextRaw),lifecycle=PosWireMapper.lifecycle(lifecycleRaw);
+      if(!context.context || !sameScope(entry.scope,{origin:globalThis.location.origin,...context.context}) || lifecycle===AccountingLifecycleState.Unknown){
+        this.neutralBlock.set(true);this.notice.set('Proyección comprobada; contexto o contabilidad no confirmados. Consultá sin reenviar.');return unknown;
+      }
+      this.context.set(context.context);this.contextState.set(context.state);this.lifecycle.set(lifecycle);
     }
     await this.journal.transition(entry,JournalPhase.Resolved);
     if (this.current(epoch,generation,actor) && this.pending()?.command.commandId === command.commandId) { this.pending.set(null); this.neutralBlock.set(false); this.notice.set(this.lifecycle().label); }
