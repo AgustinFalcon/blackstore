@@ -1,0 +1,12 @@
+import { Component, inject, signal, OnDestroy } from '@angular/core';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { DemoRepository } from '../application/demo-repository';
+@Component({selector:'bs-demo-shell',standalone:true,imports:[RouterLink,RouterLinkActive,RouterOutlet],template:`
+<div class="demo-frame"><a class="skip" href="#demo-main">Ir al contenido</a><aside [class.expanded]="menu()"><a class="brand" routerLink="/demo"><span class="brand-mark">B.</span> BlackStore <small>COMERCIO</small></a><button class="mobile-close" (click)="menu.set(false)">Cerrar menú</button><nav aria-label="Navegación principal">@for(item of navigation;track item.path){<a [routerLink]="item.path" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}" (click)="menu.set(false)"><span aria-hidden="true">{{item.icon}}</span>{{item.label}}</a>}</nav><div class="rail-footer"><span class="avatar">MD</span><div>Marina Demo<small>{{state().role.label}} · Perfil ficticio</small></div></div></aside>
+<div class="demo-content"><header><button class="mobile-menu" (click)="menu.set(!menu())" [attr.aria-expanded]="menu()" aria-label="Abrir navegación">☰</button><span>Tu negocio, en un solo lugar</span><a routerLink="/demo/caja" class="cash-pill" [class.closed]="!state().cashStatus.canSell">● {{state().cashStatus.label}}</a></header><div class="demo-banner"><span><strong>Datos de demostración</strong> · Los cambios se reinician al recargar. Sin conexión con StoreCore ni Mercado Libre.</span><a routerLink="/demo/escenarios">Escenarios y reinicio →</a></div><main id="demo-main"><router-outlet/></main><footer>BlackStore · Entorno de presentación con datos ficticios</footer></div></div>`,styleUrl:'./demo.css'})
+export class DemoShellComponent implements OnDestroy {
+ readonly repo=inject(DemoRepository); readonly state=signal(this.repo.snapshot()); readonly menu=signal(false);
+ private readonly unsubscribe=this.repo.subscribe(s=>this.state.set(s));
+ readonly navigation=[{path:'/demo',label:'Inicio',icon:'▦'},{path:'/demo/pos',label:'Nueva venta',icon:'＋'},{path:'/demo/ventas',label:'Ventas',icon:'▤'},{path:'/demo/productos',label:'Productos',icon:'◈'},{path:'/demo/inventario',label:'Inventario',icon:'▧'},{path:'/demo/clientes',label:'Clientes',icon:'◎'},{path:'/demo/caja',label:'Caja',icon:'▣'},{path:'/demo/reportes',label:'Reportes',icon:'↗'},{path:'/demo/escenarios',label:'Escenarios',icon:'⚙'}];
+ ngOnDestroy():void {this.unsubscribe();}
+}

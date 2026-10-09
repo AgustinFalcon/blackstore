@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.spec.json",
     "lint": "ng lint",
     "test:dct": "playwright test --config playwright.dct.config.ts",
-    "typecheck:dct": "tsc --noEmit -p tsconfig.dct.json"
+    "typecheck:dct": "tsc --noEmit -p tsconfig.dct.json",
+    "test:demo": "playwright test --config playwright.demo.config.ts",
+    "test:demo:domain": "node e2e/demo/unit-runner.cjs"
   },
   "dependencies": {
     "@angular/animations": "22.2.1",
