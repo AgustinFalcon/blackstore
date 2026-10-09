@@ -59,3 +59,17 @@ La primera corrida encontró duplicación de anuncio de rechazo (dos regiones st
 se eliminó el anuncio redundante. El test de foco encontró que RAF podía ejecutarse
 antes de insertar el feedback de rechazo; se cambió a `afterNextRender`. La corrida
 final completa de 17 escenarios pasó después de ambas correcciones.
+
+## Corrección de review funcional P2 — unidades de arqueo
+
+La revisión independiente detectó que el valor inicial `declared` tomaba centavos
+como ARS. Se corrigió la entrada a `expectedCash()/100`; el comando sigue haciendo
+`Math.round(declared*100)` una sola vez en el borde de UI. El repositorio y sus
+movimientos conservan dinero en centavos.
+
+Regresión browser: caja semilla precarga 108.200 ARS y cierra sin motivo con
+diferencia 0; después de vender 12.500 ARS precarga 120.700 ARS y también cierra con
+diferencia 0. Domain verifica declared===expected antes/después de venta.
+Revalidación completa: typecheck PASS; 27 domain specs PASS; build PASS (498.46 kB
+inicial / 115.69 kB demo); 18 Chromium escenarios PASS, 14.8 s. Review de la
+corrección aún PENDING. Servidor detenido y unidad W: removida nuevamente.

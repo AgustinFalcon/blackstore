@@ -37,7 +37,7 @@ export class DemoPageComponent implements OnDestroy {
  readonly Math=Math;
  paymentMethod():DemoPaymentMethod{return DemoPaymentMethod.fromWire(this.paymentKey);}
  confirmation: {message:string;run:()=>void}|null=null; private slowTimer:ReturnType<typeof setTimeout>|undefined;
- constructor(){if(this.state().scenario.slow){this.view.set(DemoViewState.Loading);this.slowTimer=setTimeout(()=>this.view.set(DemoViewState.Ready),1200);} this.declared=this.repo.expectedCash();}
+ constructor(){if(this.state().scenario.slow){this.view.set(DemoViewState.Loading);this.slowTimer=setTimeout(()=>this.view.set(DemoViewState.Ready),1200);} this.declared=this.repo.expectedCash()/100;}
  ngOnDestroy():void{this.unsubscribe();clearTimeout(this.slowTimer);}
  run(action:()=>void,message='Cambios guardados.'):void{this.error.set('');this.notice.set('');try{action();this.notice.set(message);}catch(error){this.error.set(error instanceof Error?error.message:'No se pudo completar la acción.');}}
  overlayActive():boolean{return !!(this.productDraft||this.customerDraft||this.selectedProduct||this.selectedCustomer||this.confirmation);}
