@@ -10,6 +10,7 @@ import { ShiftReportComponent } from './features/reports/shift-report.component'
 import { DurableSalesComponent } from './features/sales/durable-sales.component';
 
 export const routes: Routes = [
+  { path: 'demo', loadChildren: () => import('./features/demo/presentation/demo.routes').then(module => module.demoRoutes) },
   { path: 'sesion', component: SessionComponent },
   { path: '', component: PosShellComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.WorkspaceRead } },
   { path: 'caja', component: CashSessionComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.CashSessionList } },

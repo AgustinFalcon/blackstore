@@ -1,5 +1,5 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { HealthApiService } from './core/services/health-api.service';
 import { isSuccessResponse } from './core/models/base-response';
 import { SessionStore } from './core/services/session.store';
@@ -10,6 +10,7 @@ import { StaffPermission } from './core/domain/session-types';
   standalone: true,
   imports: [RouterLink, RouterLinkActive, RouterOutlet],
   template: `
+    @if (demo()) { <router-outlet /> } @else {
     <div class="frame">
       <aside class="rail">
         <p class="brand">BlackStore</p>
@@ -44,6 +45,7 @@ import { StaffPermission } from './core/domain/session-types';
         <router-outlet />
       </div>
     </div>
+    }
   `,
   styles: [
     `
@@ -117,6 +119,8 @@ import { StaffPermission } from './core/domain/session-types';
   ],
 })
 export class AppComponent implements OnInit {
+  private readonly router = inject(Router);
+  readonly demo = signal(location.pathname === '/demo' || location.pathname.startsWith('/demo/'));
   readonly session = inject(SessionStore);
   readonly permissions = StaffPermission;
   private readonly healthApi = inject(HealthApiService);
@@ -125,6 +129,8 @@ export class AppComponent implements OnInit {
   readonly healthLoading = signal(true);
 
   ngOnInit(): void {
+    this.router.events.subscribe(() => this.demo.set(this.router.url === '/demo' || this.router.url.startsWith('/demo/')));
+    if (this.demo()) { this.healthLoading.set(false); return; }
     this.healthApi.getHealth().subscribe({
       next: (response) => {
         this.healthLoading.set(false);
