@@ -20,7 +20,7 @@ se registran para que cada control visible tenga trazabilidad.
 
 ## Shell y dashboard
 
-- SH-SKIP | todas | .skip | teclado→#demo-main | SH-NAV/DB-LINK | PASS.
+- SH-SKIP | todas | .skip | teclado→misma ruta/query/#demo-main/main enfocado | SH-NAV/DB-LINK + SH-SKIP preserves low-stock | PASS.
 - SH-BRAND | todas | link BlackStore COMERCIO | navegar→dashboard | SH-NAV/DB-LINK | PASS.
 - SH-NAV-HOME | todas | nav/link Inicio | navegar→/demo | SH-NAV/DB-LINK | PASS.
 - SH-NAV-POS | todas | nav/link Nueva venta | navegar→/pos | SH-NAV/DB-LINK | PASS.

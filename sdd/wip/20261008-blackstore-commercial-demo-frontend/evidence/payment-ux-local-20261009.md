@@ -112,3 +112,16 @@ se corrigieron sin relajar assertions de resultado. La siguiente detectó el fal
 del skip link; tras corregir producto pasó la suite completa. No se hereda aprobación
 previa: re-review de este SHA PENDING. Sin push/merge/APIs reales. Listener4215 ausente
 y sin unidades subst tras el teardown.
+
+## Corrección final P2 — skip link con query
+
+El nuevo review encontró que pasar `router.url` con query como string routerLink
+convertía `?` en parte del path (`%3F`). Se separó pathname del query/fragment y se
+agregó `queryParamsHandling="preserve"`; el fragmento continúa siendo demo-main.
+Regresión desde `/demo/inventario?stock=low` confirma mismo pathname/query, fragmento
+correcto, main enfocado, checkbox checked y los mismos cinco SKU antes/después.
+Se actualizó SH-SKIP en la trazabilidad de 149 registros.
+
+Resultado final de la corrección: typecheck PASS; 28 domain specs PASS; build PASS
+(498.46 kB inicial, 116.76 kB demo); suite completa 32 Chromium PASS, 41.7 s. Server
+4215 detenido; sin subst activas. Re-review PENDING; árbol preparado sin push.
