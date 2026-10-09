@@ -73,3 +73,17 @@ diferencia 0. Domain verifica declared===expected antes/después de venta.
 Revalidación completa: typecheck PASS; 27 domain specs PASS; build PASS (498.46 kB
 inicial / 115.69 kB demo); 18 Chromium escenarios PASS, 14.8 s. Review de la
 corrección aún PENDING. Servidor detenido y unidad W: removida nuevamente.
+
+## Corrección de review UX P2 — carrito bajo filtros sticky
+
+`Ver carrito` ahora mide la altura real de la barra de búsqueda/filtros y aplica
+ese alto + 16 px como `scroll-margin-top` antes de hacer scroll y devolver foco.
+No depende de un alto fijo de toolbar: se adapta a los filtros y al viewport.
+
+Regresión Chromium a 390 y 768 px exige encabezado, primera línea y controles de
+cantidad completamente dentro del viewport, con sus bordes superiores debajo del
+toolbar y los controles encima del resumen fijo. Capturas `390-cart-focused.png`
+y `768-cart-focused.png` regeneradas e inspeccionadas. Suite completa 18 escenarios
+PASS (18.1 s), 27 dominio PASS, typecheck/build PASS. Lazy demo 115.87 kB; inicial
+498.46 kB. Listener detenido y W: removida. Revisión independiente de este ajuste
+aún PENDING.
