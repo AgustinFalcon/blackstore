@@ -1,4 +1,4 @@
-import { DemoSnapshot, DemoPaymentMethod, DemoScenario, DemoRole, Product, Customer, Sale, DemoMovementKind } from '../domain/demo-types';
+import { DemoSnapshot, DemoPaymentAttempt, DemoPaymentStatus, DemoPaymentMethod, DemoScenario, DemoRole, Product, Customer, Sale, DemoMovementKind } from '../domain/demo-types';
 export abstract class DemoRepository {
   abstract snapshot(): DemoSnapshot;
   abstract subscribe(listener: (snapshot: DemoSnapshot) => void): () => void;
@@ -10,6 +10,8 @@ export abstract class DemoRepository {
   abstract discount(percent: number): void;
   abstract total(): number;
   abstract checkout(commandId: string, method: DemoPaymentMethod, received: number, reference: string): Sale;
+  abstract beginPayment(commandId: string, method: DemoPaymentMethod, received: number, reference: string, cashAmount?: number): DemoPaymentAttempt;
+  abstract resolvePayment(commandId: string, decision: DemoPaymentStatus): DemoPaymentAttempt;
   abstract reverse(id: string, reason: string): void;
   abstract saveProduct(product: Product): void;
   abstract saveCustomer(customer: Customer): void;

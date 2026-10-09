@@ -3,10 +3,42 @@ export class DemoPaymentMethod {
   static readonly Cash = new DemoPaymentMethod('cash', 'Efectivo', true);
   static readonly Card = new DemoPaymentMethod('card', 'Tarjeta');
   static readonly Transfer = new DemoPaymentMethod('transfer', 'Transferencia');
+  static readonly QR = new DemoPaymentMethod('qr', 'QR');
   static readonly Unknown = new DemoPaymentMethod('unknown', 'Medio no disponible');
-  static readonly values = [this.Cash, this.Card, this.Transfer];
+  static readonly values = [this.Cash, this.Card, this.Transfer, this.QR];
   static fromWire(value: unknown): DemoPaymentMethod { return this.values.find(item => item.key === value) ?? this.Unknown; }
 }
+export class DemoPaymentStatus {
+  private constructor(readonly key: string, readonly label: string, readonly pending = false, readonly approved = false, readonly retryable = false) {}
+  static readonly Pending = new DemoPaymentStatus('pending', 'Esperando confirmación', true);
+  static readonly Approved = new DemoPaymentStatus('approved', 'Pago aprobado', false, true);
+  static readonly Rejected = new DemoPaymentStatus('rejected', 'Pago rechazado', false, false, true);
+  static readonly Cancelled = new DemoPaymentStatus('cancelled', 'Pago cancelado', false, false, true);
+  static readonly Unknown = new DemoPaymentStatus('unknown', 'Pago no disponible');
+  static readonly values = [this.Pending, this.Approved, this.Rejected, this.Cancelled];
+  static fromWire(value: unknown): DemoPaymentStatus { return this.values.find(item => item.key === value) ?? this.Unknown; }
+}
+export class DemoProductArt {
+  private constructor(readonly key: string, readonly asset: string) {}
+  static readonly Apparel = new DemoProductArt('shirt', '/assets/demo/shirt.svg');
+  static readonly Pants = new DemoProductArt('pants', '/assets/demo/pants.svg');
+  static readonly Shorts = new DemoProductArt('shorts', '/assets/demo/shorts.svg');
+  static readonly Shoes = new DemoProductArt('shoe', '/assets/demo/shoe.svg');
+  static readonly Accessories = new DemoProductArt('bag', '/assets/demo/bag.svg');
+  static readonly Cap = new DemoProductArt('cap', '/assets/demo/cap.svg');
+  static readonly Belt = new DemoProductArt('belt', '/assets/demo/belt.svg');
+  static readonly Basics = new DemoProductArt('socks', '/assets/demo/socks.svg');
+  static readonly Unknown = new DemoProductArt('unknown', '/assets/demo/product.svg');
+  static fromWire(value: unknown): DemoProductArt { return [this.Apparel,this.Pants,this.Shorts,this.Shoes,this.Accessories,this.Cap,this.Belt,this.Basics].find(item=>item.key===value)??this.Unknown; }
+}
+export class DemoStockFilter {
+  private constructor(readonly key:string,readonly matches:(product:{readonly active:boolean;readonly stock:number})=>boolean){}
+  static readonly All=new DemoStockFilter('all',()=>true);
+  static readonly LowActive=new DemoStockFilter('low',product=>product.active&&product.stock<=3);
+  static readonly Unknown=new DemoStockFilter('unknown',()=>false);
+  static fromWire(value:unknown):DemoStockFilter{return [this.All,this.LowActive].find(filter=>filter.key===value)??this.Unknown;}
+}
+export interface DemoPaymentAttempt { readonly id: string; readonly method: DemoPaymentMethod; readonly status: DemoPaymentStatus; readonly total: number; readonly cashAmount: number; readonly received: number; readonly reference: string; readonly saleId?: string; }
 export class DemoSaleStatus {
   private constructor(readonly key: string, readonly label: string, readonly canReverse = false) {}
   static readonly Completed = new DemoSaleStatus('completed', 'Completada', true);
@@ -61,11 +93,11 @@ export class DemoViewState {
   static fromWire(value: unknown): DemoViewState { return value === 'ready' ? this.Ready : value === 'loading' ? this.Loading : this.Unknown; }
 }
 export const money = (cents: number): string => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 }).format(cents / 100);
-export interface Product { readonly id: string; readonly name: string; readonly sku: string; readonly category: string; readonly price: number; readonly cost?: number; readonly stock: number; readonly active: boolean; readonly version: number; readonly icon: string; }
+export interface Product { readonly id: string; readonly name: string; readonly sku: string; readonly category: string; readonly art: DemoProductArt; readonly price: number; readonly cost?: number; readonly stock: number; readonly active: boolean; readonly version: number; readonly icon: string; }
 export interface Customer { readonly id: string; readonly name: string; readonly email: string; readonly phone: string; }
 export interface CartLine { readonly productId: string; readonly quantity: number; readonly version: number; readonly price: number; }
 export interface SaleLine { readonly productId: string; readonly name: string; readonly sku: string; readonly category: string; readonly quantity: number; readonly price: number; readonly cost?: number; }
-export interface Sale { readonly id: string; readonly date: string; readonly customerId: string; readonly customerName: string; readonly lines: readonly SaleLine[]; readonly total: number; readonly discount: number; readonly method: DemoPaymentMethod; readonly received: number; readonly reference: string; readonly status: DemoSaleStatus; readonly cashier: string; readonly reversalReason?: string; }
+export interface Sale { readonly id: string; readonly date: string; readonly customerId: string; readonly customerName: string; readonly lines: readonly SaleLine[]; readonly total: number; readonly discount: number; readonly method: DemoPaymentMethod; readonly cashAmount: number; readonly received: number; readonly reference: string; readonly status: DemoSaleStatus; readonly cashier: string; readonly reversalReason?: string; }
 export interface Movement { readonly id: string; readonly date: string; readonly kind: DemoMovementKind; readonly amount: number; readonly reason: string; }
 export interface StockMovement { readonly id: string; readonly productId: string; readonly date: string; readonly quantity: number; readonly reason: string; }
-export interface DemoSnapshot { readonly products: readonly Product[]; readonly customers: readonly Customer[]; readonly cart: readonly CartLine[]; readonly customerId: string; readonly discount: number; readonly sales: readonly Sale[]; readonly movements: readonly Movement[]; readonly stockMovements: readonly StockMovement[]; readonly cashStatus: DemoCashStatus; readonly role: DemoRole; readonly scenario: DemoScenario; readonly cashCount?: {readonly declared: number; readonly expected: number; readonly reason: string}; }
+export interface DemoSnapshot { readonly products: readonly Product[]; readonly customers: readonly Customer[]; readonly cart: readonly CartLine[]; readonly customerId: string; readonly discount: number; readonly sales: readonly Sale[]; readonly movements: readonly Movement[]; readonly stockMovements: readonly StockMovement[]; readonly cashStatus: DemoCashStatus; readonly role: DemoRole; readonly scenario: DemoScenario; readonly payment?: DemoPaymentAttempt; readonly cashCount?: {readonly declared: number; readonly expected: number; readonly reason: string}; }
