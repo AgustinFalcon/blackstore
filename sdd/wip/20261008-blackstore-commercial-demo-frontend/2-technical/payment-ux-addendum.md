@@ -23,3 +23,10 @@ Domain: efectivo aprobado; cada electrónico pendiente→aprobado/rechazado/canc
 reintento; idempotencia; mixto y devolución; desconocidos; bloqueo de edición pendiente.
 Browser: medios, decisiones, preservación, recibo, 390/768/1440 px, foco/labels y
 ausencia de HTTP de negocio. Review UX/producto independiente antes de publicación.
+
+Auditoría de cobertura: la métrica de stock bajo navega con `stock=low` al mismo
+predicado cerrado (producto activo y stock<=3) usado por contador y filtro. Query
+desconocida muestra conjunto neutral. El enlace accesible al contenido conserva
+la ruta demo y mueve foco al main; no resuelve el fragmento contra el base href.
+El inventario CTA lista cada patrón/instancia parametrizada con selector y test;
+incluye navegación, formularios, cancel/confirm, filtros, escenarios y restricciones.

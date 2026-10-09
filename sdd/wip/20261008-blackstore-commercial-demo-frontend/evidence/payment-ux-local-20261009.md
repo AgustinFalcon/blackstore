@@ -87,3 +87,28 @@ y `768-cart-focused.png` regeneradas e inspeccionadas. Suite completa 18 escenar
 PASS (18.1 s), 27 dominio PASS, typecheck/build PASS. Lazy demo 115.87 kB; inicial
 498.46 kB. Listener detenido y W: removida. Revisión independiente de este ajuste
 aún PENDING.
+
+## Corrección de auditoría final — navegación de stock y trazabilidad CTA
+
+Stock bajo del dashboard ahora navega a `/demo/inventario?stock=low`. Contador,
+checkbox y grilla comparten `DemoStockFilter.LowActive`: activos con stock<=3.
+Browser exige mismos 5 productos y sus cantidades; excluye inactivos; desmarcar
+restaura 18. Domain valida límites3/4, exclusión de inactivo y Unknown neutral.
+
+Se reemplazó el inventario inicial de grupos/NOT_RUN por 149 registros concretos
+ID→ruta→selector→escenario→resultado→test→PASS, con sufijos de instancia SKU,
+cliente y venta. La suite CTA recorre 54 detalles, las acciones de cada producto,
+ocho recibos y siete clientes; también cubre filtros completos, modal cancelar/
+confirmar, escenarios6, perfiles2 y denegaciones Cajero que conservan estado.
+
+Este recorrido detectó un fallo adicional real: `href="#demo-main"` resolvía contra
+`base href="/"` y sacaba al usuario del demo. El enlace ahora usa la URL actual con
+fragmento Angular y enfoca `main` (tabindex=-1). Navegar después conserva demo.
+
+Resultado final: typecheck PASS; 28 domain specs PASS; build PASS (498.46 kB
+inicial, 116.71 kB demo); 31 escenarios Chromium PASS, 38.7 s, tres workers.
+La primera expansión falló por selectores exactos que incluían opciones de select;
+se corrigieron sin relajar assertions de resultado. La siguiente detectó el fallo
+del skip link; tras corregir producto pasó la suite completa. No se hereda aprobación
+previa: re-review de este SHA PENDING. Sin push/merge/APIs reales. Listener4215 ausente
+y sin unidades subst tras el teardown.

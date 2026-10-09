@@ -2,7 +2,7 @@ import { Component, inject, signal, OnDestroy, Injector, afterNextRender } from 
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DemoRepository } from '../application/demo-repository';
-import { Customer, DemoCashStatus, DemoMovementKind, DemoProductArt, DemoPaymentStatus, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoViewState, Product, Sale, money } from '../domain/demo-types';
+import { Customer, DemoCashStatus, DemoMovementKind, DemoStockFilter, DemoProductArt, DemoPaymentStatus, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoViewState, Product, Sale, money } from '../domain/demo-types';
 import { DemoDialogDirective } from './demo-dialog.directive';
 import { DemoFeedbackComponent } from './demo-feedback.component';
 class DemoPage {
@@ -30,7 +30,11 @@ export class DemoPageComponent implements OnDestroy {
  readonly state=signal(this.repo.snapshot()); private readonly unsubscribe=this.repo.subscribe(s=>this.state.set(s));
  readonly money=money; readonly methods=DemoPaymentMethod.values; readonly saleStatuses=DemoSaleStatus.values; readonly scenarios=DemoScenario.values; readonly roles=DemoRole.values; readonly kinds=[DemoMovementKind.Income,DemoMovementKind.Expense];
  readonly notice=signal(''); readonly error=signal(''); readonly view=signal(DemoViewState.Ready);
- search=''; category=''; stockOnly=false; methodKey=''; statusKey=''; from=''; to=''; pageNumber=1;
+ search=''; category=''; methodKey=''; statusKey=''; from=''; to=''; pageNumber=1;
+ readonly stockFilters=DemoStockFilter;
+ private stockFilter=DemoStockFilter.fromWire(this.route.snapshot.queryParamMap.get('stock')??DemoStockFilter.All.key);
+ get stockOnly():boolean{return this.stockFilter===DemoStockFilter.LowActive;}
+ set stockOnly(value:boolean){this.stockFilter=value?DemoStockFilter.LowActive:DemoStockFilter.All;}
  paymentKey=''; received=0; reference=''; mixed=false; mixedCash=0; discountValue=0; reason=''; cashAmount=0; moveKey=DemoMovementKind.Expense.key; declared=0; scenarioKey=DemoScenario.Normal.key;
  readonly paymentStates=DemoPaymentStatus; readonly paymentTypes=DemoPaymentMethod;
  productDraft:Draft<Product>|null=null; customerDraft:Draft<Customer>|null=null; selectedProduct:Product|null=null; selectedCustomer:Customer|null=null; adjustment=0;
@@ -45,7 +49,7 @@ export class DemoPageComponent implements OnDestroy {
  confirm(message:string,run:()=>void):void{this.confirmation={message,run};}
  accept():void{const action=this.confirmation?.run;this.confirmation=null;if(action)this.run(action);}
  categories():string[]{return [...new Set(this.state().products.map(p=>p.category))];}
- products():readonly Product[]{const query=this.search.trim().toLowerCase();return this.state().products.filter(p=>(!query||`${p.name} ${p.sku}`.toLowerCase().includes(query))&&(!this.category||p.category===this.category)&&(!this.stockOnly||p.stock<=3));}
+ products():readonly Product[]{const query=this.search.trim().toLowerCase();return this.state().products.filter(p=>(!query||`${p.name} ${p.sku}`.toLowerCase().includes(query))&&(!this.category||p.category===this.category)&&this.stockFilter.matches(p));}
  customers():readonly Customer[]{return this.state().customers.filter(c=>`${c.name} ${c.email}`.toLowerCase().includes(this.search.toLowerCase()));}
  sales():readonly Sale[]{return this.state().sales.filter(s=>(`${s.id} ${s.customerName}`.toLowerCase().includes(this.search.toLowerCase()))&&(!this.methodKey||s.method===DemoPaymentMethod.fromWire(this.methodKey))&&(!this.statusKey||s.status===DemoSaleStatus.fromWire(this.statusKey))&&(!this.from||s.date.slice(0,10)>=this.from)&&(!this.to||s.date.slice(0,10)<=this.to));}
  visibleSales():readonly Sale[]{return this.sales().slice((this.pageNumber-1)*6,this.pageNumber*6);}
@@ -54,7 +58,7 @@ export class DemoPageComponent implements OnDestroy {
  reportByMethod(method:DemoPaymentMethod):number{return this.sales().filter(s=>s.status.canReverse).reduce((sum,s)=>sum+(method.isCash?s.cashAmount:s.method===method?s.total-s.cashAmount:0),0);}
  reportByCategory(category:string):number{return this.sales().filter(s=>s.status.canReverse).reduce((sum,s)=>sum+s.lines.filter(l=>l.category===category).reduce((part,l)=>part+l.price*l.quantity*(100-s.discount)/100,0),0);}
  topProducts():{name:string;quantity:number}[]{const items=new Map<string,number>();this.sales().filter(s=>s.status.canReverse).forEach(s=>s.lines.forEach(l=>items.set(l.name,(items.get(l.name)??0)+l.quantity)));return [...items].map(([name,quantity])=>({name,quantity})).sort((a,b)=>b.quantity-a.quantity).slice(0,5);}
- lowStock():number{return this.state().products.filter(p=>p.stock<=3&&p.active).length;}
+ lowStock():number{return this.state().products.filter(p=>DemoStockFilter.LowActive.matches(p)).length;}
  completedSales():number{return this.sales().filter(s=>s.status.canReverse).length;}
  averageTicket():number{return this.completedSales()?Math.round(this.salesTotal()/this.completedSales()):0;}
  cartUnits():number{return this.state().cart.reduce((sum,line)=>sum+line.quantity,0);}

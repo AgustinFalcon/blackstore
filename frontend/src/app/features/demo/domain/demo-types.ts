@@ -31,6 +31,13 @@ export class DemoProductArt {
   static readonly Unknown = new DemoProductArt('unknown', '/assets/demo/product.svg');
   static fromWire(value: unknown): DemoProductArt { return [this.Apparel,this.Pants,this.Shorts,this.Shoes,this.Accessories,this.Cap,this.Belt,this.Basics].find(item=>item.key===value)??this.Unknown; }
 }
+export class DemoStockFilter {
+  private constructor(readonly key:string,readonly matches:(product:{readonly active:boolean;readonly stock:number})=>boolean){}
+  static readonly All=new DemoStockFilter('all',()=>true);
+  static readonly LowActive=new DemoStockFilter('low',product=>product.active&&product.stock<=3);
+  static readonly Unknown=new DemoStockFilter('unknown',()=>false);
+  static fromWire(value:unknown):DemoStockFilter{return [this.All,this.LowActive].find(filter=>filter.key===value)??this.Unknown;}
+}
 export interface DemoPaymentAttempt { readonly id: string; readonly method: DemoPaymentMethod; readonly status: DemoPaymentStatus; readonly total: number; readonly cashAmount: number; readonly received: number; readonly reference: string; readonly saleId?: string; }
 export class DemoSaleStatus {
   private constructor(readonly key: string, readonly label: string, readonly canReverse = false) {}
