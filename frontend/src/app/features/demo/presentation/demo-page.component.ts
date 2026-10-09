@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DemoRepository } from '../application/demo-repository';
 import { Customer, DemoCashStatus, DemoMovementKind, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoViewState, Product, Sale, money } from '../domain/demo-types';
 import { DemoDialogDirective } from './demo-dialog.directive';
+import { DemoFeedbackComponent } from './demo-feedback.component';
 class DemoPage {
  private constructor(readonly key:string,readonly title:string,readonly subtitle:string){}
  static readonly Home=new DemoPage('','Buen día, Marina ☀','Así viene tu comercio. Todo listo para una nueva venta.');
@@ -21,7 +22,7 @@ class DemoPage {
  static fromWire(key:unknown):DemoPage{return [this.Home,this.Pos,this.Payment,this.Products,this.Inventory,this.Customers,this.Sales,this.Receipt,this.Cash,this.Reports,this.Scenarios].find(p=>p.key===key)??this.Unknown;}
 }
 type Draft<T> = {-readonly [K in keyof T]: T[K]};
-@Component({selector:'bs-demo-page',standalone:true,imports:[FormsModule,RouterLink,DemoDialogDirective],templateUrl:'./demo-page.component.html',styleUrl:'./demo.css'})
+@Component({selector:'bs-demo-page',standalone:true,imports:[FormsModule,RouterLink,DemoDialogDirective,DemoFeedbackComponent],templateUrl:'./demo-page.component.html',styleUrl:'./demo.css'})
 export class DemoPageComponent implements OnDestroy {
  readonly repo=inject(DemoRepository); private readonly route=inject(ActivatedRoute); readonly router=inject(Router);
  readonly pages=DemoPage; readonly page=DemoPage.fromWire(this.route.snapshot.paramMap.has('saleId')?'receipt':this.route.snapshot.url[0]?.path??'');
@@ -36,7 +37,9 @@ export class DemoPageComponent implements OnDestroy {
  confirmation: {message:string;run:()=>void}|null=null; private readonly commandId=crypto.randomUUID(); private slowTimer:ReturnType<typeof setTimeout>|undefined;
  constructor(){if(this.state().scenario.slow){this.view.set(DemoViewState.Loading);this.slowTimer=setTimeout(()=>this.view.set(DemoViewState.Ready),1200);} this.declared=this.repo.expectedCash();}
  ngOnDestroy():void{this.unsubscribe();clearTimeout(this.slowTimer);}
- run(action:()=>void,message='Cambios guardados.'):void{this.error.set('');try{action();this.notice.set(message);}catch(error){this.error.set(error instanceof Error?error.message:'No se pudo completar la acción.');}}
+ run(action:()=>void,message='Cambios guardados.'):void{this.error.set('');this.notice.set('');try{action();this.notice.set(message);}catch(error){this.error.set(error instanceof Error?error.message:'No se pudo completar la acción.');}}
+ overlayActive():boolean{return !!(this.productDraft||this.customerDraft||this.selectedProduct||this.selectedCustomer||this.confirmation);}
+ currentCashMovements(){const movements=this.state().movements;const start=movements.map(m=>m.kind).lastIndexOf(DemoMovementKind.Opening);return movements.slice(Math.max(start,0));}
  confirm(message:string,run:()=>void):void{this.confirmation={message,run};}
  accept():void{const action=this.confirmation?.run;this.confirmation=null;if(action)this.run(action);}
  categories():string[]{return [...new Set(this.state().products.map(p=>p.category))];}

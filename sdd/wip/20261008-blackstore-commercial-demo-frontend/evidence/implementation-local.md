@@ -35,3 +35,13 @@ All controls invoke a navigation, query, validation or mutation. Permission-deni
 ## Limits
 
 Independent reviews, hosted CI and browser acceptance of production/backend routes are NOT_RUN for this implementation. Hardware printing/system print dialog, screen reader, exhaustive keyboard/contrast audit and all scenario permutations are NOT_RUN. CSV/receipt browser downloads were exercised. The demo surface is complete but this evidence does not assert exhaustive 100% validation of every possible input or production capability.
+
+## Functional review P2 corrections
+
+Review requested changes on `6d64e8f`. Three findings resolved in this follow-up:
+
+1. Dialogs render their own validation alert and success status inside the active overlay. Invalid commands keep fields and dialog open; focus moves to the visible alert, users can correct fields and retry. Global messages remain outside only when no overlay is active. Browser tests cover invalid stock adjustment and duplicate SKU, alert focus, correction, visible success, Escape and focus restoration.
+2. Mobile navigation exposes a named modal dialog, makes background content inert, takes initial focus, traps Tab/Shift+Tab, closes with Escape and returns focus to the opener. These keyboard transitions are asserted in Chromium at 390px.
+3. Caja renders and prints movements beginning at the latest opening, matching the expected cash calculation. Previous shift records remain in repository history and date-based reports. The heading explicitly says “Movimientos del turno actual”. Browser test records an expense, closes/reopens with a new fund and verifies the screen and print media contain only the new opening.
+
+After corrections: typecheck PASS; optimized build PASS (498.00 kB initial, 96.98 kB lazy demo); pure-domain Jasmine 13/13 PASS; Playwright 9/9 cases printed PASS. The earlier Windows teardown limitation persists: Ctrl+C after all assertions, followed by TCP probe confirming no listener on 4215. Temporary drive removed. Karma remains NOT_RUN for the previously documented sandbox restriction. Independent re-review and hosted CI are pending.
