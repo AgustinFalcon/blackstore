@@ -55,6 +55,8 @@ export class DemoPageComponent implements OnDestroy {
  lowStock():number{return this.state().products.filter(p=>p.stock<=3&&p.active).length;}
  completedSales():number{return this.sales().filter(s=>s.status.canReverse).length;}
  averageTicket():number{return this.completedSales()?Math.round(this.salesTotal()/this.completedSales()):0;}
+ cartUnits():number{return this.state().cart.reduce((sum,line)=>sum+line.quantity,0);}
+ viewCart():void{const cart=document.getElementById('demo-cart');cart?.scrollIntoView({block:'start',behavior:'instant'});cart?.focus({preventScroll:true});}
  sale():Sale|undefined{return this.state().sales.find(s=>s.id===this.route.snapshot.paramMap.get('saleId'));}
  product(id:string):Product{return this.state().products.find(p=>p.id===id)!;}
  quantity(id:string):number{return this.state().cart.find(l=>l.productId===id)?.quantity??0;}
