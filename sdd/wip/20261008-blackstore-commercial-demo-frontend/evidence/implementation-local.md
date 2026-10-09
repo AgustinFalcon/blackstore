@@ -45,3 +45,11 @@ Review requested changes on `6d64e8f`. Three findings resolved in this follow-up
 3. Caja renders and prints movements beginning at the latest opening, matching the expected cash calculation. Previous shift records remain in repository history and date-based reports. The heading explicitly says “Movimientos del turno actual”. Browser test records an expense, closes/reopens with a new fund and verifies the screen and print media contain only the new opening.
 
 After corrections: typecheck PASS; optimized build PASS (498.00 kB initial, 96.98 kB lazy demo); pure-domain Jasmine 13/13 PASS; Playwright 9/9 cases printed PASS. The earlier Windows teardown limitation persists: Ctrl+C after all assertions, followed by TCP probe confirming no listener on 4215. Temporary drive removed. Karma remains NOT_RUN for the previously documented sandbox restriction. Independent re-review and hosted CI are pending.
+
+## Visual review: mobile/tablet checkout reachability
+
+The POS now shows a compact fixed bottom summary when its cart contains items on widths <=900px. It includes quantity, the same total as checkout, and “Ver carrito”. Activating the control scrolls to and focuses the full cart; reserved bottom space prevents overlap. The desktop layout keeps its existing full cart column. The summary disappears on other routes and for empty carts.
+
+Chromium interaction test at 390 and 768 adds a product from the top of the catalogue, verifies the summary is in viewport, activates it, verifies cart focus/visibility, and reaches checkout. Four additional viewport screenshots capture the quick summary and focused cart.
+
+The Windows Playwright teardown issue is resolved: the localhost-only static test server accepts an explicit test shutdown in afterAll, closes its listener/connections, and the runner exits normally. Full suite: **10 passed**, clean exit **0** without Ctrl+C. The focused screenshot test also completed with clean exit 0. Domain suite: 13/13 PASS. TCP probe confirms no listener on 4215. Typecheck and optimized build PASS (498.00 kB initial / 99.62 kB demo lazy). Earlier interrupted runs above remain historical evidence; they are superseded for the current runner lifecycle.
