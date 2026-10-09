@@ -62,8 +62,8 @@ se registran para que cada control visible tenga trazabilidad.
 - CAT-DETAIL-ADD-{sku} | /pos,/productos | dialog/button Agregar al carrito | disponible→línea | PO-CART/MODAL | PASS.
 - PO-ADD-{sku} | /pos | card/button Agregar | cada disponible→línea | CAT-FILTER/DETAIL | PASS.
 - PO-DISABLED-{sku} | /pos | card/primary disabled | agotado/inactivo→sin acción | CAT-FILTER/DETAIL | PASS.
-- PO-INCREASE-{sku} | /pos | button Aumentar cantidad | 1→2 | PO-CART/MODAL | PASS.
-- PO-DECREASE-{sku} | /pos | button Disminuir cantidad | 2→1 | PO-CART/MODAL | PASS.
+- PO-INCREASE-{sku} | /pos | button Aumentar cantidad | 1→2 y eventos rápidos1→3 | PO-CART/MODAL + PO-QUANTITY rapid | PASS.
+- PO-DECREASE-{sku} | /pos | button Disminuir cantidad | 2→1 y eventos rápidos3→1 | PO-CART/MODAL + PO-QUANTITY rapid | PASS.
 - PO-QUANTITY-{sku} | /pos | label Cantidad de producto | ingresar2→subtotal25000 | PO-CART/MODAL | PASS.
 - PO-REMOVE-{sku} | /pos | button Quitar producto | cada línea→vacío | CAT-FILTER/DETAIL | PASS.
 - PO-CUSTOMER | /pos | label Cliente | Ana/ocasional→selección/reset | PO-CART/MODAL | PASS.

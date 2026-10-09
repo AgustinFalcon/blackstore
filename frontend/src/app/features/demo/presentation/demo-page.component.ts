@@ -68,6 +68,7 @@ export class DemoPageComponent implements OnDestroy {
  quantity(id:string):number{return this.state().cart.find(l=>l.productId===id)?.quantity??0;}
  add(product:Product):void{this.run(()=>this.repo.cart(product.id,this.quantity(product.id)+1),`${product.name} agregado al carrito.`);}
  changeQuantity(id:string,value:number):void{this.run(()=>this.repo.cart(id,Number(value)),'Carrito actualizado.');}
+ changeQuantityBy(id:string,delta:number):void{this.changeQuantity(id,this.quantity(id)+delta);}
  clearFilters():void{this.search='';this.category='';this.stockOnly=false;this.from='';this.to='';this.methodKey='';this.statusKey='';this.pageNumber=1;}
  pay():void{this.run(()=>{const attempt=this.repo.beginPayment(crypto.randomUUID(),this.paymentMethod(),Math.round(this.received*100),this.reference,this.mixed?Math.round(this.mixedCash*100):0);if(attempt.saleId)void this.router.navigate(['/demo/ventas',attempt.saleId]);else this.focusPayment('demo-payment-terminal');},'');}
  resolvePayment(status:DemoPaymentStatus):void{this.run(()=>{const attempt=this.repo.resolvePayment(this.state().payment!.id,status);if(attempt.saleId)void this.router.navigate(['/demo/ventas',attempt.saleId]);else this.focusPayment('demo-payment-retry');},status.retryable?'':status.label);}

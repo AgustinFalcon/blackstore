@@ -125,3 +125,23 @@ Se actualizó SH-SKIP en la trazabilidad de 149 registros.
 Resultado final de la corrección: typecheck PASS; 28 domain specs PASS; build PASS
 (498.46 kB inicial, 116.76 kB demo); suite completa 32 Chromium PASS, 41.7 s. Server
 4215 detenido; sin subst activas. Re-review PENDING; árbol preparado sin push.
+
+## Estabilidad de cantidades y suite concurrente
+
+El audit externo informó PO-CART/MODAL inestable en suite completa (31/32) aunque
+aislado pasaba. El test ahora espera el valor DOM y subtotal después de cada
+acción: 1→aumentar2/25.000→disminuir1/12.500→escribir2/25.000. El descuento mantiene
+la assertion estricta de 22.500; no se relajó ningún importe ni se agregaron sleeps.
+
+Se revisaron los handlers: antes usaban `line.quantity` capturado por el template.
+Ahora los botones +/- calculan delta desde la cantidad vigente del carrito por ID.
+Una nueva regresión dispara dos eventos antes del próximo render y exige 1→3 y
+3→1 con subtotales correctos; cubre el riesgo de perder eventos bajo carga.
+PO-INCREASE/PO-DECREASE de la trazabilidad apuntan al nuevo caso; siguen 149 IDs.
+
+Tras compilar el producto final: dos corridas completas consecutivas, ambas con
+`npm run test:demo -- --workers=3`, 33/33 PASS, exit0, en 42.3 s y 41.5 s.
+Servidor detuvo correctamente entre corridas y al final (4215 ausente), sin subst.
+Typecheck PASS; 28 dominio PASS; build PASS 498.46 kB inicial/116.81 kB demo.
+El 32/32 previo a la corrección de handler es antecedente, no la evidencia final.
+Re-review del nuevo SHA sigue PENDING. Sin push/merge.
