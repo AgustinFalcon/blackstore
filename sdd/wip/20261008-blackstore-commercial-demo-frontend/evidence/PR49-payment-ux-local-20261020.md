@@ -50,3 +50,29 @@ Sólo demostración en memoria. No procesador de pagos, credenciales, stock exte
 autenticación real ni persistencia durable. No despliegue/publicación, live,
 homologación fiscal ni E2E StoreCore. CI alojado y revisión independiente de este
 head: NOT_RUN. Estos resultados no declaran GO global ni cierre del WIP.
+
+## Corrección de revisión security P3 — validación posterior a 6eb10b9
+
+Se cerraron los dos hallazgos de revisión sin push. Rejected/Cancelled comparan
+fingerprint de contexto aun con carrito vacío. Approved admite únicamente el
+contexto consumido registrado (carrito vacío, cliente original, descuento cero),
+además de conservar idéntico método, recibido, referencia y componente efectivo.
+El test reproduce para ambos estados la secuencia exacta intento→resolución→
+clearCart→cliente c2→descuento 15→sameId: denegación y mismo snapshot, sin publicación.
+Otro test valida replay Approved sin publicar y denegaciones por payload/cliente/
+descuento distintos. El traductor y los tipos cerrados se mantienen.
+
+La UI eliminó el alias bancario potencialmente direccionable. Muestra
+DEMO—NO-PAGAR junto a «No es un alias ni una cuenta bancaria» y «No envíes dinero».
+Browser verifica esos textos, ausencia del alias anterior y ausencia de enlaces.
+
+Resultados de esta corrección (sustituyen los conteos anteriores para este source):
+
+- Dominio: 70/70 PASS.
+- Angular/Chrome Headless 155: 314/314 PASS.
+- Typechecks app/spec, demo y DCT: PASS.
+- Build: PASS, ejecutado fuera del sandbox por el límite esbuild ya descrito.
+- Browser afectado: payment-scenarios.spec.ts 9/9 PASS, 8.5 s; incluye teclado,
+  Pending/downgrade, los tres electrónicos, mixto y 390/768/1440 px.
+- Browser completo anterior 43/43 es antecedente; no se reejecutó completo en
+  esta corrección localizada. Revisión independiente del nuevo head y CI: NOT_RUN.

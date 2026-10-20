@@ -42,6 +42,24 @@ describe('explicit simulated payment lifecycle',()=>{
   expect(()=>repo.resolvePayment('one',Status.Approved)).toThrowError(DemoPermissionError);expect(repo.snapshot()).toBe(before);
   repo.resolvePayment('one',Status.Cancelled);repo.clearCart();repo.cart('p1',1);repo.beginPayment('retry',Method.Card,0,'');expect(repo.resolvePayment('retry',Status.Approved).saleId).toBeDefined();
  });
+ for(const decision of [Status.Rejected,Status.Cancelled])it(decision.label+' cannot replay after clear, customer change and discount with an empty cart',()=>{
+  repo.beginPayment('sameId',Method.Transfer,0,'DEMO');repo.resolvePayment('sameId',decision);
+  repo.clearCart();repo.selectCustomer('c2');repo.discount(15);
+  const before=repo.snapshot();let publications=0;repo.subscribe(()=>publications++);
+  expect(before.cart.length).toBe(0);expect(before.customerId).toBe('c2');expect(before.discount).toBe(15);
+  expect(()=>repo.beginPayment('sameId',Method.Transfer,0,'DEMO')).toThrowError(/contenido diferente/);
+  expect(repo.snapshot()).toBe(before);expect(publications).toBe(1);
+ });
+ it('approved replay allows only its consumed context and original payload without publishing',()=>{
+  repo.beginPayment('approved',Method.Transfer,0,'DEMO');const approved=repo.resolvePayment('approved',Status.Approved);
+  const consumed=repo.snapshot();expect(consumed.cart.length).toBe(0);expect(consumed.discount).toBe(0);expect(consumed.customerId).toBe('c1');
+  let publications=0;repo.subscribe(()=>publications++);
+  expect(repo.beginPayment('approved',Method.Transfer,0,'DEMO')).toBe(approved);expect(repo.snapshot()).toBe(consumed);
+  for(const command of [()=>repo.beginPayment('approved',Method.Card,0,'DEMO'),()=>repo.beginPayment('approved',Method.Transfer,0,'different'),()=>repo.beginPayment('approved',Method.Transfer,1,'DEMO')]){expect(command).toThrowError(/contenido diferente/);expect(repo.snapshot()).toBe(consumed);}
+  expect(publications).toBe(1);
+  repo.selectCustomer('c2');const customer=repo.snapshot();expect(()=>repo.beginPayment('approved',Method.Transfer,0,'DEMO')).toThrowError(/contenido diferente/);expect(repo.snapshot()).toBe(customer);
+  repo.selectCustomer('c1');repo.discount(15);const discount=repo.snapshot();expect(()=>repo.beginPayment('approved',Method.Transfer,0,'DEMO')).toThrowError(/contenido diferente/);expect(repo.snapshot()).toBe(discount);
+ });
  it('mixed QR reports only the electronic balance and compensates only cash',()=>{
   repo.discount(0);const cash=repo.expectedCash(),stock=repo.snapshot().products[0].stock,total=repo.total();repo.beginPayment('mixed',Method.QR,600000,'DEMO',500000);expect(repo.expectedCash()).toBe(cash);
   const approved=repo.resolvePayment('mixed',Status.Approved),sale=repo.snapshot().sales[0],query=new DemoQueries(repo.snapshot());

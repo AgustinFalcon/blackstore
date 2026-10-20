@@ -11,7 +11,7 @@ export class LocalDemoRepository extends DemoRepository {
   private readonly listeners = new Set<(snapshot: DemoSnapshot) => void>();
   private readonly receipts = new Map<string, Sale>();
   private readonly attempts = new Map<string, DemoPaymentAttempt>();
-  private readonly fingerprints = new Map<string, {input:string; cart:string}>();
+  private readonly fingerprints = new Map<string, {input:string; cart:string; consumedCart?:string}>();
   private editable(): void { if(this.state.payment?.status.pending) throw new Error('Confirmá o cancelá el pago pendiente antes de modificar la venta.'); }
   private cartFingerprint(): string { return JSON.stringify([this.state.cart,this.state.customerId,this.state.discount]); }
   private sequence = 100;
@@ -90,7 +90,10 @@ export class LocalDemoRepository extends DemoRepository {
     const existing=this.attempts.get(commandId);
     if(existing) {
       const fingerprint=this.fingerprints.get(commandId)!;
-      if(fingerprint.input!==input || (this.state.cart.length>0 && fingerprint.cart!==this.cartFingerprint())) throw new Error('El identificador de pago ya tiene un contenido diferente.');
+      // Approval consumes only the cart and discount. Replay still requires the
+      // exact post-approval customer/discount/cart context and original input.
+      const expectedCart=existing.status.approved?fingerprint.consumedCart:fingerprint.cart;
+      if(fingerprint.input!==input || expectedCart!==this.cartFingerprint()) throw new Error('El identificador de pago ya tiene un contenido diferente.');
       return existing;
     }
     this.editable();
@@ -122,7 +125,9 @@ export class LocalDemoRepository extends DemoRepository {
     const products=this.state.products.map(p=>({...p,stock:p.stock-(lines.find(l=>l.productId===p.id)?.quantity??0)}));
     const stockMovements=[...this.state.stockMovements,...lines.map(l=>({id:this.id(),productId:l.productId,date:sale.date,quantity:-l.quantity,reason:`Venta ${sale.id}`}))];
     const movements=cashAmount?[...this.state.movements,{id:this.id(),date:sale.date,kind:DemoMovementKind.Sale,amount:cashAmount,reason:`Venta ${sale.id}`}]:this.state.movements;
-    const resolved=this.freeze({...attempt,status:decision,saleId:sale.id});this.attempts.set(commandId,resolved);
+    const resolved=this.freeze({...attempt,status:decision,saleId:sale.id});
+    this.fingerprints.set(commandId,{...this.fingerprints.get(commandId)!,consumedCart:JSON.stringify([[],this.state.customerId,0])});
+    this.attempts.set(commandId,resolved);
     this.receipts.set(commandId,sale); this.publish({payment:resolved,products:Object.freeze(products),stockMovements:Object.freeze(stockMovements),sales:Object.freeze([sale,...this.state.sales]),movements:Object.freeze(movements),cart:[],discount:0}); return resolved;
   }
   reverse(id:string,reason:string):void { this.require(DemoAction.Reverse); const sale=this.state.sales.find(s=>s.id===id); if(!sale?.status.canReverse) throw new Error('La venta no admite otra devolución.'); if(!reason.trim()) throw new Error('Indicá el motivo de devolución.'); if(sale.cashAmount>0&&!this.state.cashStatus.canSell) throw new Error('Abrí la caja para registrar la devolución en efectivo.'); if(sale.cashAmount>this.expectedCash()) throw new Error('El efectivo disponible no alcanza para registrar esta devolución.'); const restoration=StockRestorationPlan.prepare(this.state.products,sale.lines); this.publish({sales:this.state.sales.map(s=>s.id===id?{...s,status:DemoSaleStatus.Reversed,reversalReason:reason}:s),products:restoration.products,stockMovements:[...this.state.stockMovements,...sale.lines.map(l=>({id:this.id(),productId:l.productId,date:this.now(),quantity:l.quantity,reason:`Devolución ${id}: ${reason}`}))],movements:sale.cashAmount>0?[...this.state.movements,{id:this.id(),date:this.now(),kind:DemoMovementKind.Refund,amount:sale.cashAmount,reason:`Devolución ${id}: ${reason}`}]:this.state.movements}); }

@@ -16,6 +16,10 @@ y bootstrap aislado aprobados en los cortes anteriores siguen siendo la base.
 - Un commandId conserva fingerprint de medio, recibido, referencia, efectivo y
   contexto de carrito/cliente/descuento. Repetir el mismo intento devuelve su
   resultado; reutilizarlo con contenido distinto falla sin publicar.
+  Rejected/Cancelled siempre comparan el contexto completo, incluso si el carrito
+  actual está vacío. Approved compara el contexto consumido registrado al aprobar:
+  carrito vacío, cliente original y descuento cero; método/importes/referencia
+  originales siguen siendo obligatorios. Cambiar cliente o descuento invalida replay.
   Garantía exclusiva del adaptador en memoria: recargar reinicia la demostración.
 - Una aprobación revalida CheckoutFlow y los permisos actuales. Un descuento
   pendiente de Encargada no puede aprobarse después de cambiar a Cajero.
@@ -33,8 +37,10 @@ y bootstrap aislado aprobados en los cortes anteriores siguen siendo la base.
 
 Terminales y comprobantes llevan identificación demo/no fiscal, referencia y
 composición del pago; no solicitan datos de tarjeta o credenciales.
-QR es una ilustración SVG local sin payload ni enlace de pago. Clientes de semilla
-usan example.invalid y el formulario pide información ficticia.
+QR es una ilustración SVG local sin payload ni enlace de pago.
+La transferencia sólo muestra DEMO—NO-PAGAR, marcador no direccionable, y explica
+que no es un alias ni una cuenta bancaria. No se ofrece un destino para enviar dinero.
+Clientes de semilla usan example.invalid y el formulario pide información ficticia.
 
 Ilustraciones locales, búsqueda compacta sticky y carrito rápido permiten operar
 en 390/768/1440 px. Foco explícito al terminal y a recuperación, radios etiquetados,
