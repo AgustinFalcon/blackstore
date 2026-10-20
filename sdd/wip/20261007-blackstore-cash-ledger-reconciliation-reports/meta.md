@@ -1,5 +1,51 @@
 # Libro de caja, arqueo y reportes por período
 
+## Antecedente combinado externo — 2026-10-20
+
+Snapshot `115fad53006b55d27b021883bf49153a3de050fa` del working tree sobre
+`feat/demo-payment-ux`, validado sin atribuirle SHA de commit: backend
+291/291, frontend 278/278, dominio demo 32/32, demo browser 33/33, build y
+typechecks PASS. La matriz DCT PostgreSQL 16/JAR/Angular pasó 17/17 y el flujo
+crítico afectado volvió a pasar 1/1 después de validar `ReversalReason` antes
+del journal. Se corrigieron terminal/worker del fixture, expiración relativa y
+reconciliación exacta de centavos por categoría. Técnica, Security y
+Producto/UX GPT-6.1 Astra re-revisaron el working tree final: APPROVE sin
+P0–P3. Esos resultados no se heredan al corte #45: incluyen POSC/Demo y
+escenarios ausentes. CI hospedado, commit, PR, merge, live y homologación siguen
+pendientes para el head separado.
+[Evidencia](evidence/CLR-T09-combined-final-local-20261020.md).
+
+## Addendum local CLR-T09 frontend — 2026-10-16
+
+Base `9f4d29e`, overlay sin commit. Se corrigieron los P2 de producto/técnica:
+autoridad de catálogo antes del journal, primer medio de pago tipado, diálogo
+modal accesible, snapshot de cierre inmutable, preflight monetario y responsive
+móvil. Backend 291/291, frontend 241/241, focales finales 10/10,
+typechecks/build y browser PG16/JAR/Angular 17/17 PASS, incluido catálogo y venta
+a 390x844 sin overflow global y teardown total. Producto/UX, técnica/SOLID y
+seguridad Astra aprobaron este overlay exacto sin P1/P2. CI hospedado pendiente.
+Sin live, homologación,
+publicación, commit, PR ni merge.
+[Evidencia](evidence/CLR-T09-frontend-product-corrections-20261016.md).
+
+## Incremento local CLR-T09 caja/ventas/PG16 — 2026-10-16
+
+Sobre `9f4d29e` se actualizó el arnés histórico a V11/contexto POS/runtime V2.
+Backend completo 291/291, frontend 234/234, typechecks/build y Playwright
+PostgreSQL 16/JAR/Angular 17/17 PASS —incluido el escenario legacy
+PRE_ACTIVATION aislado—, con reinicio real y teardown total. Cierra
+localmente PG16 clean/upgrade y browser de caja/denegaciones más ventas
+commit/reversa/release, recuperación GET-only de todos esos comandos tras pérdida
+de respuesta+reload, journal cross-tab mismo SID y aislamiento ante cambio de
+actor con recuperación posterior del titular. V12 cierra localmente el fence
+de escritor legacy, incluso en carrera contra activación. Backup/restore en DB
+aislada y arranque del binario compatible exacto `9f4d29e` preservaron esquema,
+PAUSED y hechos. La matriz browser final cubre 17/17 escenarios con PostgreSQL
+16/JAR/Angular descartables y teardown total. CLR-T09 permanece parcial sólo por
+CI hospedado pendiente. Bug/Product, Security y SDD/SOLID aprobaron el diff
+local final sin P0–P3; no otorgan homologación ni publicación.
+[Evidencia](evidence/CLR-T09-cash-browser-pg16-local-20261016.md).
+
 ## Corrección P2 IndexedDB T08-D — source vigente
 
 2026-10-08: source `c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c` sobre `5794c4d`. JournalPhase define política cerrada/monotónica; transición decide desde fase persistida dentro de la misma transacción IndexedDB, Resolved terminal e idempotencia segura. Carrera A Resolved→B Prepared→record tardío A preserva sólo B unresolved y hydrate GET-only. Focused 20/20/full 234/234/typecheck/build PASS, audit productivo 0 y diff-check PASS. [Evidencia](evidence/CLR-T08-D-frontend-local-20261008.md). Source/validación anteriores se conservan como antecedentes; PG16/browser/CI/reviews específicos siguen pendientes.
@@ -8,7 +54,7 @@
 
 2026-10-08: source `b0ab8c18ea678e829d2f7dc3ed6f6763335affa3` sobre `65407e2` exige HTTP real y envelope coherentes: HTTP503/body200 Found y code200/errorCode UNAVAILABLE quedan Unknown, journal bloqueado y recuperación GET-only. Typecheck/build PASS, Karma completo 227/227 PASS, audit productivo 0 y diff-check PASS. [Evidencia](evidence/CLR-T08-D-frontend-local-20261008.md). Sustituye únicamente source/validación local previos; PG16/browser/CI/reviews específicos siguen pendientes.
 
-## Estado integrado local T08-D — vigente
+## Estado integrado local T08-D — antecedente
 
 2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
 

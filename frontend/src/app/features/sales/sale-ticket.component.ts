@@ -17,11 +17,24 @@ import { CounterContextService } from '../../core/services/counter-context.servi
 import { concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
 import { PaymentAttempt, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, StartNewSale } from './ticket-steps';
+import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
+import { ReversalReason } from '../../core/domain/reversal-reason';
+import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
+
+interface TicketReversalReview {
+  readonly operationId: string;
+  readonly paymentId: number;
+  readonly reason: ReversalReason;
+}
+
+interface TicketReleaseReview {
+  readonly operationId: string;
+}
 
 @Component({
   selector: 'bs-sale-ticket',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, ConfirmationDialogComponent],
   template: `
     <section class="page">
       <h2>Ticket</h2>
@@ -122,18 +135,27 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
           <p class="actions">
             <button type="button" class="ghost" (click)="refresh()" [disabled]="busy()">Consultar estado</button>
             <button type="button" class="primary" (click)="commit()" [disabled]="!canFinish(commitAction)">Confirmar venta</button>
-            <button type="button" class="ghost" (click)="release()" [disabled]="!canFinish(releaseAction)">Liberar reserva</button>
+            <button type="button" class="ghost" (click)="requestRelease()" [disabled]="!canFinish(releaseAction)">Liberar reserva</button>
           </p>
         </div>
       }
       @if (paymentId(); as id) {
         <div class="card">
-          <form (ngSubmit)="reverse(id)">
-            <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" required /></label>
-            <button type="submit" [disabled]="!canFinish(reverseAction)">Reversar pago {{ id }}</button>
+          <form (ngSubmit)="requestReverse(id)">
+            <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" aria-describedby="ticket-reversal-reason-guidance" required /></label>
+            <p id="ticket-reversal-reason-guidance">{{ reversalReasonGuidance }}</p>
+            <button type="submit" [disabled]="!canFinish(reverseAction) || !validReversalReason()">Reversar pago {{ id }}</button>
           </form>
         </div>
       }
+      <bs-confirmation-dialog [phase]="reversalPhase()" title="Confirmar reversa" titleId="ticket-reversal-title"
+        [description]="reversalDescription()" [detail]="reversalReview() ? 'Motivo: ' + reversalReview()!.reason.wire : ''"
+        confirmLabel="Confirmar reversa" cancelLabel="Cancelar"
+        (confirmed)="confirmReverse()" (cancelled)="cancelReverse()" />
+      <bs-confirmation-dialog [phase]="releasePhase()" title="Liberar reserva" titleId="ticket-release-title"
+        description="La reserva volverá a quedar disponible. Los pagos y su historial no se eliminan."
+        [detail]="operationRef() ? 'Operación: ' + operationRef() : ''" confirmLabel="Liberar reserva" cancelLabel="Mantener reserva"
+        (confirmed)="confirmRelease()" (cancelled)="cancelRelease()" />
     </section>
   `,
   styles: [
@@ -164,7 +186,11 @@ export class SaleTicketComponent implements OnInit {
   readonly paymentMethods = PaymentMethod.selectable;
   secondMethod: PaymentMethod = PaymentMethod.Card;
   secondAmount = 0;
-  reversalReason = 'devolucion';
+  reversalReason = '';
+  readonly reversalPhase = signal(ConfirmationPhase.Idle);
+  readonly releasePhase = signal(ConfirmationPhase.Idle);
+  readonly reversalReview = signal<TicketReversalReview | null>(null);
+  readonly releaseReview = signal<TicketReleaseReview | null>(null);
   operationReason = '';
   readonly keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
   readonly busy = signal(false);
@@ -222,6 +248,7 @@ export class SaleTicketComponent implements OnInit {
     this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
       this.attempt = null; this.snapshot.set(null); this.operationRef.set(null); this.paymentId.set(null);
       this.message.set(null); this.busy.set(false); this.sku = ''; this.productName = ''; this.variantId = '';
+      this.cancelReverse(); this.cancelRelease();
     });
   }
 
@@ -336,6 +363,21 @@ export class SaleTicketComponent implements OnInit {
   }
 
   release(): void {
+    this.requestRelease();
+  }
+
+  requestRelease(): void {
+    const operationId = this.attempt?.identity.operationId;
+    if (!operationId || !this.canFinish(SaleAction.Release)) return;
+    this.releaseReview.set(Object.freeze({ operationId }));
+    this.releasePhase.set(ConfirmationPhase.Reviewing);
+  }
+  cancelRelease(): void { this.releaseReview.set(null); this.releasePhase.set(ConfirmationPhase.Idle); }
+  confirmRelease(): void {
+    const review = this.releaseReview();
+    if (!this.releasePhase().isReviewing || !review || this.attempt?.identity.operationId !== review.operationId ||
+        !this.canFinish(SaleAction.Release)) { this.cancelRelease(); return; }
+    this.cancelRelease();
     this.finish(SaleAction.Release);
   }
 
@@ -404,18 +446,48 @@ export class SaleTicketComponent implements OnInit {
       .subscribe(result => { this.snapshot.set(null); this.message.set(result.outcome.label); });
   }
 
-  reverse(paymentId: number): void {
+  readonly reversalReasonGuidance = ReversalReason.guidance;
+
+  validReversalReason(): boolean { return ReversalReason.fromInput(this.reversalReason) !== null; }
+
+  requestReverse(paymentId: number): void {
+    const operationId = this.attempt?.identity.operationId;
+    const reason = ReversalReason.fromInput(this.reversalReason);
+    if (!operationId || !reason || !this.canFinish(SaleAction.Reverse) || paymentId !== this.paymentId()) return;
+    this.reversalReview.set(Object.freeze({ operationId, paymentId, reason }));
+    this.reversalPhase.set(ConfirmationPhase.Reviewing);
+  }
+
+  cancelReverse(): void {
+    this.reversalReview.set(null);
+    this.reversalPhase.set(ConfirmationPhase.Idle);
+  }
+
+  reversalDescription(): string {
+    const review = this.reversalReview();
+    return review == null ? '' : `Vas a reversar el pago ${review.paymentId}. Esta acción queda auditada y no se puede deshacer desde esta pantalla.`;
+  }
+
+  confirmReverse(): void {
+    const review = this.reversalReview();
+    if (!this.reversalPhase().isReviewing || !review || this.attempt?.identity.operationId !== review.operationId ||
+        review.paymentId !== this.paymentId() || !this.canFinish(SaleAction.Reverse)) { this.cancelReverse(); return; }
+    this.cancelReverse();
+    this.executeReverse(review);
+  }
+
+  private executeReverse(review: TicketReversalReview): void {
     const context = this.attempt;
-    if (!context || !this.canFinish(SaleAction.Reverse) || paymentId !== this.paymentId()) return;
+    if (!context || context.identity.operationId !== review.operationId || !this.canFinish(SaleAction.Reverse) || review.paymentId !== this.paymentId()) return;
     this.busy.set(true);
     this.snapshot.set(null);
     this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
       const decision = TicketTransitionPolicy.decide(snapshot, SaleAction.Reverse);
       if (this.attempt !== context || !decision.permitsWrite) return throwError(() => new Error(decision.label));
       return this.commands.execute(AccountingCommand.create(AccountingCommandKind.Reverse, {
-        ...context.identity, originalPaymentId: paymentId,
-        reason: this.reversalReason, evidenceRef: `rev-${paymentId}`,
-      }, paymentId));
+        ...context.identity, originalPaymentId: review.paymentId,
+        reason: review.reason.wire, evidenceRef: `rev-${review.paymentId}`,
+      }, review.paymentId));
     }), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef),
     finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
         next: (response) => {

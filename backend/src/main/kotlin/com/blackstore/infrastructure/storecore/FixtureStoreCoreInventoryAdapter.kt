@@ -20,7 +20,7 @@ import com.blackstore.domain.port.out.storecore.StoreCoreReconcilePort
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
-import java.time.Instant
+import java.time.Clock
 
 @Component
 @ConditionalOnProperty(
@@ -33,6 +33,7 @@ class FixtureStoreCoreInventoryAdapter(
     @Value("\${blackstore.storecore.contract.canonical-path}") private val canonicalPath: String,
     @Value("\${blackstore.storecore.contract.version}") private val contractVersion: String,
     @Value("\${blackstore.storecore.contract.sha256}") private val openapiDigest: String = StoreCoreCanonicalContract.SHA256,
+    private val clock: Clock = Clock.systemUTC(),
 ) : StoreCoreInventoryPort, StoreCoreReconcilePort, OperationRetirementPort {
 
     val reserveAttempts: MutableList<String> = mutableListOf()
@@ -161,6 +162,6 @@ class FixtureStoreCoreInventoryAdapter(
         receipt = "rcpt-${quadruple.operationId}",
         contract = StoreCoreContractRef(canonicalPath, contractVersion, openapiDigest),
         acceptedPriceVersions = acceptedPriceVersions,
-        expiresAt = Instant.parse("2026-09-23T00:00:00Z"),
+        expiresAt = clock.instant().plusSeconds(900),
     )
 }

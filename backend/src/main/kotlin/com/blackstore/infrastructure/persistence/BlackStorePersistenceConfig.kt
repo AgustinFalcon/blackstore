@@ -12,6 +12,7 @@ import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
 import java.util.logging.Logger
+import java.util.concurrent.atomic.AtomicReference
 import javax.sql.DataSource
 
 @Configuration
@@ -23,13 +24,16 @@ class BlackStorePersistenceConfig @Autowired constructor(
     @Value("\${blackstore.persistence.staff-identity-backup-ref:}") private val identityBackupRef: String = "",
 ) {
     @Bean
+    fun persistenceReadiness(): PersistenceReadiness = PersistenceReadiness()
+
+    @Bean
     fun blackStoreDataSource(): DataSource = SimpleConnectionDataSource(url, username, password)
 
     @Bean
     fun localDatabaseSeed(): LocalDatabaseSeed = LocalDatabaseSeed()
 
     @Bean
-    fun migrateAndSeed(dataSource: DataSource, seed: LocalDatabaseSeed): ApplicationRunner =
+    fun migrateAndSeed(dataSource: DataSource, seed: LocalDatabaseSeed, readiness: PersistenceReadiness): ApplicationRunner =
         ApplicationRunner {
             Class.forName("org.postgresql.Driver")
             val flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load()
@@ -76,7 +80,17 @@ class BlackStorePersistenceConfig @Autowired constructor(
                     seed.terminalId = rows.getLong(1)
                 }
             }
+            readiness.markReady()
         }
+}
+
+enum class PersistenceStartupState { STARTING, READY }
+
+/** Prevents scheduled persistence work from racing Flyway and installation seed. */
+class PersistenceReadiness {
+    private val state = AtomicReference(PersistenceStartupState.STARTING)
+    fun isReady(): Boolean = state.get() == PersistenceStartupState.READY
+    fun markReady() { state.set(PersistenceStartupState.READY) }
 }
 
 class LocalDatabaseSeed {

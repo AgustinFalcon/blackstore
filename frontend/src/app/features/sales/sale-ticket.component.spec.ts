@@ -12,6 +12,7 @@ import { CommandHttp } from '../../core/infrastructure/command-http';
 import { SaleCommand,SaleCommandKind,SaleAdmissionOutcome } from '../../core/domain/sale-command';
 import { SaleAction,SaleStatus } from '../../core/domain/pos-types';
 import { PaymentCoverage } from '../../core/domain/ticket-transition';
+import { ReversalReason } from '../../core/domain/reversal-reason';
 describe('SaleTicketComponent v2 guarded journey',()=>{
   let component:SaleTicketComponent;let runtime:any;let api:any;let http:HttpTestingController;
   const context={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'provisioned-device',terminalId:10};
@@ -26,6 +27,31 @@ describe('SaleTicketComponent v2 guarded journey',()=>{
     component=TestBed.createComponent(SaleTicketComponent).componentInstance;http=TestBed.inject(HttpTestingController);
   });
   afterEach(()=>http.verify());
+  it('disables reversal for invalid reasons and explains the accepted length',async()=>{
+    const fixture = TestBed.createComponent(SaleTicketComponent);
+    const ticket = fixture.componentInstance;
+    ticket.paymentId.set(17);
+    spyOn(ticket,'canFinish').and.returnValue(true);
+    for (const reason of ['', 'x', 'ok', 'x'.repeat(ReversalReason.maxLength + 1), '   ']) {
+      ticket.reversalReason = reason;
+      fixture.changeDetectorRef.markForCheck();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('input[name="reversalReason"]').closest('form').querySelector('button[type="submit"]').disabled).toBeTrue();
+      ticket.requestReverse(17);
+      expect(ticket.reversalReview()).toBeNull();
+    }
+    expect(fixture.nativeElement.querySelector('#ticket-reversal-reason-guidance').textContent).toContain(ReversalReason.guidance);
+    for (const length of [ReversalReason.minLength, ReversalReason.maxLength]) {
+      ticket.reversalReason = `  ${'x'.repeat(length)}  `;
+      fixture.changeDetectorRef.markForCheck();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(ticket.validReversalReason()).toBeTrue();
+      expect(fixture.nativeElement.querySelector('input[name="reversalReason"]').closest('form').querySelector('button[type="submit"]').disabled).toBeFalse();
+    }
+    http.expectNone(r=>r.method==='POST');
+  });
   for(const notice of ['Comprobando evidencia','Contabilidad pausada','Contexto desconocido','Storage no confirmado','Evidencia en cuarentena']){
     it('blocks writes and displays '+notice,()=>{
       runtime.canWrite.set(false);runtime.notice.set(notice);component.reserve();

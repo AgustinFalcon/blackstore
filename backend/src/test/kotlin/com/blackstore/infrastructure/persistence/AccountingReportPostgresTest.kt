@@ -103,7 +103,29 @@ class AccountingReportPostgresTest {
                 s.setObject(1, UUID.fromString(identity.clientInstanceId)); s.setString(2, identity.deviceId); s.setString(3, identity.saleId)
                 s.setObject(4, UUID.fromString(identity.operationId)); s.setString(5, contract.VERSION); s.setString(6, contract.SHA256)
                 s.setString(7, "b".repeat(64)); s.setString(8, payload); s.setString(9, mapper.hash(payload)); s.setLong(10, cash)
-                s.executeQuery().use { r -> r.next(); c.createStatement().use { it.execute("INSERT INTO storecore_command_delivery(command_id,state) VALUES(${r.getLong(1)},'APPLIED')") } }
+                s.executeQuery().use { r ->
+                    r.next()
+                    val outboxId = r.getLong(1)
+                    c.createStatement().use { it.execute("INSERT INTO storecore_command_delivery(command_id,state) VALUES($outboxId,'APPLIED')") }
+                    val accountingActive = c.createStatement().executeQuery("SELECT state='ACTIVE' FROM accounting_runtime WHERE singleton").use { state ->
+                        state.next()
+                        state.getBoolean(1)
+                    }
+                    if (accountingActive) {
+                        c.prepareStatement("INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id) VALUES(?,'Reserve',?,3,?,?,?,?,?,?,?)").use { receipt ->
+                            receipt.setObject(1, UUID.randomUUID())
+                            receipt.setString(2, mapper.hash(payload))
+                            receipt.setLong(3, cash)
+                            receipt.setObject(4, UUID.fromString(identity.clientInstanceId))
+                            receipt.setString(5, identity.deviceId)
+                            receipt.setString(6, identity.saleId)
+                            receipt.setObject(7, UUID.fromString(identity.operationId))
+                            receipt.setLong(8, id)
+                            receipt.setLong(9, outboxId)
+                            receipt.executeUpdate()
+                        }
+                    }
+                }
             }
             c.commit()
         }

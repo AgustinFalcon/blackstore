@@ -4,6 +4,10 @@ import { Client } from 'pg';
 import { hash } from 'bcryptjs';
 import { CashSessionStatus, StaffRole } from '../../../src/app/core/domain/pos-types';
 import { DctAuditEvent } from './dct-audit-event';
+import { AccountingCoverage, CommandOutcome } from '../../../src/app/core/domain/accounting-command';
+import { ReconciliationOutcome } from '../../../src/app/core/domain/accounting-report';
+import { DctLedgerKind } from './dct-ledger-kind';
+import { AccountingLifecycleState } from '../../../src/app/core/domain/accounting-lifecycle';
 
 export interface TestStaff { id: number; login: string; password: string; displayName: string; role: StaffRole }
 
@@ -14,6 +18,8 @@ export class DctDatabase {
   private acquisitionAttempted = false;
   private client?: Client;
   readonly password = randomUUID();
+  readonly clientInstanceId = randomUUID();
+  readonly deviceId = `dct-device-${randomUUID()}`;
   port = 0;
   private docker(...args: string[]): string {
     try {
@@ -55,13 +61,46 @@ export class DctDatabase {
     return { id: Number(rows[0].id), login, password, displayName, role };
   }
   async terminal(): Promise<number> {
-    return Number((await this.query('INSERT INTO terminals(terminal_code) VALUES($1) RETURNING id', [`DCT-${randomUUID()}`]))[0].id);
+    return Number((await this.query("SELECT id FROM terminals WHERE terminal_code='T-1'"))[0].id);
+  }
+  async provision(terminalId: number, clientInstanceId: string): Promise<void> {
+    await this.query('BEGIN');
+    try {
+      await this.query(`INSERT INTO pos_terminal_context(terminal_id,client_instance_id,device_id,provisioned_by_ref,installation_evidence_ref)
+        VALUES($1,$2,$3,'isolated-dct-fixture','isolated-pg16-browser-v12')`, [terminalId, clientInstanceId, 'dct-browser-device']);
+      await this.query('UPDATE accounting_runtime SET state=$1,accounting_activation_at=clock_timestamp() WHERE singleton', [AccountingLifecycleState.Active.wire]);
+      await this.query('COMMIT');
+    } catch (error) { await this.query('ROLLBACK'); throw error; }
+  }
+  async provisionAccountingRuntime(target: AccountingLifecycleState, terminalId: number, clientInstanceId: string): Promise<void> {
+    await this.query('BEGIN');
+    try {
+      await this.query(
+        'INSERT INTO pos_terminal_context(terminal_id,client_instance_id,device_id,provisioned_by_ref,installation_evidence_ref) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
+        [terminalId, clientInstanceId, 'dct-browser-device', 'dct-browser', 'isolated-browser-fixture-v12'],
+      );
+      await this.query(
+        "INSERT INTO accounting_zone_versions(version,zone_id,effective_at) SELECT 'dct-v1','America/Argentina/Buenos_Aires','2000-01-01' WHERE NOT EXISTS (SELECT 1 FROM accounting_zone_versions)",
+      );
+      if (target === AccountingLifecycleState.Active) {
+        await this.query('UPDATE accounting_runtime SET state=$1,accounting_activation_at=clock_timestamp() WHERE singleton AND state=$2',
+          [AccountingLifecycleState.Active.wire, AccountingLifecycleState.PreActivation.wire]);
+      }
+      await this.query('COMMIT');
+    } catch (error) { await this.query('ROLLBACK'); throw error; }
   }
   async facts(cashId: number) {
     const cash = (await this.query('SELECT * FROM cash_session_projection WHERE id=$1', [cashId]))[0];
     return {
       cash: { ...cash, status: CashSessionStatus.fromWire(cash.status) },
       expenses: await this.query('SELECT id,amount::text,created_by,payment_method FROM expenses WHERE cash_session_id=$1 ORDER BY id', [cashId]),
+      receipts: (await this.query('SELECT * FROM accounting_command_receipts WHERE cash_session_id=$1 ORDER BY recorded_at,command_id', [cashId]))
+        .map(row => ({ ...row, outcome: CommandOutcome.fromWire(row.outcome) })),
+      ledger: (await this.query('SELECT * FROM cash_ledger_events WHERE cash_session_id=$1 ORDER BY local_sequence', [cashId]))
+        .map(row => ({ ...row, event_type: DctLedgerKind.fromWire(row.event_type) })),
+      settlements: await this.query('SELECT * FROM expense_settlements WHERE cash_session_id=$1 ORDER BY id', [cashId]),
+      reconciliation: (await this.query('SELECT * FROM cash_reconciliations WHERE cash_session_id=$1', [cashId]))
+        .map(row => ({ ...row, outcome: ReconciliationOutcome.fromWire(row.outcome), coverage: AccountingCoverage.fromWire(row.coverage) })),
       audit: (await this.query("SELECT id,event_type,actor_id,aggregate_id,payload_redacted,occurred_at FROM audit_events WHERE (aggregate_type='cash_session' AND aggregate_id=$1) OR (aggregate_type='expense' AND aggregate_id IN (SELECT id FROM expenses WHERE cash_session_id=$1)) ORDER BY id", [cashId]))
         .map(row => ({ ...row, event_type: DctAuditEvent.fromWire(row.event_type) })),
     };

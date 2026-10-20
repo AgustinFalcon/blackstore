@@ -4,7 +4,9 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { DctDatabase } from './dct-database';
+import { AccountingLifecycleState } from '../../../src/app/core/domain/accounting-lifecycle';
 
 async function requireFreePort(port: number) {
   const server = createServer();
@@ -53,12 +55,24 @@ export class DctRuntime {
   private readonly frontendRoot = resolve(__dirname, '../../..');
   private readonly backendRoot = resolve(this.frontendRoot, '../backend');
   private jar = '';
+  readonly clientInstanceId = randomUUID();
+  terminalId = 0;
+  constructor(private readonly accountingState = AccountingLifecycleState.Active, private readonly salesWorkerEnabled = true) {}
   async start() {
     await requireFreePort(8081); await requireFreePort(4201);
     const jars = readdirSync(resolve(this.backendRoot, 'build/libs')).filter(name => name.endsWith('.jar') && !name.endsWith('-plain.jar'));
     if (jars.length !== 1) throw new Error('Build exactly one current bootJar before running DCT');
     this.jar = resolve(this.backendRoot, 'build/libs', jars[0]);
     await this.database.start();
+    // First boot applies migrations only. Provision before any browser can run.
+    await this.startBackend();
+    await this.backend.stop();
+    this.terminalId = await this.database.terminal();
+    await this.database.provisionAccountingRuntime(this.accountingState, this.terminalId, this.clientInstanceId);
+    expect((await this.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(12);
+    expect(await this.database.query('SELECT terminal_id,client_instance_id,device_id FROM pos_terminal_context')).toEqual([
+      { terminal_id: String(this.terminalId), client_instance_id: this.clientInstanceId, device_id: 'dct-browser-device' },
+    ]);
     await this.startBackend();
     this.frontend.start(process.execPath, ['node_modules/@angular/cli/bin/ng.js', 'serve', '--host', 'localhost', '--port', '4201'], this.frontendRoot);
     await this.frontend.ready('http://localhost:4201');
@@ -77,7 +91,10 @@ export class DctRuntime {
       BLACKSTORE_PERSISTENCE_ENABLED: 'true', BLACKSTORE_PERSISTENCE_URL: `jdbc:postgresql://127.0.0.1:${this.database.port}/dct_browser`,
       BLACKSTORE_PERSISTENCE_USERNAME: 'dct_admin', BLACKSTORE_PERSISTENCE_PASSWORD: this.database.password,
       BLACKSTORE_IDENTITY_LOOPBACK_HTTP: 'true', BLACKSTORE_IDENTITY_ALLOWED_ORIGIN: 'http://localhost:4201',
-      BLACKSTORE_SALES_WORKER_ENABLED: 'false',
+      BLACKSTORE_SALES_WORKER_ENABLED: String(this.salesWorkerEnabled),
+      BLACKSTORE_SALES_WORKER_INITIAL_DELAY_MS: '50', BLACKSTORE_SALES_WORKER_POLL_MS: '100',
+      BLACKSTORE_POS_TERMINAL_ID: String(this.terminalId),
+      BLACKSTORE_STORECORE_TRANSPORT_CLIENT_INSTANCE_ID: this.clientInstanceId,
       SPRING_PROFILES_ACTIVE: '', BLACKSTORE_STORECORE_INTEGRATION_ENABLED: 'false', BLACKSTORE_STORECORE_INTEGRATION_MODE: 'fixture',
       BLACKSTORE_STORECORE_TRANSPORT_KILL_SWITCH: 'true', BLACKSTORE_STORECORE_CONTROL_KILL_SWITCH: 'true',
     });
@@ -103,10 +120,16 @@ export class DctRuntime {
   }
 }
 
-export const test = base.extend<{ runtime: DctRuntime }>({
-  runtime: async ({}, use) => {
-    const runtime = new DctRuntime();
-    try { await runtime.start(); await use(runtime); } finally { await runtime.stop(); }
-  },
-});
+function runtimeFixture(accountingState: AccountingLifecycleState, salesWorkerEnabled = true) {
+  return base.extend<{ runtime: DctRuntime }>({
+    runtime: async ({}, use) => {
+      const runtime = new DctRuntime(accountingState, salesWorkerEnabled);
+      try { await runtime.start(); await use(runtime); } finally { await runtime.stop(); }
+    },
+  });
+}
+
+export const test = runtimeFixture(AccountingLifecycleState.Active);
+export const legacyTest = runtimeFixture(AccountingLifecycleState.PreActivation);
+export const pendingReleaseTest = runtimeFixture(AccountingLifecycleState.Active, false);
 export { expect };

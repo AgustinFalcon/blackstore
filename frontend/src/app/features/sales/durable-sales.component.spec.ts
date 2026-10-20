@@ -6,6 +6,7 @@ import {DurableSalesStore} from '../../core/services/durable-sales.store';
 import {DurableSaleState,PaymentReversibility} from '../../core/domain/durable-sale';
 import {PaymentMethod,PaymentStatus} from '../../core/domain/pos-types';
 import {PaymentCoverage} from '../../core/domain/ticket-transition';
+import {ReversalReason} from '../../core/domain/reversal-reason';
 
 describe('existing sale refund safety copy',()=>{
   it('does not offer another capture reversal when its reversibility is Unknown',()=>{
@@ -22,5 +23,8 @@ describe('existing sale refund safety copy',()=>{
     expect(screen.textContent).toContain('las nuevas reversas requieren evidencia por pago del backend');
     expect(Array.from(screen.querySelectorAll('button')).some(button=>button.textContent?.includes('Reversar pago'))).toBeFalse();
     expect(store.execute).not.toHaveBeenCalled();
+    const guidance=screen.querySelector('#durable-reversal-reason-guidance');
+    expect(guidance?.textContent).toContain(ReversalReason.guidance);
+    expect(screen.querySelector('input[aria-describedby="durable-reversal-reason-guidance"]')).not.toBeNull();
   });
 });

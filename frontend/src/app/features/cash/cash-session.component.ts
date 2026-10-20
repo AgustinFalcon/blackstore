@@ -13,11 +13,20 @@ import { CounterContextService } from '../../core/services/counter-context.servi
 import { AccountingCommand, AccountingCommandKind, CommandOutcome, CommandReceipt, ExpenseOperation } from '../../core/domain/accounting-command';
 import { AccountingCommandsStore } from '../../core/services/accounting-commands.store';
 import { CashSessionSelection } from '../../core/domain/cash-session-selection';
+import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
+import { TicketMoney } from '../../core/domain/ticket-transition';
+import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
+
+interface CashCloseReview {
+  readonly cashSessionId: number;
+  readonly declaredCash: number;
+  readonly reason: string;
+}
 
 @Component({
   selector: 'bs-cash-session',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, ConfirmationDialogComponent],
   template: `
     <section class="page">
       <h2>Caja</h2>
@@ -51,10 +60,10 @@ import { CashSessionSelection } from '../../core/domain/cash-session-selection';
             <span class="badge" [class.ok]="opened.status.isOpen" [class.info]="opened.status.isClosed">{{ opened.status.label }}</span>
           </p>
           @if (selection().state.permitsMutation && identity.can(permissions.CashSessionClose)) {
-            <form (ngSubmit)="close()">
+            <form (ngSubmit)="requestClose()">
               <label>Declarado <input name="declared" type="number" [(ngModel)]="declared" min="0" required /></label>
               <label>Motivo de cierre <input name="closeReason" [(ngModel)]="closeReason" required /></label>
-              <button type="submit" [disabled]="!canMutate()">Cerrar sesión</button>
+              <button type="submit" [disabled]="!canRequestClose()">Cerrar sesión</button>
             </form>
           }
           @if (selection().state.permitsMutation && identity.can(permissions.ExpenseRecord)) {
@@ -69,6 +78,10 @@ import { CashSessionSelection } from '../../core/domain/cash-session-selection';
       } @else if (!loading() && !error()) {
         <p class="empty">{{ selection().state.label }}</p>
       }
+      <bs-confirmation-dialog [phase]="closePhase()" title="Confirmar cierre de caja" titleId="cash-close-title"
+        description="El cierre genera un arqueo auditado."
+        [detail]="closeReviewDetail()" confirmLabel="Cerrar sesión" cancelLabel="Seguir en caja"
+        (confirmed)="confirmClose()" (cancelled)="cancelClose()" />
       @if (notice()) {
         <p class="badge" [class.ok]="outcome().isApplied" [class.info]="!outcome().isApplied" role="status">{{ notice() }}</p>
       }
@@ -112,8 +125,10 @@ export class CashSessionComponent {
   expenseCategory = 'insumos';
   expenseAmount = 2;
   expenseReason = 'bolsas';
-  declared = 0;
-  closeReason = 'cierre de turno';
+  declared: number | null = null;
+  closeReason = '';
+  readonly closePhase = signal(ConfirmationPhase.Idle);
+  readonly closeReview = signal<CashCloseReview | null>(null);
   readonly visibleSessions = signal<readonly CashSessionData[]>([]);
   readonly selectableSessions = computed(() => CashSessionSelection.visible(this.visibleSessions(), this.identity.staff()).filter(item => !item.status.canStartNewSession));
   readonly selection = computed(() => CashSessionSelection.requested(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId));
@@ -129,6 +144,7 @@ export class CashSessionComponent {
       this.reloadEpoch++; this.loading.set(false); this.mutationPending.set(false);
       this.outcome.set(CashMutationOutcome.Unknown);
       this.visibleSessions.set([]); this.cashierId = null; this.notice.set(null); this.error.set(null);
+      this.cancelClose();
     });
     this.reload();
   }
@@ -175,16 +191,40 @@ export class CashSessionComponent {
       terminalId: Number(this.terminalId), cashierId: Number(this.cashierId), openingCash: Number(this.openingCash), reason: this.assignmentReason,
     }));
   }
-  close(): void {
+  requestClose(): void {
+    if (!this.canRequestClose()) return;
     const opened = this.session();
-    if (!this.identity.can(StaffPermission.CashSessionClose) || !opened || !this.selection().state.permitsMutation || !this.canMutate() || !this.closeReason.trim()) return;
+    if (!opened || this.declared === null) return;
+    this.closeReview.set(Object.freeze({ cashSessionId: opened.id, declaredCash: Number(this.declared), reason: this.closeReason.trim() }));
+    this.closePhase.set(ConfirmationPhase.Reviewing);
+  }
+  cancelClose(): void { this.closeReview.set(null); this.closePhase.set(ConfirmationPhase.Idle); }
+  confirmClose(): void {
+    const review = this.closeReview();
+    if (!this.closePhase().isReviewing || !review) return;
+    if (this.session()?.id !== review.cashSessionId) {
+      this.cancelClose();
+      this.notice.set('La caja seleccionada cambió. Revisá nuevamente el cierre.');
+      return;
+    }
+    this.cancelClose();
+    this.close(review);
+  }
+  closeReviewDetail(): string {
+    const review = this.closeReview();
+    return review ? `Caja ${review.cashSessionId} · declarado ${review.declaredCash} · motivo ${review.reason}.` : '';
+  }
+  private close(review: CashCloseReview): void {
+    const opened = this.session();
+    if (!this.identity.can(StaffPermission.CashSessionClose) || !opened || opened.id !== review.cashSessionId || !this.selection().state.permitsMutation || !this.canMutate()) return;
     this.mutate(AccountingCommand.create(AccountingCommandKind.Close, {
-      cashSessionId: opened.id, declaredCash: Number(this.declared), reason: this.closeReason,
+      cashSessionId: review.cashSessionId, declaredCash: review.declaredCash, reason: review.reason,
     }, opened.id));
   }
   addExpense(): void {
     const opened = this.session();
-    if (!this.identity.can(StaffPermission.ExpenseRecord) || !opened || !this.selection().state.permitsMutation || !this.canMutate() || !this.expenseReason.trim()) return;
+    if (!this.identity.can(StaffPermission.ExpenseRecord) || !opened || !this.selection().state.permitsMutation || !this.canMutate() ||
+        !this.expenseReason.trim() || !this.isValidMoney(this.expenseAmount, true)) return;
     this.mutate(AccountingCommand.create(AccountingCommandKind.Expense, {
       cashSessionId: opened.id, category: this.expenseCategory, amount: Number(this.expenseAmount), reason: this.expenseReason,
       operation: ExpenseOperation.AccrueAndSettle.wire, paymentMethod: PaymentMethod.Cash.wire,
@@ -192,6 +232,9 @@ export class CashSessionComponent {
   }
   canMutate(): boolean {
     return !this.loading() && !this.mutationPending() && !this.error() && !this.commands.unresolved() && !this.commands.blocked().blocksWrites;
+  }
+  canRequestClose(): boolean {
+    return this.canMutate() && this.isValidMoney(this.declared, false) && !!this.closeReason.trim();
   }
   consultReceipt(): void {
     if (this.mutationPending()) return;
@@ -212,7 +255,13 @@ export class CashSessionComponent {
 
   canOpen(): boolean {
     return this.canMutate() && CashSessionSelection.canOpen(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId)
+      && this.isValidMoney(this.openingCash, false)
       && (this.cashierId === this.identity.staff()?.id || !!this.assignmentReason.trim());
+  }
+
+  private isValidMoney(raw: unknown, strictlyPositive: boolean): boolean {
+    const money = TicketMoney.fromDecimal(raw);
+    return money !== null && (strictlyPositive ? money.cents > 0n : money.cents >= 0n);
   }
 
   selectSession(id: number | null): void {

@@ -1,6 +1,16 @@
 # Especificación funcional
 
-## Estado integrado local T08-D — vigente
+## Estado actual CLR-T09 — corte PR #45 en validación
+
+El corte separa exclusivamente CLR/DCT sobre la base `79c612c`: fence V12,
+recuperación contable, confirmaciones destructivas y matriz browser V2. Sus
+pruebas locales, review exact-head y CI hospedado se registran únicamente contra
+el commit que resulte de este corte. Las ejecuciones de 2026-10-16 pertenecen al
+overlay combinado conservado en el snapshot `115fad53006b55d27b021883bf49153a3de050fa`;
+son antecedentes y no acreditan este head, sus escenarios ausentes ni sus gates.
+No hay homologación, activación live, publicación ni merge.
+
+## Estado integrado local T08-D — antecedente
 
 2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
 
