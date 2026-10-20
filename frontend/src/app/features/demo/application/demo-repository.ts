@@ -1,5 +1,7 @@
 import { DemoSnapshot, DemoPaymentMethod, DemoScenario, DemoRole, Product, Customer, Sale, DemoMovementKind } from '../domain/demo-types';
+import { DemoAction, DemoPermissionDecision } from '../domain/demo-permissions';
 export abstract class DemoRepository {
+  abstract authorize(action: DemoAction): DemoPermissionDecision;
   abstract snapshot(): DemoSnapshot;
   abstract subscribe(listener: (snapshot: DemoSnapshot) => void): () => void;
   abstract reset(scenario: DemoScenario): void;

@@ -4,7 +4,7 @@ export class DemoPaymentMethod {
   static readonly Card = new DemoPaymentMethod('card', 'Tarjeta');
   static readonly Transfer = new DemoPaymentMethod('transfer', 'Transferencia');
   static readonly Unknown = new DemoPaymentMethod('unknown', 'Medio no disponible');
-  static readonly values = [this.Cash, this.Card, this.Transfer];
+  static readonly values = Object.freeze([this.Cash, this.Card, this.Transfer]);
   static fromWire(value: unknown): DemoPaymentMethod { return this.values.find(item => item.key === value) ?? this.Unknown; }
 }
 export class DemoSaleStatus {
@@ -12,7 +12,7 @@ export class DemoSaleStatus {
   static readonly Completed = new DemoSaleStatus('completed', 'Completada', true);
   static readonly Reversed = new DemoSaleStatus('reversed', 'Devuelta');
   static readonly Unknown = new DemoSaleStatus('unknown', 'Estado no disponible');
-  static readonly values = [this.Completed, this.Reversed];
+  static readonly values = Object.freeze([this.Completed, this.Reversed]);
   static fromWire(value: unknown): DemoSaleStatus { return this.values.find(item => item.key === value) ?? this.Unknown; }
 }
 export class DemoCashStatus {
@@ -27,7 +27,7 @@ export class DemoRole {
   static readonly Manager = new DemoRole('manager', 'Encargada', true);
   static readonly Cashier = new DemoRole('cashier', 'Cajero');
   static readonly Unknown = new DemoRole('unknown', 'Perfil no disponible');
-  static readonly values = [this.Manager, this.Cashier];
+  static readonly values = Object.freeze([this.Manager, this.Cashier]);
   static fromWire(value: unknown): DemoRole { return this.values.find(item => item.key === value) ?? this.Unknown; }
 }
 export class DemoScenario {
@@ -39,7 +39,7 @@ export class DemoScenario {
   static readonly Error = new DemoScenario('error', 'Error recuperable al cobrar', false, false, false, true);
   static readonly Slow = new DemoScenario('slow', 'Carga lenta', false, false, false, false, true);
   static readonly Unknown = new DemoScenario('unknown', 'Escenario no disponible');
-  static readonly values = [this.Normal, this.Closed, this.Empty, this.Low, this.Error, this.Slow];
+  static readonly values = Object.freeze([this.Normal, this.Closed, this.Empty, this.Low, this.Error, this.Slow]);
   static fromWire(value: unknown): DemoScenario { return this.values.find(item => item.key === value) ?? this.Unknown; }
 }
 export class DemoMovementKind {
@@ -50,7 +50,7 @@ export class DemoMovementKind {
   static readonly Expense = new DemoMovementKind('expense', 'Egreso', -1);
   static readonly Refund = new DemoMovementKind('refund', 'Devolución', -1);
   static readonly Unknown = new DemoMovementKind('unknown', 'Movimiento no disponible', 0);
-  static readonly values = [this.Opening, this.Sale, this.Income, this.Expense, this.Refund];
+  static readonly values = Object.freeze([this.Opening, this.Sale, this.Income, this.Expense, this.Refund]);
   static fromWire(value: unknown): DemoMovementKind { return this.values.find(item => item.key === value) ?? this.Unknown; }
 }
 export class DemoViewState {
@@ -60,8 +60,17 @@ export class DemoViewState {
   static readonly Unknown = new DemoViewState('Vista no disponible');
   static fromWire(value: unknown): DemoViewState { return value === 'ready' ? this.Ready : value === 'loading' ? this.Loading : this.Unknown; }
 }
+export class DemoProductStatus {
+  private constructor(readonly key: string, readonly label: string, readonly toggleLabel: string, readonly canSell = false) {}
+  static readonly Active = new DemoProductStatus('active', 'Activo', 'Desactivar', true);
+  static readonly Inactive = new DemoProductStatus('inactive', 'Inactivo', 'Activar');
+  static readonly Unknown = new DemoProductStatus('unknown', 'Producto no disponible', 'No disponible');
+  static readonly values = Object.freeze([this.Active, this.Inactive]);
+  get toggled(): DemoProductStatus { return this === DemoProductStatus.Active ? DemoProductStatus.Inactive : this === DemoProductStatus.Inactive ? DemoProductStatus.Active : DemoProductStatus.Unknown; }
+  static fromWire(value: unknown): DemoProductStatus { return this.values.find(item => item.key === value) ?? this.Unknown; }
+}
 export const money = (cents: number): string => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 }).format(cents / 100);
-export interface Product { readonly id: string; readonly name: string; readonly sku: string; readonly category: string; readonly price: number; readonly cost?: number; readonly stock: number; readonly active: boolean; readonly version: number; readonly icon: string; }
+export interface Product { readonly id: string; readonly name: string; readonly sku: string; readonly category: string; readonly price: number; readonly cost?: number; readonly stock: number; readonly status: DemoProductStatus; readonly version: number; readonly icon: string; }
 export interface Customer { readonly id: string; readonly name: string; readonly email: string; readonly phone: string; }
 export interface CartLine { readonly productId: string; readonly quantity: number; readonly version: number; readonly price: number; }
 export interface SaleLine { readonly productId: string; readonly name: string; readonly sku: string; readonly category: string; readonly quantity: number; readonly price: number; readonly cost?: number; }
