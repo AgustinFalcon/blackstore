@@ -1,7 +1,8 @@
 {
   "feature": "blackstore-pos-cart-explicit-payment",
   "status": "design_approved_implementation_pending",
-  "base_commit": "b9def6fc00c5ea84682c6e59a2bb929f4b3d0091",
+  "base_commit": "bbd12c7d893e9df9a866dc2c20f1e253fc9435ff",
+  "reviewed_design_parent_commit": "1fec3d46c21f9c87e09ccfc437dc452719bc6142",
   "document_origin_commit": "79c612c78160135df0e9011d5bcd93533d14d4e8",
   "stats": {"total": 5, "done": 1},
   "gates": {"design": "APPROVED", "implementation": "NOT_RUN_ON_THIS_HEAD", "integration": "NOT_RUN", "homologation": "BLOCKED", "publication": "NOT_RUN"},
