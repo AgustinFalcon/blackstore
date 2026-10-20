@@ -1,3 +1,4 @@
+import { completePayment } from '../infrastructure/payment-test.fixture';
 import { DemoAction, DemoPermissionDecision, DemoPermissionError, DemoPermissionPolicy } from './demo-permissions';
 import { DemoMovementKind, DemoPaymentMethod, DemoRole, DemoScenario } from './demo-types';
 import { LocalDemoRepository } from '../infrastructure/local-demo-repository';
@@ -21,11 +22,11 @@ describe('demo action authorization', () => {
     const repo = new LocalDemoRepository(undefined, DemoRole.Unknown);
     const before = repo.snapshot(); let publications = 0; repo.subscribe(() => publications++);
     const p = before.products[0], c = before.customers[1];
-    const commands = [() => repo.setRole(DemoRole.Unknown), () => repo.cart(p.id, 1), () => repo.clearCart(), () => repo.selectCustomer(c.id), () => repo.discount(5), () => repo.checkout('denied', DemoPaymentMethod.Card, 0, ''), () => repo.reverse(before.sales[0].id, 'demo'), () => repo.saveProduct(p), () => repo.saveCustomer(c), () => repo.adjust(p.id, 1, 'demo'), () => repo.openCash(100), () => repo.moveCash(DemoMovementKind.Income, 100, 'demo'), () => repo.closeCash(100, 'demo'), () => repo.reset(DemoScenario.Normal)];
+    const commands = [() => repo.setRole(DemoRole.Unknown), () => repo.cart(p.id, 1), () => repo.clearCart(), () => repo.selectCustomer(c.id), () => repo.discount(5), () => completePayment(repo,'denied', DemoPaymentMethod.Card, 0, ''), () => repo.reverse(before.sales[0].id, 'demo'), () => repo.saveProduct(p), () => repo.saveCustomer(c), () => repo.adjust(p.id, 1, 'demo'), () => repo.openCash(100), () => repo.moveCash(DemoMovementKind.Income, 100, 'demo'), () => repo.closeCash(100, 'demo'), () => repo.reset(DemoScenario.Normal)];
     for (const command of commands) { expect(command).toThrowError(DemoPermissionError); expect(repo.snapshot()).toBe(before); }
     expect(publications).toBe(1);
     repo.setRole(DemoRole.Manager); repo.cart(p.id, 1);
-    expect(repo.checkout('denied', DemoPaymentMethod.Card, 0, '').id).toBe('V-101');
+    expect(completePayment(repo,'denied', DemoPaymentMethod.Card, 0, '').id).toBe('V-101');
   });
   it('revalidates manager permissions immediately before executing open forms', () => {
     const repo = new LocalDemoRepository(); const product = repo.snapshot().products[0]; const sale = repo.snapshot().sales[0];
@@ -35,9 +36,9 @@ describe('demo action authorization', () => {
   });
   it('retains a pending discount and blocks cashier checkout until an explicit recovery', () => {
     const repo = new LocalDemoRepository(); repo.cart('p1', 1); repo.discount(10); repo.setRole(DemoRole.Cashier);
-    const before = repo.snapshot(); expect(() => repo.checkout('pending', DemoPaymentMethod.Card, 0, '')).toThrowError(DemoPermissionError); expect(repo.snapshot()).toBe(before);
+    const before = repo.snapshot(); expect(() => completePayment(repo,'pending', DemoPaymentMethod.Card, 0, '')).toThrowError(DemoPermissionError); expect(repo.snapshot()).toBe(before);
     expect(() => repo.discount(0)).toThrowError(DemoPermissionError);
-    repo.clearCart(); repo.cart('p1', 1); expect(repo.checkout('pending', DemoPaymentMethod.Card, 0, '').discount).toBe(0);
+    repo.clearCart(); repo.cart('p1', 1); expect(completePayment(repo,'pending', DemoPaymentMethod.Card, 0, '').discount).toBe(0);
   });
   it('allows cashier cash movements, close and reopen under the demo policy', () => {
     const repo = new LocalDemoRepository(); repo.setRole(DemoRole.Cashier); repo.moveCash(DemoMovementKind.Expense, 100, 'Bolsas'); repo.moveCash(DemoMovementKind.Income, 200, 'Fondo'); repo.closeCash(repo.expectedCash(), ''); repo.openCash(300); expect(repo.expectedCash()).toBe(300);

@@ -1,4 +1,4 @@
-import { DemoMovementKind, DemoPaymentMethod, DemoSnapshot, Sale } from './demo-types';
+import { DemoMovementKind, DemoPaymentMethod, DemoSnapshot, DemoStockFilter, Sale } from './demo-types';
 import { DemoDateRange } from './demo-calendar';
 
 export interface SaleFilter { readonly search: string; readonly method: DemoPaymentMethod | null; readonly status: import('./demo-types').DemoSaleStatus | null; readonly period: DemoDateRange; }
@@ -13,7 +13,7 @@ export class DemoQueries {
   completed(sales: readonly Sale[]): number { return sales.filter(s => s.status.canReverse).length; }
   average(sales: readonly Sale[]): number { const count = this.completed(sales); return count ? Math.round(this.total(sales) / count) : 0; }
   expenses(period: DemoDateRange): number { return this.snapshot.movements.filter(m => m.kind === DemoMovementKind.Expense && period.includes(m.date)).reduce((sum, m) => sum + m.amount, 0); }
-  byMethod(sales: readonly Sale[], method: DemoPaymentMethod): number { return this.total(sales.filter(s => s.method === method)); }
+  byMethod(sales: readonly Sale[], method: DemoPaymentMethod): number { return sales.filter(s=>s.status.canReverse).reduce((sum,s)=>sum+(method.isCash?s.cashAmount:s.method===method?s.total-s.cashAmount:0),0); }
   byCategory(sales: readonly Sale[], category: string): number {
     return sales.filter(s => s.status.canReverse).reduce((sum, sale) => {
       const subtotal=sale.lines.reduce((value,line)=>value+line.price*line.quantity,0);
@@ -29,7 +29,7 @@ export class DemoQueries {
     },0);
   }
   topProducts(sales: readonly Sale[]): {name: string; quantity: number}[] { const items = new Map<string, number>(); sales.filter(s => s.status.canReverse).forEach(s => s.lines.forEach(l => items.set(l.name, (items.get(l.name) ?? 0) + l.quantity))); return [...items].map(([name, quantity]) => ({name, quantity})).sort((a, b) => b.quantity - a.quantity).slice(0, 5); }
-  lowStock(): number { return this.snapshot.products.filter(p => p.stock <= 3 && p.status.canSell).length; }
+  lowStock(): number { return this.snapshot.products.filter(p=>DemoStockFilter.LowActive.matches(p)).length; }
   cartUnits(): number { return this.snapshot.cart.reduce((sum, line) => sum + line.quantity, 0); }
   currentCashMovements() { const start = this.snapshot.movements.map(m => m.kind).lastIndexOf(DemoMovementKind.Opening); return this.snapshot.movements.slice(Math.max(start, 0)); }
 }
