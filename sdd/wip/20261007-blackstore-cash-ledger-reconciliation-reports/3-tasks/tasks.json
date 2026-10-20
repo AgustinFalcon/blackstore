@@ -355,7 +355,7 @@
     {
       "id": "CLR-T09",
       "title": "Browser PG16 reinicio CI reviews exact-head y handoff",
-      "status": "implemented_local_combined_backend291_frontend278_demo33_dct17_astra_review_pass_ci_pending",
+      "status": "partial_pr45_local_backend293_frontend242_browser8_pending_response_loss_cross_tab_release_pending_ci_exact_head_review",
       "pr_cut": "UI_ACCEPTANCE",
       "depends_on": [
         "CLR-T08",
@@ -390,15 +390,31 @@
   "gates": {
     "design": "PASS",
     "contract_extension_design": "T08_A_DESIGN_GO_PASS",
-    "implementation": "PARTIAL_CLR_T09_LOCAL_COMBINED_BACKEND291_FRONTEND278_DOMAIN32_DEMO33_PG16_BROWSER17_REVIEW_PASS_CI_PENDING",
-    "integration": "PG16_BACKEND_291_PASS_V12_HARDENED_DB_FENCE_SHADOW_STALE_SNAPSHOT_ACTIVATION_RACE_RESTORE_COMPATIBLE_BINARY_PASS_CASH_SALES_REPORTS_BROWSER_17_PASS_CRITICAL_POST_FIX_1_PASS_RESPONSE_LOSS_CROSS_TAB_SID_ROTATION_LEGACY_PREACTIVATION_PAUSED_RELEASE_PENDING_FEE_BOUNDARY_REVIEW_PASS_CI_PENDING",
-    "review": "CLR_T09_GPT61_ASTRA_TECHNICAL_PRODUCT_SECURITY_APPROVE_NO_P0_P3_AFTER_P2_CORRECTIONS",
+    "implementation": "PARTIAL_PR45_LOCAL_BACKEND293_FRONTEND242_TYPECHECK_BUILD_PASS_CI_EXACT_HEAD_REVIEW_PENDING",
+    "integration": "PR45_LOCAL_PG16_BROWSER_8_OF_8_PASS_CASH_SALES_REPORTS_PAUSED_RESTART_DENIALS_SID_ROTATION_LEGACY_PREACTIVATION_MIXED_DAY_RESPONSE_LOSS_SAME_SID_CROSS_TAB_RELEASE_PENDING_NOT_RUN",
+    "review": "PR45_EXACT_HEAD_PENDING_NO_COMBINED_OVERLAY_APPROVAL_TRANSFER",
     "homologation": "BLOCKED",
     "publication": "NOT_RUN",
-    "pos_context": "BACKEND_FRONTEND_INTEGRATED_LOCAL_PG16_BROWSER_REVIEW_PASS_CI_PENDING",
-    "accounting_evidence_contract": "T08_D_SPECIFIC_REVIEW_GO_PENDING_BACKEND_BB9E64B_FRONTEND_B8024DC_INTEGRATED_PG16_BROWSER_PASS_CI_PENDING"
+    "pos_context": "PR45_BACKEND_FRONTEND_INTEGRATED_LOCAL_BROWSER_8_OF_8_SCOPE_ONLY_CI_EXACT_HEAD_REVIEW_PENDING",
+    "accounting_evidence_contract": "T08_D_SPECIFIC_REVIEW_GO_PENDING_PR45_LOCAL_BROWSER_8_OF_8_SCOPE_ONLY_CI_EXACT_HEAD_REVIEW_PENDING"
   },
   "evidence": {
+    "current_cut": {
+      "pull_request": 45,
+      "source": "evidence/CLR-T09-pr45-local-20261020.md",
+      "validation_scope": "LOCAL_PRE_COMMIT_CANDIDATE_NOT_FINAL_CORRECTION_HEAD",
+      "backend": "293_OF_293_PASS",
+      "frontend": "242_OF_242_PASS",
+      "typecheck_build": "PASS",
+      "browser_restart": "PG16_BROWSER_8_OF_8_PASS_TEARDOWN_PASS",
+      "response_loss": "NOT_RUN",
+      "same_sid_cross_tab": "NOT_RUN",
+      "release_pending": "NOT_RUN",
+      "ci": "PENDING",
+      "exact_head_reviews": "PENDING"
+    },
+    "historical": {
+    "scope": "ANTECEDENTS_FROM_OTHER_SOURCES_OR_OVERLAYS_NOT_CURRENT_PR45_ACCEPTANCE",
     "frontend_t08d_journal_p2_source_head": "c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c",
     "frontend_t08d_journal_p2_validation": "FOCUSED_20_20_FULL_234_234_TYPECHECK_BUILD_PASS_AUDIT_PRODUCTION_0_DIFF_CHECK_PASS",
     "frontend_t08d_journal_p2_race": "A_RESOLVED_B_PREPARED_LATE_RECORD_A_TERMINAL_B_ONLY_UNRESOLVED_HYDRATE_GET_ONLY",
@@ -427,6 +443,7 @@
     ,"combined_final_2026_10_20": "BACKEND_291_291_FRONTEND_278_278_DOMAIN_32_32_DEMO_BROWSER_33_33_BUILD_TYPECHECK_PASS_DCT_17_17_CRITICAL_POST_FIX_1_1"
     ,"combined_final_corrections": "DCT_TERMINAL_WORKER_EXPIRY_REVERSAL_REASON_3_500_PRE_JOURNAL_CATEGORY_CENTS_LARGEST_REMAINDER"
     ,"combined_final_reviews": "GPT61_ASTRA_TECHNICAL_SECURITY_PRODUCT_APPROVE_NO_P0_P3"
+    }
   },
   "pos_context_design": "proposed_pending_specific_review",
   "accounting_evidence_design": {

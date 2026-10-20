@@ -10,4 +10,11 @@ describe('ReversalReason', () => {
       expect(ReversalReason.fromInput(value)).toBeNull();
     }
   });
+
+  it('accepts both inclusive boundaries after trimming', () => {
+    for (const length of [ReversalReason.minLength, ReversalReason.maxLength]) {
+      const reason = 'x'.repeat(length);
+      expect(ReversalReason.fromInput(`  ${reason}  `)?.wire).toBe(reason);
+    }
+  });
 });

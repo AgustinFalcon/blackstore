@@ -142,8 +142,9 @@ interface TicketReleaseReview {
       @if (paymentId(); as id) {
         <div class="card">
           <form (ngSubmit)="requestReverse(id)">
-            <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" required /></label>
-            <button type="submit" [disabled]="!canFinish(reverseAction)">Reversar pago {{ id }}</button>
+            <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" aria-describedby="ticket-reversal-reason-guidance" required /></label>
+            <p id="ticket-reversal-reason-guidance">{{ reversalReasonGuidance }}</p>
+            <button type="submit" [disabled]="!canFinish(reverseAction) || !validReversalReason()">Reversar pago {{ id }}</button>
           </form>
         </div>
       }
@@ -444,6 +445,10 @@ export class SaleTicketComponent implements OnInit {
     this.sales.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef))
       .subscribe(result => { this.snapshot.set(null); this.message.set(result.outcome.label); });
   }
+
+  readonly reversalReasonGuidance = ReversalReason.guidance;
+
+  validReversalReason(): boolean { return ReversalReason.fromInput(this.reversalReason) !== null; }
 
   requestReverse(paymentId: number): void {
     const operationId = this.attempt?.identity.operationId;
