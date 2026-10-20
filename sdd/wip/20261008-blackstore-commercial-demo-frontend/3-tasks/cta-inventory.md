@@ -18,3 +18,15 @@ Cada ID debe enlazarse en evidencia al selector accesible, caso, resultado y cap
 Estados transversales por pantalla: loading, éxito, vacío, error recuperable y restricciones pertinentes. No exigir loading artificial en cada operación instantánea; el escenario de latencia permite comprobar bloqueo de doble envío y feedback. Formularios prueban valores inválidos, submit por teclado, error asociado y recuperación.
 
 Cada CTA de dominio se vincula además a DemoAction y resultado permitido/denegado según la política funcional (E11), incluyendo cambio de perfil entre apertura y confirmación. SH-03/SC comprueban exclusivamente perfil ficticio; ninguna variante muestra identidad ni logout real. El acceso/salida de la superficie usa navegación documental y evidencia E01.
+
+## Reconciliación local #48 — 2026-10-20
+
+Source y casos ejecutados: [PR48-transplant-local-20261020.md](../evidence/PR48-transplant-local-20261020.md), browser `commercial-demo.spec.ts` y specs `demo-permissions`, `local-demo-repository`, `demo-wire-mapper`, `demo-queries`, `demo-csv`. Los grupos siguientes vinculan los controles implementados a la política; no declaran cobertura individual completa de cada variante del inventario inicial.
+
+- SH/DB/VE/PR/IN/CL/RP: navegación, detalle, búsqueda y filtros consultan `DemoAction.Read`; CSV/descarga usan `Export`; impresión usa `Print`. El cuerpo de página Unknown no expone lecturas comerciales. SH cambio de perfil usa `ChangeRole`; entrada/salida son anchors documentales.
+- PO: cantidades, agregar/quitar/vaciar usan `EditCart`; cliente usa `SelectCustomer`; aplicar/quitar descuento usa `Discount`. PA selección de medio es input traducido por mapper; confirmar vuelve a evaluar `Checkout` y `Discount` pendiente. Cancelar vuelve al carrito sin mutación.
+- RE devolución usa `Reverse`; CA apertura usa `OpenCash`, ingreso/egreso `MoveCash` y arqueo/cierre `CloseCash`. Confirmaciones se autorizan al ejecutar.
+- PR crear/editar/activar/desactivar usa `SaveProduct` y transición de `DemoProductStatus`; IN ajuste usa `AdjustStock`; CL crear/editar usa `SaveCustomer`. Cancelar cierra draft sin publicar snapshot.
+- SC escenario/reinicio usa `Reset`; perfil usa `ChangeRole`. Unknown deniega; la recuperación explícita permite elegir un perfil conocido sin conceder una acción comercial.
+
+Nuevos controles: selector «Rol ficticio del shell» (misma `ChangeRole`, permite probar pérdida de permiso con pago/formulario pendiente) y enlace «Acceder al POS real» (navegación documental E01). E11 PASS_LOCAL de matriz/flujo; revisión independiente de inventario/diseño pendiente.

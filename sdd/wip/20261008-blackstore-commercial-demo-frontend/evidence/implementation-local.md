@@ -1,5 +1,7 @@
 # Commercial demo frontend — local implementation evidence
 
+Historical evidence for the pre-transplant source only. Its bootstrap and permission claims do not satisfy final PR #47. Current source and accurately scoped results are in [PR48-transplant-local-20261020.md](PR48-transplant-local-20261020.md); no approval or PASS is inherited from this document.
+
 Base: `4d2c9cd`. Branch: `feat/commercial-demo-frontend`. Worktree: `work/blackstore-demo-frontend`. No backend changes, push, PR, merge or publication.
 
 ## Implemented surface

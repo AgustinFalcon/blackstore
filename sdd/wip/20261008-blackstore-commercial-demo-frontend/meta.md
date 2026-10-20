@@ -1,8 +1,8 @@
 # BlackStore — frontend comercial demostrable
 
-Estado: PLANNED. Fecha: 2026-10-08; base reconciliada 2026-10-20. Base vigente: PR #46 exacto `26020bb2278230b3c59426b49a480ff1daa49df3`.
+Estado: IMPLEMENTED_LOCAL_PARTIAL_ACCEPTANCE_PENDING_REVIEW. Fecha: 2026-10-08; revalidación 2026-10-20. Base de implementación: PR #47 exacto `05fbf923d7ee0e9a0181f6b737e865dac2072d36`, que conserva PR #46 `26020bb2278230b3c59426b49a480ff1daa49df3`.
 
-Origen documental: PR #47 `4d2c9cd`, creado sobre el antiguo PR #45 `79c612c78160135df0e9011d5bcd93533d14d4e8`. El stack vigente incorpora PR #45 `bbd12c7d893e9df9a866dc2c20f1e253fc9435ff` y POSC-D de PR #46; esos antecedentes no acreditan ejecución de este demo. El diff propio de #47 contiene exclusivamente este WIP documental; implementación de #48/#49 fuera de alcance.
+Origen documental: PR #47 `4d2c9cd`, creado sobre el antiguo PR #45 `79c612c78160135df0e9011d5bcd93533d14d4e8`. El stack vigente incorpora PR #45 `bbd12c7d893e9df9a866dc2c20f1e253fc9435ff` y POSC-D de PR #46; esos antecedentes no acreditan ejecución de este demo. El diff propio de #47 contenía exclusivamente este WIP documental. Este incremento #48 implementa demo local; #49 continúa independiente.
 
 ## Objetivo y precedencia
 
@@ -12,7 +12,7 @@ Este WIP complementa [UX v1](../20260923-blackstore-frontend-ux-system-v1/1-func
 
 Compatibilidad de base: [POSC-D](../20261008-blackstore-pos-cart-explicit-payment/meta.md) conserva su diseño aprobado y B/T/U/E pendientes; [CLR](../20261007-blackstore-cash-ledger-reconciliation-reports/meta.md) conserva lifecycle, journal, contratos contables y sus gates propios. Ningún resultado demo satisface aceptación POSC/CLR ni hereda evidencia del snapshot combinado externo.
 
-El código actual tiene siete rutas funcionales, pero su ticket individual y pago predeterminado no constituyen un POS comercial terminado. Este corte agrega dashboard, carrito multilínea, cobro explícito, comprobante, caja, ventas, productos, inventario, clientes y reportes con navegación y estados completos. El WIP backend-first de carrito continúa independiente; sus contratos no se reescriben para acomodar fixtures.
+La base operativa tiene siete rutas funcionales, pero su ticket individual y pago predeterminado no constituyen un POS comercial terminado. Este corte agrega dashboard, carrito multilínea, cobro explícito, comprobante, caja, ventas, productos, inventario, clientes y reportes con navegación y estados completos. El WIP backend-first de carrito continúa independiente; sus contratos no se reescriben para acomodar fixtures.
 
 ## Fuentes del contrato
 
@@ -22,6 +22,6 @@ El código actual tiene siete rutas funcionales, pero su ticket individual y pag
 - [Inventario verificable de acciones](3-tasks/cta-inventory.md)
 - [Aceptación](4-acceptance/checklist.md)
 
-Gates iniciales: Design NOT_RUN; Implementation NOT_RUN; Review NOT_RUN; Browser NOT_RUN; Live integration OUT_OF_SCOPE. No cerrar hasta adjuntar evidencia al SHA implementado.
+Gates locales sobre source `500c9fa53b33e736661215766f3ce7fb924a6ac0`: Domain 42/42 PASS; Angular regression 286/286 PASS; app/spec/demo/DCT typechecks PASS; build PASS; Browser 13/13 PASS. E01 real SID/PostgreSQL metadata NOT_RUN (frontend fixture boundary PASS); E11 domain matrix/browser PASS_LOCAL; Design independiente NOT_RUN; Review independiente NOT_RUN; E08 manual screen reader/contrast/zoom NOT_RUN; Live integration OUT_OF_SCOPE. Ver [evidencia del trasplante](evidence/PR48-transplant-local-20261020.md). No cerrar ni declarar aceptación completa.
 
-Corrección documental sobre `228f680` (2026-10-20): B debe separar bootstrap y shell antes de SessionStore/health/recovery, ya que providers lazy por sí solos no aíslan el arranque global existente; E01 exige cero API y conservación SID/storage con entrada directa, reload y transición entre superficies. Política demo cerrada por acción y revalidación al ejecutar definida en funcional/técnica, tarea T y E11; no deriva permisos de RBAC operativo. Son requisitos pendientes de implementación/ejecución, sin atribuir PASS ni aprobación de review a este head.
+Corrección documental sobre `228f680` (2026-10-20): B debe separar bootstrap y shell antes de SessionStore/health/recovery, ya que providers lazy por sí solos no aíslan el arranque global existente; E01 exige cero API y conservación SID/storage con entrada directa, reload y transición entre superficies. Política demo cerrada por acción y revalidación al ejecutar definida en funcional/técnica, tarea T y E11; no deriva permisos de RBAC operativo. Esos requisitos se implementan en el incremento #48 con los límites de ejecución documentados arriba; la revisión independiente y la aceptación completa siguen pendientes.
