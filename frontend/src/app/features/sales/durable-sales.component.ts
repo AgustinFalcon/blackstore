@@ -73,7 +73,8 @@ interface DurableReleaseReview {
             }
           }
           @if (!sale.status.acceptsCommands || !sale.valid) { <p role="status">Sólo consulta. Reintentá consultar o solicitá reconciliación a una persona autorizada.</p> }
-          <label>Motivo de operación <input [(ngModel)]="reason" /></label>
+          <label>Motivo de operación <input [(ngModel)]="reason" aria-describedby="durable-reversal-reason-guidance" /></label>
+          <p id="durable-reversal-reason-guidance">Para reversar un pago: {{ reversalReasonGuidance }}</p>
           @if (store.can(actions.CapturePayment)) {
             <label>Importe a completar <input type="number" min="0.01" [(ngModel)]="amount" /></label>
             <p>Las comisiones pagadas se registran por el circuito operativo del titular.</p>
@@ -111,6 +112,7 @@ export class DurableSalesComponent implements OnInit {
   readonly reversalPhase = signal(ConfirmationPhase.Idle);
   readonly releasePhase = signal(ConfirmationPhase.Idle);
   readonly reversalReview = signal<DurableReversalReview | null>(null);
+  readonly reversalReasonGuidance = ReversalReason.guidance;
   readonly releaseReview = signal<DurableReleaseReview | null>(null);
   validReversalReason(): boolean { return ReversalReason.fromInput(this.reason) !== null; }
   ngOnInit(): void { this.store.list(); }

@@ -9,7 +9,13 @@ resultados del árbol combinado. El snapshot
 antecedentes externos: incluyen POSC/Demo y escenarios que no integran #45.
 Live y homologación siguen siendo gates separados.
 
-## Addendum de aceptación frontend final — vigente
+La evidencia propia del candidato #45 registra backend 293/293, frontend
+242/242 y browser PG16 8/8. Respuesta perdida, cross-tab mismo SID y
+RELEASE_PENDING continúan NOT_RUN; CI y reviews exact-head pendientes.
+Los apartados siguientes conservan antecedentes de sus respectivos sources
+y no sustituyen este estado ni los gates de `tasks.json`.
+
+## Antecedente externo de aceptación frontend — 2026-10-16
 
 2026-10-16: autoridad de catálogo/descuento cero se valida antes del journal,
 el medio principal deja de estar fijado a efectivo, caja y reversas usan modal
@@ -21,7 +27,7 @@ P1/P2; CI hospedado continúa pendiente y no se habilitan live, homologación ni
 publicación.
 [Evidencia](../evidence/CLR-T09-frontend-product-corrections-20261016.md).
 
-## Estado actual CLR-T09 — vigente
+## Antecedente externo CLR-T09 — 2026-10-16
 
 2026-10-16: UI_ACCEPTANCE local completó backend 291/291, frontend 234/234,
 typechecks/build y browser PostgreSQL 16/JAR/Angular 17/17 con teardown total.
@@ -29,7 +35,7 @@ El fence V12 también prueba shadow temporal, snapshot stale y carrera de
 activación. Bug/Product, Security y SDD/SOLID aprobaron el diff local final sin
 P0–P3; sólo CI hospedado permanece pendiente. Homologación/publicación siguen
 bloqueadas y no hubo PR/merge.
-[Evidencia actual](../evidence/CLR-T09-cash-browser-pg16-local-20261016.md).
+[Evidencia histórica del overlay; no acredita #45](../evidence/CLR-T09-cash-browser-pg16-local-20261016.md).
 
 ## Estado integrado local T08-D — antecedente
 
@@ -39,21 +45,21 @@ Ver [evidencia local](../evidence/CLR-T08-D-frontend-local-20261008.md).
 
 ## Antecedentes conservados — no son estado vigente
 
-## Addendum T08-D — precedencia y DAG vigente
+## Antecedente T08-D — precedencia y DAG de aquel corte
 
-Base exacta backend POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) proposed; documentación preparada sin GO/review heredado ni código productivo. El DAG JSON es fuente vigente: B-POS → D documental/review/GO específico → D-BACKEND → C → T09. C depende explícitamente de B-POS y D-BACKEND, queda `blocked_on_pos_context_and_evidence`; las menciones anteriores de bloqueo sólo POS debajo son antecedentes. T08 sigue parcial, T09 planned y B-POS conserva PG16/browser/CI/reviews pendientes.
+Base exacta backend POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) proposed; documentación preparada sin GO/review heredado ni código productivo. El DAG de aquel corte era B-POS → D documental/review/GO específico → D-BACKEND → C → T09. C dependía explícitamente de B-POS y D-BACKEND y quedaba `blocked_on_pos_context_and_evidence`; T08 seguía parcial, T09 planned y B-POS conservaba PG16/browser/CI/reviews pendientes. Este registro es histórico.
 
 CLR-T08-D / SDD_EVIDENCE_CONTRACTS prepara contrato de originalPaymentId nullable/refund→capture y query de proyección de gasto con Found/NotFound/Unavailable/Unknown, autoridad/opacidad, snapshot y evidencia contable. Estado prepared_pending_specific_review, no done. CLR-T08-D-BACKEND / ACCOUNTING_EVIDENCE_BACKEND planned depende D y B-POS: dominio/puerto/query/pasos SOLID, propagación DTO durable, traductores y GET read-only SID/no-store, PG16/HTTP/snapshot/recovery, CI y reviews exact-head. No nueva migración salvo necesidad demostrada y revisión propia; las fuentes ya persistidas no autorizan backfill.
 
 C incorpora consumo de ambos contratos, correlación receipt/proyección, refund→capture, journal y generación/actor/ámbito; Unknown/NotFound/Unavailable conservan bloqueo sin POST automático. T09 acredita esos escenarios con browser/PG16/reinicio propios y evidencia sanitizada de snapshots/IDs, build y teardown. Documentación, fixtures y CI de otros cortes no cierran estos gates. No activación/live/fiscal/homologación/publicación ni /sdd.finish.
 
-## Addendum de contexto POS — precedencia vigente
+## Antecedente de contexto POS — precedencia de aquel corte
 
 ### Antecedente T08-C integrado (conservado)
 
-Vigente tras review 0a6bb36: C `blocked_on_authoritative_read_models`; T08 parcial. T08-D backend en addendum separado debe aportar refund→capture y lectura de egreso/liquidación antes de integrar funcionalidad completa/cerrar C. Este corte sólo corrige frontend y bloquea explícitamente lo no comprobable. [Evidencia](../evidence/CLR-T08-C-review-corrections-20261008.md). Nueva validación exact-head pendiente, sin npm en este turno; no hereda PASS previo.
+Estado histórico tras review 0a6bb36: C `blocked_on_authoritative_read_models`; T08 parcial. T08-D backend en addendum separado debía aportar refund→capture y lectura de egreso/liquidación antes de integrar funcionalidad completa/cerrar C. Aquel corte sólo corregía frontend y bloqueaba explícitamente lo no comprobable. [Evidencia histórica](../evidence/CLR-T08-C-review-corrections-20261008.md). Nueva validación exact-head entonces pendiente, sin npm en aquel turno; no heredaba PASS previo.
 
-Antecedente C source 8227177 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: entonces `implemented_pending_pg16_browser_ci_review`, no estado actual. Estado único vigente blocked_on_authoritative_read_models. [Evidencia actual](../evidence/CLR-T08-C-foreground-20261008.md): 7516b0e focused5/full194/typecheck/build PASS; focus/visible nuevo NOT_RUN. T08-D/PG16/browser/crash/CI pendientes.
+Antecedente C source 8227177 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: entonces `implemented_pending_pg16_browser_ci_review`, sustituido en aquel período por blocked_on_authoritative_read_models. [Evidencia histórica](../evidence/CLR-T08-C-foreground-20261008.md): 7516b0e focused5/full194/typecheck/build PASS; focus/visible nuevo NOT_RUN. T08-D/PG16/browser/crash/CI estaban pendientes.
 
 ## Antecedente del addendum de contexto POS — no estado actual de C
 

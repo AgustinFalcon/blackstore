@@ -6,11 +6,11 @@ del combinado CLR-T09 pertenecen a
 excluye POSC/Demo y varios escenarios. El head separado necesita evidencia,
 review y CI propios. No hay secretos/cookies/CSRF ni tráfico live.
 
-- Candidato separado PR #45: [validación local 2026-10-20](CLR-T09-pr45-local-20261020.md). Acredita backend 293/293, frontend 242/242, typechecks, build y browser PG16 8/8 del working tree separado; commit exacto, reviews, CI, merge y homologación siguen pendientes.
+- Corte vigente PR #45: [validación local y correcciones 2026-10-20](CLR-T09-pr45-local-20261020.md). El candidato previo al commit acredita backend 293/293, frontend 242/242, typechecks, build y browser PG16 8/8. Las correcciones posteriores registran su validación focal propia; no reejecutaron esa aceptación integral. Respuesta perdida, cross-tab mismo SID y RELEASE_PENDING siguen NOT_RUN; reviews exact-head, CI, merge y homologación pendientes.
 
 - Antecedente combinado CLR-T09: [validación final 2026-10-20](CLR-T09-combined-final-local-20261020.md). Corresponde al snapshot `115fad53006b55d27b021883bf49153a3de050fa`, no al head #45. Incluye POSC/Demo y no transfiere PASS o APPROVE. Sin commit, PR, merge, homologación ni live.
 
-- Estado local vigente CLR-T09: [PostgreSQL 16 y browser 2026-10-16](CLR-T09-cash-browser-pg16-local-20261016.md). Incluye fence V12 endurecido, caja/ventas/reportes, reinicio, pérdida de respuesta, rotación SID, legacy aislado, PAUSED y teardown. Sin homologación, activación live, publicación, PR ni merge.
+- Antecedente externo CLR-T09: [PostgreSQL 16 y browser 2026-10-16](CLR-T09-cash-browser-pg16-local-20261016.md). El overlay histórico incluye fence V12 endurecido, caja/ventas/reportes, reinicio, pérdida de respuesta, rotación SID, legacy aislado, PAUSED y teardown. Sus resultados no acreditan #45. Sin homologación, activación live, publicación, PR ni merge.
 
 - Estado local integrado T08-D: [frontend 2026-10-08](CLR-T08-D-frontend-local-20261008.md), source b8024dcc0292897aa7a77f96e9ed9e25d63d54ea. npm ci/typecheck/build y 223/223 Karma PASS; audit productivo 0. Acredita sólo unitarios/integración HTTP con test doubles: PG16/browser/crash/restart/CI/reviews pendientes. Historial de addenda/fallos conservado.
 
