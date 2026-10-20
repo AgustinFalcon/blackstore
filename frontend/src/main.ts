@@ -1,5 +1,9 @@
-import { bootstrapApplication } from '@angular/platform-browser';
-import { AppComponent } from './app/app.component';
-import { appConfig } from './app/app.config';
+import { AppSurface } from './app/surface';
 
-bootstrapApplication(AppComponent, appConfig).catch((err) => console.error(err));
+const surface = AppSurface.fromWire(location.pathname);
+const bootstrap = surface === AppSurface.Demo
+  ? import('./app/demo.bootstrap').then(module => module.bootstrapDemo())
+  : surface === AppSurface.Operational
+    ? import('./app/operational.bootstrap').then(module => module.bootstrapOperational())
+    : import('./app/unknown.bootstrap').then(module => module.bootstrapUnknown());
+bootstrap.catch(error => console.error(error));

@@ -10,10 +10,6 @@ export const appConfig: ApplicationConfig = {
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
     provideHttpClient(withInterceptors([sessionInterceptor])),
-    provideAppInitializer(() => {
-      const session = inject(SessionStore);
-      if (location.pathname === '/demo' || location.pathname.startsWith('/demo/')) return;
-      return session.bootstrap();
-    }),
+    provideAppInitializer(() => inject(SessionStore).bootstrap()),
   ],
 };
