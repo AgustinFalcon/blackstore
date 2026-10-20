@@ -236,7 +236,7 @@ class AccountingMutationPostgresTest {
                             AccountingCrashOperation.Unknown -> fail("unknown crash operation")
                         }
                         if (operation != AccountingCrashOperation.Close) {
-                            sql(source, "UPDATE cash_session_projection SET status='CLOSED',closed_at=clock_timestamp(),closing_cash_declared=0 WHERE id=${replay.cashSessionId}")
+                            sql(source, "UPDATE cash_session_projection SET status='CLOSED',closed_at=GREATEST(clock_timestamp(),opened_at),closing_cash_declared=0 WHERE id=${replay.cashSessionId}")
                         }
                     } finally {
                         if (child.isAlive) {
@@ -847,8 +847,14 @@ class AccountingMutationPostgresTest {
     }
 
     private fun opening() = AccountingCommandDraft.CashSessionOpen(UUID.randomUUID(), 1, 1, BigDecimal("0.00"), null)
-    private fun applied(outcome: AccountingMutationOutcome) = (outcome as AccountingMutationOutcome.Applied).receipt
-    private fun rejected(outcome: AccountingMutationOutcome) = (outcome as AccountingMutationOutcome.Rejected).failure
+    private fun applied(outcome: AccountingMutationOutcome) = when (outcome) {
+        is AccountingMutationOutcome.Applied -> outcome.receipt
+        is AccountingMutationOutcome.Rejected -> fail("expected applied accounting mutation, got ${outcome.failure}")
+    }
+    private fun rejected(outcome: AccountingMutationOutcome) = when (outcome) {
+        is AccountingMutationOutcome.Rejected -> outcome.failure
+        is AccountingMutationOutcome.Applied -> fail("expected rejected accounting mutation, got receipt ${outcome.receipt}")
+    }
     private fun activate(source: DataSource) = sql(source, "UPDATE accounting_runtime SET state='ACTIVE', accounting_activation_at=clock_timestamp()")
     private fun sale(source: DataSource, cash: Long): OperationQuadruple {
         val identity = OperationQuadruple(UUID.randomUUID().toString(), "POS", "sale", UUID.randomUUID().toString())
@@ -872,7 +878,29 @@ class AccountingMutationPostgresTest {
             c.prepareStatement("INSERT INTO storecore_outbox_commands(client_instance_id,device_id,sale_id,operation_id,operation_kind,contract_version,openapi_digest,request_hash,payload_redacted,canonical_payload,payload_hash,actor_id,cash_session_id) VALUES(?,?,?,?,'RESERVE',?, ?,?,'{}',?::jsonb,?,1,?) RETURNING id").use { s ->
                 s.setObject(1, UUID.fromString(identity.clientInstanceId)); s.setString(2, identity.deviceId); s.setString(3, identity.saleId); s.setObject(4, UUID.fromString(identity.operationId))
                 s.setString(5, contractVersion); s.setString(6, openapiDigest); s.setString(7, "b".repeat(64)); s.setString(8, payload); s.setString(9, mapper.hash(payload)); s.setLong(10, cash)
-                s.executeQuery().use { r -> r.next(); c.createStatement().execute("INSERT INTO storecore_command_delivery(command_id,state) VALUES(${r.getLong(1)},'APPLIED')") }
+                s.executeQuery().use { r ->
+                    r.next()
+                    val outboxId = r.getLong(1)
+                    c.createStatement().execute("INSERT INTO storecore_command_delivery(command_id,state) VALUES($outboxId,'APPLIED')")
+                    val accountingActive = c.createStatement().executeQuery("SELECT state='ACTIVE' FROM accounting_runtime WHERE singleton").use { state ->
+                        state.next()
+                        state.getBoolean(1)
+                    }
+                    if (accountingActive) {
+                        c.prepareStatement("INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id) VALUES(?,'Reserve',?,1,?,?,?,?,?,?,?)").use { receipt ->
+                            receipt.setObject(1, UUID.randomUUID())
+                            receipt.setString(2, mapper.hash(payload))
+                            receipt.setLong(3, cash)
+                            receipt.setObject(4, UUID.fromString(identity.clientInstanceId))
+                            receipt.setString(5, identity.deviceId)
+                            receipt.setString(6, identity.saleId)
+                            receipt.setObject(7, UUID.fromString(identity.operationId))
+                            receipt.setLong(8, id)
+                            receipt.setLong(9, outboxId)
+                            receipt.executeUpdate()
+                        }
+                    }
+                }
             }
             c.commit()
         }
@@ -899,6 +927,15 @@ class AccountingMutationPostgresTest {
             JdbcAccountingLifecycleAdmission().requireV2(c)
             val locked = JdbcAccountingAggregateLocks().lockSale(c, identity)
             JdbcSaleRecordStore(source).insertCanonicalCommand(c, pending, command, staff.id.value, "v2 commit fixture")
+            c.prepareStatement("""INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id)
+                SELECT ?,'Commit',repeat('c',64),?,i.cash_session_id,i.client_instance_id,i.device_id,i.sale_id,i.operation_id,i.id,o.id
+                FROM sale_intents i JOIN storecore_outbox_commands o ON o.operation_id=i.operation_id AND o.operation_kind='COMMIT'
+                WHERE i.operation_id=?""").use { receipt ->
+                receipt.setObject(1, UUID.randomUUID())
+                receipt.setLong(2, staff.id.value)
+                receipt.setObject(3, UUID.fromString(identity.operationId))
+                receipt.executeUpdate()
+            }
             check(JdbcBlackStoreWriter().advanceSaleStatus(c, locked.projectionId, current.status.name, SaleStatus.COMMIT_PENDING.name) == 1)
             c.prepareStatement("UPDATE sale_state_projection SET version=version+1,updated_at=now() WHERE id=?").use { it.setLong(1, locked.projectionId); it.executeUpdate() }
             c.commit()

@@ -133,3 +133,48 @@ test('denials: real authority/CSRF/unknown method and stale UI conflict never cr
     expect((await runtime.database.query('SELECT count(*)::int AS count FROM expenses'))[0].count).toBe(0);
   } finally { for (const context of contexts) await context.close(); }
 });
+
+test('late cash-list response from the previous SID is discarded after identity rotation', async ({ runtime, page }) => {
+  const first = await runtime.database.seed(StaffRole.Cashier);
+  const second = await runtime.database.seed(StaffRole.Cashier);
+  const terminal = await runtime.database.terminal();
+  await new StaffSessionPage(page).login(first);
+  const cash = new CashSessionPage(page);
+  await cash.visit(terminal);
+  const firstCashId = await cash.open('25');
+
+  let release!: () => void;
+  let intercepted!: () => void;
+  let delivered!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const seen = new Promise<void>(resolve => { intercepted = resolve; });
+  const fulfilled = new Promise<void>(resolve => { delivered = resolve; });
+  await page.route('**/api/v1/cash-sessions', async route => {
+    const upstream = await route.fetch();
+    intercepted();
+    await gate;
+    await route.fulfill({ response: upstream });
+    delivered();
+  }, { times: 1 });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await seen;
+  const documentIdentity = await page.evaluate(() => {
+    const key = '__dctDocumentIdentity';
+    const target = window as unknown as Record<string, string>;
+    return target[key] ??= crypto.randomUUID();
+  });
+
+  const logoutResponse = page.waitForResponse(value => value.request().method() === 'POST' && value.url().endsWith('/api/v1/auth/logout'));
+  await page.getByRole('banner').getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
+  expect((await logoutResponse).status()).toBe(204);
+  await new StaffSessionPage(page).loginCurrentDocument(second);
+  await page.getByRole('link', { name: 'Caja', exact: true }).click();
+  await expect(page.getByText('Cargando puesto de trabajo…', { exact: true })).toHaveCount(0);
+  await page.getByLabel('Terminal', { exact: true }).fill(String(terminal));
+  release();
+  await fulfilled;
+
+  expect(await page.evaluate(() => (window as unknown as Record<string, string>)['__dctDocumentIdentity'])).toBe(documentIdentity);
+  await expect(page.getByRole('option', { name: new RegExp(`Caja ${firstCashId} ·`) })).toHaveCount(0);
+  await expect(page.getByLabel('Cajero', { exact: true })).toHaveValue(String(second.id));
+});

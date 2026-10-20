@@ -12,6 +12,7 @@ import { AccountingCommandsStore } from './accounting-commands.store';
 import { SessionStore } from './session.store';
 import { SaleCommandsStore } from './sale-commands.store';
 import { SaleCommand, SaleCommandKind, SaleAdmissionOutcome } from '../domain/sale-command';
+import { ReversalReason } from '../domain/reversal-reason';
 
 /** Read-only entry point: opening an existing identity cannot reserve or capture. */
 export class OpenExistingSale {
@@ -87,9 +88,10 @@ export class DurableSalesStore {
   execute(action: AllowedAction, reason: string, amount?: unknown, method = PaymentMethod.Cash, paymentId?: number): void {
     const original = this.detail();
     if (!original || !this.can(action)) return;
+    const reversalReason = action === AllowedAction.ReversePayment ? ReversalReason.fromInput(reason) : null;
     const requestedAmount = TicketMoney.fromDecimal(amount);
     if (action === AllowedAction.CapturePayment && (!requestedAmount || requestedAmount.cents <= 0n || method === PaymentMethod.Unknown)) return;
-    if (action === AllowedAction.ReversePayment && (!reason.trim() || !original.payments.some(payment => payment.paymentId === paymentId && payment.reversibility.permitsReverse))) return;
+    if (action === AllowedAction.ReversePayment && (!reversalReason || !original.payments.some(payment => payment.paymentId === paymentId && payment.reversibility.permitsReverse))) return;
     const generation = this.generation;
     const request = ++this.detailGeneration;
     this.busy.set(true); this.detail.set(null); this.notice.set(null);
@@ -108,7 +110,7 @@ export class DurableSalesStore {
       } else if (action === AllowedAction.ReversePayment) {
         if (!current.payments.some(payment => payment.paymentId === paymentId && payment.reversibility.permitsReverse)) return throwError(() => new Error('Pago no disponible'));
         mutation = this.commands.execute(AccountingCommand.create(AccountingCommandKind.Reverse, {
-          ...current.identity, originalPaymentId: paymentId, reason, evidenceRef: `rev-${paymentId}`,
+          ...current.identity, originalPaymentId: paymentId, reason: reversalReason!.wire, evidenceRef: `rev-${paymentId}`,
         }, paymentId)).pipe(map(receipt => {
           if (receipt.outcome !== CommandOutcome.Committed) throw new Error(receipt.failure.label || receipt.outcome.label);
           return receipt;

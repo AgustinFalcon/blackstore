@@ -5,6 +5,9 @@ export class StaffSessionPage {
   constructor(private readonly page: Page) {}
   async login(staff: TestStaff) {
     await this.page.goto('/sesion');
+    await this.loginCurrentDocument(staff);
+  }
+  async loginCurrentDocument(staff: TestStaff) {
     await this.page.getByLabel('Usuario', { exact: true }).fill(staff.login);
     try { await this.page.getByLabel('Contraseña', { exact: true }).fill(staff.password); }
     catch { throw new Error('DCT password form control unavailable'); }

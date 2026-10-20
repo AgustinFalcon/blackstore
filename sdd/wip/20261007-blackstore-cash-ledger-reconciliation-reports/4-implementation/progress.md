@@ -1,5 +1,21 @@
 # Progreso inicial
 
+## 2026-10-20 — corte PR #45 en validación
+
+Se separaron del snapshot `115fad53006b55d27b021883bf49153a3de050fa`
+únicamente CLR/DCT, V12 y confirmaciones destructivas compatibles con venta V2.
+El primer review del staged detectó consumidores faltantes y preparación POSC en
+la matriz; ambas correcciones se incorporaron. La validación local del candidato
+separado cerró backend 71 suites/293 tests, frontend 242/242, typechecks general y
+DCT, build y matriz browser PG16 8/8. Se agregó una barrera de readiness entre
+Flyway/seed y el worker programado, y los estados esperables `NotActivated` y
+`Paused` ahora son idle explícito del worker, sin ocultar fallos inesperados.
+Los PASS y APPROVE del working tree `feat/demo-payment-ux` quedan preservados
+como antecedentes, no como evidencia de este head. Commit exacto, re-review, CI,
+merge, live y homologación permanecen pendientes.
+
+Evidencia: [candidato local PR #45](../evidence/CLR-T09-pr45-local-20261020.md).
+
 ## 2026-10-08 — harness DCT v2/V11 preparado
 
 Base frontend T08-D `9f4d29ef98c2fb6101f385e83dcf985d0827529f`, rama `feat/cash-ledger-dct-v11`. Fixture PG16 aislada con activación/provisión explícita antes de Angular, configuración terminal/conector exacta, POST v2 y assertions receipts/ledger/settlement/arqueo/journal/reinicio/denials. Typecheck/compilación/discovery PASS; Docker local BLOCKED antes de adquirir DB, PG16/browser NOT_RUN, CI/reviews PENDING. [Evidencia y teardown](../evidence/CLR-DCT-V11-local-20261008.md). Sin cambio de aceptación/homologación ni activación productiva.

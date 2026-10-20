@@ -25,14 +25,16 @@ test('cash-browser-restart: real cash facts and staff session survive a new JAR 
   expect(Number(before.cash.cashier_id)).toBe(staff.id);
   expect(Number(before.cash.terminal_id)).toBe(terminal);
   expect((await runtime.database.query("SELECT active FROM staff_users WHERE login='cashier'"))[0].active).toBe(false);
-  expect((await runtime.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(11);
+  expect((await runtime.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(12);
   expect(before.expenses).toHaveLength(1);
   expect(before.expenses[0].amount).toBe('7.25');
   expect(Number(before.expenses[0].created_by)).toBe(staff.id);
   expect(PaymentMethod.fromWire(before.expenses[0].payment_method)).toBe(PaymentMethod.Cash);
   expect(before.audit).toHaveLength(3);
   expect(before.audit.every(row => Number(row.actor_id) === staff.id)).toBe(true);
-  expect(before.audit.map(row => row.event_type)).toEqual([DctAuditEvent.Opened, DctAuditEvent.ExpenseRecorded, DctAuditEvent.Closed]);
+  expect(before.audit.map(row => row.event_type)).toEqual([
+    DctAuditEvent.AccountingOpened, DctAuditEvent.AccountingExpenseRecorded, DctAuditEvent.AccountingClosed,
+  ]);
   expect(before.audit.map(row => Number(row.aggregate_id))).toEqual([cashId, Number(before.expenses[0].id), cashId]);
   expect(before.audit.every(row => row.occurred_at instanceof Date)).toBe(true);
   expect(new Date(before.cash.closed_at).getTime()).toBeGreaterThanOrEqual(new Date(before.cash.opened_at).getTime());

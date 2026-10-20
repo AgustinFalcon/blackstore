@@ -18,6 +18,8 @@ export class DctDatabase {
   private acquisitionAttempted = false;
   private client?: Client;
   readonly password = randomUUID();
+  readonly clientInstanceId = randomUUID();
+  readonly deviceId = `dct-device-${randomUUID()}`;
   port = 0;
   private docker(...args: string[]): string {
     try {
@@ -59,14 +61,31 @@ export class DctDatabase {
     return { id: Number(rows[0].id), login, password, displayName, role };
   }
   async terminal(): Promise<number> {
-    return Number((await this.query('INSERT INTO terminals(terminal_code) VALUES($1) RETURNING id', [`DCT-${randomUUID()}`]))[0].id);
+    return Number((await this.query("SELECT id FROM terminals WHERE terminal_code='T-1'"))[0].id);
   }
   async provision(terminalId: number, clientInstanceId: string): Promise<void> {
     await this.query('BEGIN');
     try {
       await this.query(`INSERT INTO pos_terminal_context(terminal_id,client_instance_id,device_id,provisioned_by_ref,installation_evidence_ref)
-        VALUES($1,$2,$3,'isolated-dct-fixture','isolated-pg16-browser-v11')`, [terminalId, clientInstanceId, 'dct-browser-device']);
+        VALUES($1,$2,$3,'isolated-dct-fixture','isolated-pg16-browser-v12')`, [terminalId, clientInstanceId, 'dct-browser-device']);
       await this.query('UPDATE accounting_runtime SET state=$1,accounting_activation_at=clock_timestamp() WHERE singleton', [AccountingLifecycleState.Active.wire]);
+      await this.query('COMMIT');
+    } catch (error) { await this.query('ROLLBACK'); throw error; }
+  }
+  async provisionAccountingRuntime(target: AccountingLifecycleState, terminalId: number, clientInstanceId: string): Promise<void> {
+    await this.query('BEGIN');
+    try {
+      await this.query(
+        'INSERT INTO pos_terminal_context(terminal_id,client_instance_id,device_id,provisioned_by_ref,installation_evidence_ref) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
+        [terminalId, clientInstanceId, 'dct-browser-device', 'dct-browser', 'isolated-browser-fixture-v12'],
+      );
+      await this.query(
+        "INSERT INTO accounting_zone_versions(version,zone_id,effective_at) SELECT 'dct-v1','America/Argentina/Buenos_Aires','2000-01-01' WHERE NOT EXISTS (SELECT 1 FROM accounting_zone_versions)",
+      );
+      if (target === AccountingLifecycleState.Active) {
+        await this.query('UPDATE accounting_runtime SET state=$1,accounting_activation_at=clock_timestamp() WHERE singleton AND state=$2',
+          [AccountingLifecycleState.Active.wire, AccountingLifecycleState.PreActivation.wire]);
+      }
       await this.query('COMMIT');
     } catch (error) { await this.query('ROLLBACK'); throw error; }
   }

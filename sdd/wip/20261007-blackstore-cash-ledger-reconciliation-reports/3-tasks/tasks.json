@@ -136,7 +136,7 @@
     {
       "id": "CLR-T06",
       "title": "PG16 atomicidad crash reinicio concurrencia y rollback compatible",
-      "status": "implemented_pending_pg16_ci",
+      "status": "implemented_pg16_local_pass_ci_pending",
       "pr_cut": "WRITES_RECONCILIATION",
       "depends_on": [
         "CLR-T05"
@@ -355,7 +355,7 @@
     {
       "id": "CLR-T09",
       "title": "Browser PG16 reinicio CI reviews exact-head y handoff",
-      "status": "planned",
+      "status": "implemented_local_combined_backend291_frontend278_demo33_dct17_astra_review_pass_ci_pending",
       "pr_cut": "UI_ACCEPTANCE",
       "depends_on": [
         "CLR-T08",
@@ -375,11 +375,11 @@
         "CLR-010"
       ],
       "acceptance": [
-        "Browser CLR separado de DCT legacy con assertions restart crash y teardown PASS",
+        "Browser CLR aislado por fixture/runtime y escenario legacy PRE_ACTIVATION independiente con assertions restart crash y teardown PASS",
         "Reserva captura commit y reserva reversión release con mismos commandId tras reload",
         "CI backend frontend PG16 browser PASS",
         "Clientes internos v2 y mutaciones v1 fail-closed tras activación aislada",
-        "Journal actor SID tab lifecycle y fee acreditados en browser real",
+        "Journal actor SID tab y lifecycle acreditados en browser real; fee conserva frontera OWNER interna y lectura UI sin writer browser",
         "Rollback kill switch restore compatible sin reactivar legacy",
         "Reviews independientes bugs seguridad SDD exact-head",
         "Gates externos siguen pendientes",
@@ -390,13 +390,13 @@
   "gates": {
     "design": "PASS",
     "contract_extension_design": "T08_A_DESIGN_GO_PASS",
-    "implementation": "PARTIAL_T08_D_BACKEND_FRONTEND_INTEGRATED_LOCAL_VALIDATION_PASS_PG16_BROWSER_CI_REVIEW_PENDING",
-    "integration": "PG18_T06_PASS_T07_PG_NOT_RUN_PG16_NOT_RUN_BROWSER_NOT_RUN",
-    "review": "T07_T08_T08_C_PENDING",
+    "implementation": "PARTIAL_CLR_T09_LOCAL_COMBINED_BACKEND291_FRONTEND278_DOMAIN32_DEMO33_PG16_BROWSER17_REVIEW_PASS_CI_PENDING",
+    "integration": "PG16_BACKEND_291_PASS_V12_HARDENED_DB_FENCE_SHADOW_STALE_SNAPSHOT_ACTIVATION_RACE_RESTORE_COMPATIBLE_BINARY_PASS_CASH_SALES_REPORTS_BROWSER_17_PASS_CRITICAL_POST_FIX_1_PASS_RESPONSE_LOSS_CROSS_TAB_SID_ROTATION_LEGACY_PREACTIVATION_PAUSED_RELEASE_PENDING_FEE_BOUNDARY_REVIEW_PASS_CI_PENDING",
+    "review": "CLR_T09_GPT61_ASTRA_TECHNICAL_PRODUCT_SECURITY_APPROVE_NO_P0_P3_AFTER_P2_CORRECTIONS",
     "homologation": "BLOCKED",
     "publication": "NOT_RUN",
-    "pos_context": "BACKEND_FRONTEND_INTEGRATED_LOCAL_PG16_BROWSER_CI_REVIEW_PENDING",
-    "accounting_evidence_contract": "T08_D_SPECIFIC_REVIEW_GO_PENDING_BACKEND_BB9E64B_FRONTEND_B8024DC_INTEGRATED_PG16_BROWSER_CI_PENDING"
+    "pos_context": "BACKEND_FRONTEND_INTEGRATED_LOCAL_PG16_BROWSER_REVIEW_PASS_CI_PENDING",
+    "accounting_evidence_contract": "T08_D_SPECIFIC_REVIEW_GO_PENDING_BACKEND_BB9E64B_FRONTEND_B8024DC_INTEGRATED_PG16_BROWSER_PASS_CI_PENDING"
   },
   "evidence": {
     "frontend_t08d_journal_p2_source_head": "c2aee5ea27a5c19d8ef4a678bb57ff9942e71f4c",
@@ -418,12 +418,15 @@
     "frontend_t08c_install_typecheck_build": "PASS_LOCAL_LOCKFILE_SOURCE_8227177",
     "frontend_t08c_unit_tests": "161_161_PASS_BUILTIN_CHROME_HEADLESS_NO_SANDBOX_TEMPORARY_T_DRIVE_REMOVED",
     "frontend_dependencies_security": "PREEXISTING_NPM_AUDIT_7_HIGH_PENDING_SECURITY_TRIAGE_NO_AUDIT_FIX",
-    "postgres16_clean": "NOT_RUN",
-    "postgres16_upgrade": "NOT_RUN",
+    "postgres16_clean": "PASS_LOCAL_2026_10_16",
+    "postgres16_upgrade": "PASS_LOCAL_2026_10_16",
     "crash": "PG18_T06_PASS",
     "concurrency": "PG18_T05_PASS",
-    "browser_restart": "NOT_RUN",
-    "rollback_kill_switch": "PARTIAL_T06_PASS"
+    "browser_restart": "PASS_LOCAL_CASH_SALES_REPORTS_DCT_V12_17_OF_17_RESPONSE_LOSS_CROSS_TAB_SID_ROTATION_LEGACY_PREACTIVATION_PAUSED_RELEASE_PENDING_FEE_BOUNDARY",
+    "rollback_kill_switch": "PASS_LOCAL_V12_DB_FENCE_ACTIVATION_RACE_BACKUP_RESTORE_PG16_COMPATIBLE_BINARY_9F4D29E_SCHEMA_PAUSED_FACTS_PRESERVED"
+    ,"combined_final_2026_10_20": "BACKEND_291_291_FRONTEND_278_278_DOMAIN_32_32_DEMO_BROWSER_33_33_BUILD_TYPECHECK_PASS_DCT_17_17_CRITICAL_POST_FIX_1_1"
+    ,"combined_final_corrections": "DCT_TERMINAL_WORKER_EXPIRY_REVERSAL_REASON_3_500_PRE_JOURNAL_CATEGORY_CENTS_LARGEST_REMAINDER"
+    ,"combined_final_reviews": "GPT61_ASTRA_TECHNICAL_SECURITY_PRODUCT_APPROVE_NO_P0_P3"
   },
   "pos_context_design": "proposed_pending_specific_review",
   "accounting_evidence_design": {

@@ -1,6 +1,16 @@
 # Especificación técnica
 
-## Estado integrado local T08-D — vigente
+## Estado actual CLR-T09 — corte PR #45 en validación
+
+V12 incorpora fence diferido, nombres `public`, search path cerrado, lock
+compartido del lifecycle y rechazo fail-closed de writers legacy. El corte se
+valida desde `79c612c` y no hereda PASS ni APPROVE del overlay combinado. La
+evidencia 2026-10-16 identifica ahora el snapshot externo
+`115fad53006b55d27b021883bf49153a3de050fa` y queda como antecedente; pruebas,
+review y CI de este head permanecen pendientes hasta registrarse expresamente.
+Sin activación live, homologación, publicación ni merge.
+
+## Estado integrado local T08-D — antecedente
 
 2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
 
@@ -55,6 +65,14 @@ Recibo de comando append-only con commandId, actor, kind, payloadHash canónico,
 Contrato v2 cerrado antes de CLR-T02: las mutaciones de caja, gasto, pago y reversión se publican bajo `/api/v2` con `commandId` UUID obligatorio en JSON; apertura/cierre usan CashSessionOpen/CashSessionClose, gasto o liquidación ExpenseRecord, captura PaymentCapture y reversión PaymentReverse. `GET /api/v2/accounting/commands/{commandId}` retorna `Committed`, `NotFound` o `Unavailable` mediante DTO cerrado y exige el mismo permiso y ownership actuales del comando original; nunca revela existencia antes de esa autorización y nunca ejecuta/repite el POST. Respuesta perdida: consulta acotada; NotFound conserva resultado Unknown y sólo una acción humana explícita puede reenviar exactamente el mismo commandId/payload. FEE/ADJUSTMENT no tienen endpoint browser; usan puerto operativo OWNER separado, razón y evidencia obligatorias. SHIFT/DAY contables también son v2 con request tipado (`cashSessionId` para SHIFT; `localDate`, `zone`, filtros autorizados para DAY) y rechazan parámetros ignorados.
 
 Transición contractual: en PreActivation v1 conserva su contrato actual y v2 mutante permanece deshabilitado. No se agregan campos obligatorios ni semántica contable silenciosa a v1. Antes de activar, backend, workers y UI deben estar listos para v2 y demostrar que no quedan clientes internos v1; una marca durable `accounting_activation_at` realiza la transición atómica a Active y prohíbe regresar a PreActivation. Desde Active, todas las mutaciones v1 afectadas fallan cerradas con resultado tipado `LegacyContractDisabled` y código estable, sin escribir por el writer viejo. Paused es el kill switch posterior: bloquea mutaciones v2 y conserva v1 deshabilitado. Los reportes v1 siguen siendo legacy, se etiquetan como tales y nunca se presentan como contabilidad completa. No hay ventana con writers v1 y v2 activos para el mismo hecho. Rollback conserva un binario compatible con V8/v2 y el lifecycle durable, no reactiva escrituras legacy.
+
+La defensa no depende sólo del binario vigente. V12 agrega un constraint trigger
+diferido sobre cada nuevo outbox comercial: toma el mismo lock de lifecycle,
+permite legacy únicamente en PreActivation, exige en Active el recibo V2
+correlacionado creado en la misma transacción y rechaza todo nuevo outbox en
+Paused. Así un binario anterior que ignore el chequeo de aplicación revierte
+también su intención al commit; historia previa y recovery de lectura quedan
+intactos. La migración es forward-only y no habilita rollback a legacy.
 
 Queries usan snapshot consistente PostgreSQL REPEATABLE READ read-only para límites, cobertura, postings, reconocimientos y agregados. No usar MAX(identity) como orden de commits: una secuencia puede tener huecos y transacciones pendientes. Cutoff y snapshot/version identifican la lectura; las cajas cerradas incluyen watermark local fijado bajo lock. Para caja abierta se indica provisional y el mismo snapshot en todo el envelope. SQL parametrizado filtra caja, terminal, cajero e instantes antes de sumar; ningún JOIN multiplica pagos por líneas. Para SHIFT cerrado el snapshot de arqueo y ledger son fuente del efectivo histórico, sin recalcularlo con configuración nueva. Reconocimiento comercial y movimientos financieros tienen tiempos separados y se filtran por su propio occurredAt.
 

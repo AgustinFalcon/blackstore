@@ -113,6 +113,11 @@ describe('DurableSalesStore v2 existing sale entry',()=>{
     expect(store.can(AllowedAction.ReversePayment)).toBeTrue();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
     expect(accounting.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST'||r.url===url);
   });
+  it('rejects a short reversal reason before pre-read or durable journal execution',()=>{
+    open();store.execute(AllowedAction.ReversePayment,'ok',undefined,PaymentMethod.Cash,41);
+    expect(accounting.execute).not.toHaveBeenCalled();http.expectNone(r=>r.url===url||r.method==='POST');
+    expect(store.detail()?.identity).toEqual(identity);
+  });
   it('checks newly refunded evidence again before handing a reverse to the journal',()=>{
     open();store.execute(AllowedAction.ReversePayment,'refund',undefined,PaymentMethod.Cash,41);
     const payments=[{paymentId:41,status:PaymentStatus.Captured.wire, originalPaymentId:null,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},

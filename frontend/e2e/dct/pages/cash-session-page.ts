@@ -17,7 +17,9 @@ export class CashSessionPage {
       .then(response => ({ status: response.status(), commandId: response.request().postDataJSON().commandId as unknown }));
   }
   private async committedReceipt(response: { status: number; commandId: unknown }): Promise<CommandReceipt> {
-    expect(response.status).toBe(CashMutationOutcome.Applied.httpStatus);
+    // A transport/unavailable response is ambiguous, not a safe reason to
+    // repeat the mutation. Resolve the durable command by its original ID.
+    expect([CashMutationOutcome.Applied.httpStatus, CashMutationOutcome.Unavailable.httpStatus]).toContain(response.status);
     expect(PosWireMapper.uuid(response.commandId)).toBe(true);
     const commandId = response.commandId as string;
     // Read the durable receipt with the real Chromium SID, in Chromium itself.
@@ -50,11 +52,17 @@ export class CashSessionPage {
     expect(receipt.cashSessionId).toBe(cashId);
     return cashId;
   }
-  async expense(amount: string) {
+  async expense(amount: string, outcome = CashMutationOutcome.Applied) {
     await this.page.getByLabel('Gasto', { exact: true }).fill(amount);
     const pending = this.response('/api/v2/expenses');
     await this.page.getByRole('button', { name: 'Registrar gasto', exact: true }).click();
     const response = await pending;
+    if (outcome !== CashMutationOutcome.Applied) {
+      expect(response.status).toBe(outcome.httpStatus);
+      const label = outcome === CashMutationOutcome.Conflict ? CommandFailure.CashConflict.label : outcome.label;
+      await expect(this.page.getByText(label, { exact: true }).first()).toBeVisible();
+      return;
+    }
     const receipt = await this.committedReceipt(response);
     expect(receipt.expenseId).not.toBeNull();
     expect(receipt.settlementId).not.toBeNull();
@@ -62,9 +70,13 @@ export class CashSessionPage {
   }
   async close(cashId: number, amount: string) {
     await this.page.getByLabel('Declarado', { exact: true }).fill(amount);
-    const pending = this.response(`/api/v2/cash-sessions/${cashId}/close`);
+    await this.page.getByLabel('Motivo de cierre', { exact: true }).fill('cierre browser confirmado');
     const closeForm = this.page.locator('form').filter({ has: this.page.getByLabel('Declarado', { exact: true }) });
     await closeForm.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
+    const dialog = this.page.getByRole('dialog', { name: 'Confirmar cierre de caja' });
+    await expect(dialog).toBeVisible();
+    const pending = this.response(`/api/v2/cash-sessions/${cashId}/close`);
+    await dialog.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
     const response = await pending;
     const receipt = await this.committedReceipt(response);
     expect(receipt.cashSessionId).toBe(cashId);

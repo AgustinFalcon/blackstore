@@ -56,7 +56,7 @@ describe('CashSessionComponent', () => {
     expect(text).not.toContain('FUTURE_CASH_STATE');
     expect(openButton.disabled).toBeTrue();
 
-    fixture.componentInstance.close();
+    fixture.componentInstance.requestClose();
     fixture.componentInstance.addExpense();
     fixture.componentInstance.open();
     http.expectNone((request) => request.method === 'POST');
@@ -91,10 +91,32 @@ describe('CashSessionComponent journal command port',()=>{
   });
   afterEach(()=>http.verify());
   it('hands close and expense intentions to the shared durable command port',()=>{
-    component.close();expect(commands.execute.calls.mostRecent().args[0].kind).toBe(AccountingCommandKind.Close);
+    component.declared=0;component.closeReason='cierre controlado';component.requestClose();
+    expect(commands.execute).not.toHaveBeenCalled();expect(component.closePhase().isReviewing).toBeTrue();
+    component.confirmClose();expect(commands.execute.calls.mostRecent().args[0].kind).toBe(AccountingCommandKind.Close);
+  });
+  it('does not open close confirmation without explicit amount and reason',()=>{
+    component.requestClose();expect(component.closePhase().isReviewing).toBeFalse();expect(commands.execute).not.toHaveBeenCalled();
+  });
+  it('rejects subcent and overflow money before creating any durable command',()=>{
+    component.closeReason='valid reason';
+    for(const invalid of [0.001,1000000000000]){
+      component.declared=invalid;component.requestClose();
+      expect(component.closePhase().isReviewing).toBeFalse();expect(commands.execute).not.toHaveBeenCalled();
+      component.openingCash=invalid;expect(component.canOpen()).toBeFalse();component.open();
+      component.expenseAmount=invalid;component.addExpense();expect(commands.execute).not.toHaveBeenCalled();
+    }
+  });
+  it('invalidates the close review when the selected cash session changes',()=>{
+    component.declared=0;component.closeReason='cierre controlado';component.requestClose();
+    expect(component.closePhase().isReviewing).toBeTrue();
+    component.terminalId=999;component.confirmClose();
+    expect(component.closePhase().isReviewing).toBeFalse();
+    expect(component.notice()).toContain('caja seleccionada cambió');
+    expect(commands.execute).not.toHaveBeenCalled();
   });
   it('blocks action controls on runtime pause, uncertainty and quarantine',()=>{
-    commands.blocked.set(CommandFailure.Paused);expect(component.canMutate()).toBeFalse();component.close();component.addExpense();expect(commands.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
+    commands.blocked.set(CommandFailure.Paused);expect(component.canMutate()).toBeFalse();component.requestClose();component.addExpense();expect(commands.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
   });
 });
 function flushInitialRequests(http: HttpTestingController, status: string): void {

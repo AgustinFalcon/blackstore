@@ -59,6 +59,61 @@ class SaleAdmissionPostgresTest {
         assertEquals("1",scalar(source,"SELECT count(*) FROM audit_events WHERE event_type='RESERVE_REQUESTED'"))
         assertEquals(AccountingRuntimeState.Paused,(JdbcAccountingLifecycleQuery(source).observe(auditor) as AccountingLifecycleResult.Observed).observation.state)
     }
+    @Test fun migratedDatabaseRejectsAnOldBinaryWriterAfterActivationOrPause()=database { source ->
+        legacySaleWrite(source,20,false)
+        assertEquals("1",scalar(source,"SELECT count(*) FROM storecore_outbox_commands WHERE sale_id='LEGACY-20'"))
+        sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+        legacySaleWrite(source,21,true)
+        assertEquals("0",scalar(source,"SELECT count(*) FROM sale_intents WHERE sale_id='LEGACY-21'"))
+        assertEquals("0",scalar(source,"SELECT count(*) FROM storecore_outbox_commands WHERE sale_id='LEGACY-21'"))
+        sql(source,"UPDATE accounting_runtime SET state='PAUSED'")
+        legacySaleWrite(source,22,true)
+        assertEquals("0",scalar(source,"SELECT count(*) FROM sale_intents WHERE sale_id='LEGACY-22'"))
+        assertEquals("0",scalar(source,"SELECT count(*) FROM storecore_outbox_commands WHERE sale_id='LEGACY-22'"))
+        assertEquals("1",scalar(source,"SELECT count(*) FROM storecore_outbox_commands WHERE sale_id='LEGACY-20'"))
+    }
+    @Test fun activationWinningTheLifecycleFenceRejectsAConcurrentOldWriterAtCommit()=database { source ->
+        val pool=Executors.newSingleThreadExecutor()
+        try { source.connection.use { activation ->
+            activation.autoCommit=false
+            activation.createStatement().execute("UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+            val oldWriter=pool.submit { legacySaleWrite(source,23,true) }
+            awaitBlocked(source)
+            assertFalse(oldWriter.isDone)
+            activation.commit()
+            oldWriter.get(10,TimeUnit.SECONDS)
+            assertEquals("ACTIVE",scalar(source,"SELECT state FROM accounting_runtime"))
+            assertEquals("0",scalar(source,"SELECT count(*) FROM sale_intents WHERE sale_id='LEGACY-23'"))
+            assertEquals("0",scalar(source,"SELECT count(*) FROM storecore_outbox_commands WHERE sale_id='LEGACY-23'"))
+        } } finally { pool.shutdownNow() }
+    }
+    @Test fun applicationRoleCannotShadowLifecycleEvidenceWithTemporaryTables()=database { source ->
+        sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+        legacySaleWrite(source,24,true,true)
+        assertEquals("ACTIVE",scalar(source,"SELECT state FROM accounting_runtime"))
+        assertEquals("0",scalar(source,"SELECT count(*) FROM sale_intents WHERE sale_id='LEGACY-24'"))
+        assertEquals("0",scalar(source,"SELECT count(*) FROM storecore_outbox_commands WHERE sale_id='LEGACY-24'"))
+    }
+    @Test fun snapshotStableLegacyWriterCannotCommitAfterConcurrentActivation()=database { source ->
+        source.connection.use { oldWriter ->
+            oldWriter.autoCommit=false
+            oldWriter.transactionIsolation=java.sql.Connection.TRANSACTION_REPEATABLE_READ
+            oldWriter.createStatement().use { statement ->
+                statement.execute("SET LOCAL ROLE blackstore_app")
+                assertEquals("PRE_ACTIVATION",statement.executeQuery("SELECT state FROM public.accounting_runtime WHERE singleton").use { it.next();it.getString(1) })
+                sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+                val oldClient="00000000-0000-0000-0000-000000000025"
+                val operation="00000000-0000-0000-0000-000000000125"
+                statement.execute("INSERT INTO sale_intents(client_instance_id,device_id,sale_id,operation_id,cash_session_id,created_by,contract_version,openapi_digest) VALUES('$oldClient','OLD-POS','LEGACY-25','$operation',1,1,'legacy-v1',repeat('a',64))")
+                statement.execute("INSERT INTO storecore_outbox_commands(client_instance_id,device_id,sale_id,operation_id,operation_kind,contract_version,openapi_digest,request_hash,payload_redacted) VALUES('$oldClient','OLD-POS','LEGACY-25','$operation','RESERVE','legacy-v1',repeat('a',64),repeat('b',64),'{}')")
+            }
+            assertThrows(SQLException::class.java) { oldWriter.commit() }
+            oldWriter.rollback()
+        }
+        assertEquals("ACTIVE",scalar(source,"SELECT state FROM accounting_runtime"))
+        assertEquals("0",scalar(source,"SELECT count(*) FROM sale_intents WHERE sale_id='LEGACY-25'"))
+        assertEquals("0",scalar(source,"SELECT count(*) FROM storecore_outbox_commands WHERE sale_id='LEGACY-25'"))
+    }
     @Test fun permissionOwnershipAndPayloadConflictsAreOpaqueAndCurrent()=database { source ->
         sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
         val port=adapter(source);val draft=command();val receipt=accepted(port.execute(cashier,draft))
@@ -98,7 +153,7 @@ class SaleAdmissionPostgresTest {
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate()
         assertEquals(before,scalar(source,"SELECT row_to_json(i)::text FROM sale_intents i"))
         assertEquals("0",scalar(source,"SELECT count(*) FROM sale_command_admission_receipts"))
-        assertEquals("11",scalar(source,"SELECT max(version::integer) FROM flyway_schema_history WHERE success AND version IS NOT NULL"))
+        assertEquals("12",scalar(source,"SELECT max(version::integer) FROM flyway_schema_history WHERE success AND version IS NOT NULL"))
     }
     @Test fun unprovisionedCleanDatabaseAndUpgradeNeverInventContext()=database(10) { source ->
         val draft=command()
@@ -208,7 +263,7 @@ class SaleAdmissionPostgresTest {
             } as java.sql.Connection
         }
     }
-    private fun database(target: Int=11, provision: Boolean=true,block: (DataSource)->Unit) {
+    private fun database(target: Int=12, provision: Boolean=true,block: (DataSource)->Unit) {
         val url=System.getenv("BLACKSTORE_T08B_TEST_JDBC_URL")
         if(url!=null) {
             require(url.endsWith("/blackstore_t08b_test")) { "Only an explicitly disposable T08-B database may be cleaned" }
@@ -226,6 +281,27 @@ class SaleAdmissionPostgresTest {
         sql(source,"INSERT INTO terminals(terminal_code) VALUES('POS')")
         sql(source,"INSERT INTO cash_session_projection(terminal_id,cashier_id,opened_at,opening_cash) VALUES(1,1,clock_timestamp(),0)")
         if(target>=11 && provision) sql(source,"INSERT INTO pos_terminal_context(terminal_id,client_instance_id,device_id,provisioned_by_ref,installation_evidence_ref) VALUES(1,'$client','device','test-admin','isolated-fixture')")
+    }
+    private fun legacySaleWrite(source: DataSource,number: Int,rejected: Boolean,tempShadow: Boolean=false) {
+        source.connection.use { connection ->
+            connection.autoCommit=false
+            connection.createStatement().use { statement ->
+                statement.execute("SET LOCAL ROLE blackstore_app")
+                if(tempShadow) {
+                    statement.execute("CREATE TEMP TABLE accounting_runtime(singleton boolean,state varchar(24))")
+                    statement.execute("INSERT INTO accounting_runtime VALUES(true,'PRE_ACTIVATION')")
+                    statement.execute("CREATE TEMP TABLE sale_command_admission_receipts(outbox_id bigint)")
+                }
+                val oldClient="00000000-0000-0000-0000-${number.toString().padStart(12,'0')}"
+                val operation="00000000-0000-0000-0000-${(number+100).toString().padStart(12,'0')}"
+                statement.execute("INSERT INTO sale_intents(client_instance_id,device_id,sale_id,operation_id,cash_session_id,created_by,contract_version,openapi_digest) VALUES('$oldClient','OLD-POS','LEGACY-$number','$operation',1,1,'legacy-v1',repeat('a',64))")
+                statement.execute("INSERT INTO storecore_outbox_commands(client_instance_id,device_id,sale_id,operation_id,operation_kind,contract_version,openapi_digest,request_hash,payload_redacted) VALUES('$oldClient','OLD-POS','LEGACY-$number','$operation','RESERVE','legacy-v1',repeat('a',64),repeat('b',64),'{}')")
+            }
+            if(rejected) {
+                assertThrows(SQLException::class.java) { connection.commit() }
+                connection.rollback()
+            } else connection.commit()
+        }
     }
     private fun sql(source: DataSource,sql: String) { source.connection.use { c -> c.createStatement().use { it.execute(sql) } } }
     private fun scalar(source: DataSource,sql: String): String=source.connection.use { c -> c.createStatement().use { it.executeQuery(sql).use { r -> r.next();r.getString(1) } } }
