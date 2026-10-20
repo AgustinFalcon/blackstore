@@ -44,7 +44,7 @@ async function selectShift(page: Page, cashId: number): Promise<void> {
   const response = page.waitForResponse(value => value.request().method() === 'GET' && value.url().includes('/api/v2/reports/shift'));
   await page.getByRole('button', { name: 'Consultar turno', exact: true }).click();
   const report = await response;
-  expect(report.status(), await report.text()).toBe(200);
+  expect(report.status()).toBe(200);
   await expect(page.getByRole('article', { name: 'Reporte de turno' })).toBeVisible();
 }
 

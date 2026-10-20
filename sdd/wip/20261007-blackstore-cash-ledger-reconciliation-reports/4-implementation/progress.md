@@ -16,6 +16,17 @@ merge, live y homologación permanecen pendientes.
 
 Evidencia: [candidato local PR #45](../evidence/CLR-T09-pr45-local-20261020.md).
 
+### CI hospedado del primer head publicado
+
+El run `39469035169` cerró backend y frontend en PASS, pero DCT browser terminó
+7/8: el helper de selección de turno intentó usar `response.text()` sólo como
+mensaje diagnóstico después de que Chromium liberó el body
+(`Network.getResponseBody: No data found`). Los siete escenarios restantes y el
+teardown pasaron; no fue un error HTTP ni una falla contable demostrada. Se
+eliminó esa lectura no contractual y se conserva la aserción autoritativa del
+status 200, igual que el helper legacy. El head corregido requiere validación
+local, re-review exacta y nuevo CI; este fallo no se reescribe como PASS.
+
 ## 2026-10-08 — harness DCT v2/V11 preparado
 
 Base frontend T08-D `9f4d29ef98c2fb6101f385e83dcf985d0827529f`, rama `feat/cash-ledger-dct-v11`. Fixture PG16 aislada con activación/provisión explícita antes de Angular, configuración terminal/conector exacta, POST v2 y assertions receipts/ledger/settlement/arqueo/journal/reinicio/denials. Typecheck/compilación/discovery PASS; Docker local BLOCKED antes de adquirir DB, PG16/browser NOT_RUN, CI/reviews PENDING. [Evidencia y teardown](../evidence/CLR-DCT-V11-local-20261008.md). Sin cambio de aceptación/homologación ni activación productiva.
