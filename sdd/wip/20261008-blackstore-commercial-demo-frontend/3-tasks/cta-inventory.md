@@ -16,3 +16,5 @@ Cada ID debe enlazarse en evidencia al selector accesible, caso, resultado y cap
 - SC-01..04: elegir cada escenario; confirmar/cancelar reemplazo; reiniciar; recuperar error simulado.
 
 Estados transversales por pantalla: loading, éxito, vacío, error recuperable y restricciones pertinentes. No exigir loading artificial en cada operación instantánea; el escenario de latencia permite comprobar bloqueo de doble envío y feedback. Formularios prueban valores inválidos, submit por teclado, error asociado y recuperación.
+
+Cada CTA de dominio se vincula además a DemoAction y resultado permitido/denegado según la política funcional (E11), incluyendo cambio de perfil entre apertura y confirmación. SH-03/SC comprueban exclusivamente perfil ficticio; ninguna variante muestra identidad ni logout real. El acceso/salida de la superficie usa navegación documental y evidencia E01.

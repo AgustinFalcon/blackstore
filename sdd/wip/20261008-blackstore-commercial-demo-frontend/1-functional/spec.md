@@ -6,6 +6,8 @@ Aplicación de mostrador en español rioplatense. Mantener base navy, superficie
 
 Shell persistente con marca BlackStore, navegación lateral, título/contexto, estado de caja y perfil de demostración. En tablet, rail compacto; en móvil, drawer con foco contenido y botón de apertura etiquetado. El banner «Datos de demostración» acompaña un acceso a escenarios/reinicio; nunca ocupa el foco de compra. Cada pantalla tiene título, acción principal, contenido útil y ayuda contextual breve. No navegación decorativa, botones sin efecto ni enlaces `#`.
 
+El shell demo muestra únicamente identidad ficticia y cambio de perfil demo; nunca nombre/rol staff real, logout real ni banners de salud operativa. Abrir directamente o recargar `/demo/*` no consulta sesión, CSRF, salud ni recovery; conserva SID, cookies y storage operativos incluso con sesión válida o expirada. Entrar y salir del demo usa navegación de documento hacia la superficie elegida: al volver al POS se inicializan sesión y guards operativos vigentes, sin adoptar el perfil ficticio.
+
 ## Rutas y pantallas
 
 - `/demo`: resumen del día, ventas, ticket promedio, caja, stock bajo y actividad. Tarjetas enlazan listas filtradas; iniciar venta abre POS; abrir caja lleva al formulario.
@@ -25,3 +27,9 @@ Shell persistente con marca BlackStore, navegación lateral, título/contexto, e
 Los flujos comparten una única fuente demo: una venta cambia ventas, caja, inventario, cliente y reportes. Totales y descuentos son los mismos en carrito, pago, recibo y reportes. Moneda ARS en unidades menores enteras; no acumular floats. El efectivo recibido debe cubrir total; vuelto no cuenta como ingreso. Caja cuenta efectivo, reportes separan todos los medios. Reversa registrada y egresos intervienen con signo correcto. No generar ventas con carrito vacío ni cantidad cero. Si el producto cambia mientras está en carrito, validar versión/stock/precio antes de confirmar y pedir revisar el resumen.
 
 La simulación funciona sin API y sin autenticación real. Perfil ficticio de cajero/encargado con selección explícita para demostrar permisos; nunca representa una sesión autenticada ni inyecta headers reales. UI explica acciones restringidas y permite cambiar perfil en escenarios. No mostrar promesas de integración activa.
+
+## Permisos simulados por acción
+
+Política exclusiva demo, sin importar RBAC operativo. Para Cajero y Encargado se permiten navegación/lectura, filtros, detalle, exportación e impresión; edición de carrito sin descuento, selección de cliente/medio, cobro, apertura de caja, ingreso/egreso con motivo, arqueo y cierre con las validaciones descritas; crear/editar cliente ficticio; seleccionar escenario, reiniciar y cambiar perfil. Sólo Encargado puede aplicar/quitar descuento, revertir venta, crear/editar/activar/desactivar producto y ajustar stock. Cajero recibe denegación explícita en esas acciones, sin mutación. Ninguna otra acción de dominio queda implícitamente permitida.
+
+Toda acción exige además sus precondiciones de caja, stock, estado y datos; permiso no implica éxito comercial. Perfil o acción Unknown deniega acciones de dominio y ofrece seleccionar un perfil conocido. Cada confirmación revalida el perfil actual, incluidos formularios/overlays abiertos y pago pendiente: un cambio de Encargado a Cajero invalida el descuento pendiente y bloquea cobro hasta retirarlo mediante una acción explícita autorizada (volver a Encargado o vaciar/rearmar carrito sin descuento). Nunca retirar descuentos ni enviar mutaciones silenciosamente; cambios de perfil no cancelan ni alteran ventas ya registradas. En una reversa/edición/ajuste abierto que pierde permiso, confirmar deniega y conserva el snapshot; cancelar sigue disponible.

@@ -3,8 +3,8 @@
 Todos los estados iniciales PLANNED; no confundir especificado con implementado. El usuario autoriza frontend simulado antes del backend.
 
 1. **D — contrato y diseño**: este WIP, inventario CTA, diseño del shell/POS/pago/caja, revisión de diseño independiente. Salida: rutas/acciones y estados acordados, sin backend requerido.
-2. **B — boundary demo**: composition root lazy, puerto y repositorio stateful, fixtures/clock, aislamiento de red y de persistencia. B significa límite frontend demo en este corte; backend real queda fuera. Depende D.
-3. **T — tipos y casos de uso**: tipos cerrados/mappers, dinero, carrito, venta idempotente, caja/stock/reportes consistentes, Unknown. Depende B.
+2. **B — boundary demo**: selector puro de superficie antes de servicios, bootstrap y shell separados, sin initializer SessionStore/health/recovery/interceptores operativos en demo; navegación de documento entre superficies. Después composition root lazy, puerto y repositorio stateful, fixtures/clock y aislamiento de red/persistencia. Ver E01 para cold-load/reload, estados SID y retorno guardado. B significa límite frontend demo en este corte; backend real queda fuera. Depende D.
+3. **T — tipos y casos de uso**: tipos cerrados/mappers, dinero, carrito, venta idempotente, caja/stock/reportes consistentes, Unknown. Implementar política exclusiva DemoRole/DemoAction/decisión tipada conforme a permisos funcionales, revalidación al ejecutar y pérdida de permiso en formularios/pago pendiente; denegación sin mutación. Ver E11. Depende B.
 4. **U — UI completa**: shell/POS/pago/recibo primero; caja/ventas/productos/inventario/clientes/reportes/escenarios después. Implementaciones paralelas sólo con archivos y puertos delimitados. Depende T; capturas de escritorio y móvil por área.
 5. **E — evidencia y corrección**: inventario de cada CTA visible vinculado a test o recorrido browser; validar escenarios, teclado/responsive, revisión Sol funcional y diseño independiente, corregir/revisar hasta sin hallazgos bloqueantes. Depende U. Build y tests del frontend operativo conservados.
 

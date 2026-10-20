@@ -23,3 +23,5 @@ El código actual tiene siete rutas funcionales, pero su ticket individual y pag
 - [Aceptación](4-acceptance/checklist.md)
 
 Gates iniciales: Design NOT_RUN; Implementation NOT_RUN; Review NOT_RUN; Browser NOT_RUN; Live integration OUT_OF_SCOPE. No cerrar hasta adjuntar evidencia al SHA implementado.
+
+Corrección documental sobre `228f680` (2026-10-20): B debe separar bootstrap y shell antes de SessionStore/health/recovery, ya que providers lazy por sí solos no aíslan el arranque global existente; E01 exige cero API y conservación SID/storage con entrada directa, reload y transición entre superficies. Política demo cerrada por acción y revalidación al ejecutar definida en funcional/técnica, tarea T y E11; no deriva permisos de RBAC operativo. Son requisitos pendientes de implementación/ejecución, sin atribuir PASS ni aprobación de review a este head.
