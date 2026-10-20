@@ -6,6 +6,7 @@ import { Customer, DemoProductStatus, DemoCashStatus, DemoMovementKind, DemoPaym
 import { DemoDialogDirective } from './demo-dialog.directive';
 import { DemoFeedbackComponent } from './demo-feedback.component';
 
+import { DemoCalendar } from '../domain/demo-calendar';
 import { DemoQueries } from '../domain/demo-queries';
 import { demoCsv } from '../infrastructure/demo-csv';
 import { DemoPage } from '../domain/demo-page';
@@ -30,7 +31,7 @@ export class DemoPageComponent implements OnDestroy {
  readonly Math=Math;
  paymentMethod():DemoPaymentMethod{return DemoWireMapper.payment(this.paymentKey);}
  confirmation: {message:string;run:()=>void}|null=null; private readonly commandId=crypto.randomUUID(); private slowTimer:ReturnType<typeof setTimeout>|undefined;
- constructor(){if(this.state().scenario.slow){this.view.set(DemoViewState.Loading);this.slowTimer=setTimeout(()=>this.view.set(DemoViewState.Ready),1200);} this.declared=this.repo.expectedCash();}
+ constructor(){if(this.state().scenario.slow){this.view.set(DemoViewState.Loading);this.slowTimer=setTimeout(()=>this.view.set(DemoViewState.Ready),1200);} this.declared=this.repo.expectedCash()/100;}
  ngOnDestroy():void{this.unsubscribe();clearTimeout(this.slowTimer);}
  run(action:()=>void,message='Cambios guardados.'):void{this.error.set('');this.notice.set('');try{action();this.notice.set(message);}catch(error){this.error.set(error instanceof Error?error.message:'No se pudo completar la acción.');}}
  overlayActive():boolean{return !!(this.productDraft||this.customerDraft||this.selectedProduct||this.selectedCustomer||this.confirmation);}
@@ -40,10 +41,10 @@ export class DemoPageComponent implements OnDestroy {
  categories():string[]{return [...new Set(this.state().products.map(p=>p.category))];}
  products():readonly Product[]{const query=this.search.trim().toLowerCase();return this.state().products.filter(p=>(!query||`${p.name} ${p.sku}`.toLowerCase().includes(query))&&(!this.category||p.category===this.category)&&(!this.stockOnly||p.stock<=3));}
  customers():readonly Customer[]{return this.state().customers.filter(c=>`${c.name} ${c.email}`.toLowerCase().includes(this.search.toLowerCase()));}
- sales():readonly Sale[]{return new DemoQueries(this.state()).sales({search:this.search,method:this.methodKey?DemoWireMapper.payment(this.methodKey):null,status:this.statusKey?DemoWireMapper.saleStatus(this.statusKey):null,from:this.from,to:this.to});}
+ sales():readonly Sale[]{return new DemoQueries(this.state()).sales({search:this.search,method:this.methodKey?DemoWireMapper.payment(this.methodKey):null,status:this.statusKey?DemoWireMapper.saleStatus(this.statusKey):null,period:DemoWireMapper.period(this.from,this.to)});}
  visibleSales():readonly Sale[]{return this.sales().slice((this.pageNumber-1)*6,this.pageNumber*6);}
  salesTotal():number{return new DemoQueries(this.state()).total(this.sales());}
- reportExpenses():number{return new DemoQueries(this.state()).expenses(this.from,this.to);}
+ reportExpenses():number{return new DemoQueries(this.state()).expenses(DemoWireMapper.period(this.from,this.to));}
  reportByMethod(method:DemoPaymentMethod):number{return new DemoQueries(this.state()).byMethod(this.sales(),method);}
  reportByCategory(category:string):number{return new DemoQueries(this.state()).byCategory(this.sales(),category);}
  topProducts():{name:string;quantity:number}[]{return new DemoQueries(this.state()).topProducts(this.sales());}
@@ -64,7 +65,7 @@ export class DemoPageComponent implements OnDestroy {
  editCustomer(customer?:Customer):void{this.selectedCustomer=null;this.customerDraft=customer?{...customer}:{id:'',name:'',email:'',phone:''};}
  saveCustomer():void{this.run(()=>{this.repo.saveCustomer(this.customerDraft!);this.customerDraft=null;},'Cliente guardado.');}
  customerSales(id:string):readonly Sale[]{return this.state().sales.filter(s=>s.customerId===id);}
- date(value:string):string{return new Date(value).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'});}
+ date(value:string):string{return DemoCalendar.BuenosAires.display(value);}
  download(name:string,content:string,type='text/plain'):void{this.require(DemoAction.Export);const url=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),0);this.notice.set('Descarga preparada.');}
  csv(rows:readonly (readonly unknown[])[]):string{return demoCsv(rows);}
  exportSales():void{this.run(()=>this.download('ventas-demo.csv',this.csv([['Venta','Fecha','Cliente','Medio','Estado','Total ARS'],...this.sales().map(s=>[s.id,this.date(s.date),s.customerName,s.method.label,s.status.label,s.total/100])]),'text/csv;charset=utf-8'),'Descarga preparada.');}

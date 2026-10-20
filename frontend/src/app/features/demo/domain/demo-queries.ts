@@ -1,17 +1,18 @@
 import { DemoMovementKind, DemoPaymentMethod, DemoSnapshot, Sale } from './demo-types';
+import { DemoDateRange } from './demo-calendar';
 
-export interface SaleFilter { readonly search: string; readonly method: DemoPaymentMethod | null; readonly status: import('./demo-types').DemoSaleStatus | null; readonly from: string; readonly to: string; }
+export interface SaleFilter { readonly search: string; readonly method: DemoPaymentMethod | null; readonly status: import('./demo-types').DemoSaleStatus | null; readonly period: DemoDateRange; }
 /** Pure read model for the demo: all report formulas share the sale snapshots. */
 export class DemoQueries {
   constructor(private readonly snapshot: DemoSnapshot) {}
   sales(filter: SaleFilter): readonly Sale[] {
     const query = filter.search.toLowerCase();
-    return this.snapshot.sales.filter(s => `${s.id} ${s.customerName}`.toLowerCase().includes(query) && (!filter.method || s.method === filter.method) && (!filter.status || s.status === filter.status) && (!filter.from || s.date.slice(0, 10) >= filter.from) && (!filter.to || s.date.slice(0, 10) <= filter.to));
+    return this.snapshot.sales.filter(s => `${s.id} ${s.customerName}`.toLowerCase().includes(query) && (!filter.method || s.method === filter.method) && (!filter.status || s.status === filter.status) && filter.period.includes(s.date));
   }
   total(sales: readonly Sale[]): number { return sales.reduce((sum, s) => sum + (s.status.canReverse ? s.total : 0), 0); }
   completed(sales: readonly Sale[]): number { return sales.filter(s => s.status.canReverse).length; }
   average(sales: readonly Sale[]): number { const count = this.completed(sales); return count ? Math.round(this.total(sales) / count) : 0; }
-  expenses(from: string, to: string): number { return this.snapshot.movements.filter(m => m.kind === DemoMovementKind.Expense && (!from || m.date.slice(0, 10) >= from) && (!to || m.date.slice(0, 10) <= to)).reduce((sum, m) => sum + m.amount, 0); }
+  expenses(period: DemoDateRange): number { return this.snapshot.movements.filter(m => m.kind === DemoMovementKind.Expense && period.includes(m.date)).reduce((sum, m) => sum + m.amount, 0); }
   byMethod(sales: readonly Sale[], method: DemoPaymentMethod): number { return this.total(sales.filter(s => s.method === method)); }
   byCategory(sales: readonly Sale[], category: string): number {
     return sales.filter(s => s.status.canReverse).reduce((sum, sale) => {

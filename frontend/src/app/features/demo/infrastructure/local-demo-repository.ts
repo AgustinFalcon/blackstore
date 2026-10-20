@@ -2,6 +2,7 @@ import { DemoRepository } from '../application/demo-repository';
 import { Customer, DemoProductStatus, DemoCashStatus, DemoMovementKind, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoSnapshot, Product, Sale } from '../domain/demo-types';
 import { CheckoutFlow } from '../domain/checkout-flow';
 import { DemoAction, DemoPermissionDecision, DemoPermissionError, DemoPermissionPolicy } from '../domain/demo-permissions';
+import { DemoCalendar } from '../domain/demo-calendar';
 
 /** In-memory adapter. Never reads session, recovery storage or HTTP. */
 export class LocalDemoRepository extends DemoRepository {
@@ -34,7 +35,11 @@ export class LocalDemoRepository extends DemoRepository {
     const customers: Customer[] = ['Cliente ocasional','Ana Demo','Bruno Demo','Carla Demo','Diego Demo','Elena Demo','Franco Demo'].map((name,i)=>({id:`c${i}`,name,email:i ? `demo${i}@example.invalid`:'',phone:i ? `000-000${i}`:''}));
     const date = this.now();
     const sales: Sale[] = scenario.empty ? [] : Array.from({length:8},(_,i)=>{const product=products[i]; return {id:`V-${90+i}`,date:new Date(this.clock().getTime()-i*86400000).toISOString(),customerId:customers[1+i%6].id,customerName:customers[1+i%6].name,lines:[{productId:product.id,name:product.name,sku:product.sku,category:product.category,price:product.price,cost:product.cost,quantity:1}], total:product.price,discount:0,method:DemoPaymentMethod.values[i%3],received:product.price,reference:'Demostración',status:i===7?DemoSaleStatus.Reversed:DemoSaleStatus.Completed,cashier:'Marina Demo',...(i===7?{reversalReason:'Cambio de talle demo'}:{})};});
-    const movements = [{id:'m0',date,kind:DemoMovementKind.Opening,amount:5000000,reason:'Fondo inicial demo'},...sales.filter(s=>s.method.isCash && s.status.canReverse).map(s=>({id:`m${s.id}`,date:s.date,kind:DemoMovementKind.Sale,amount:s.total,reason:`Venta ${s.id}`}))];
+    const cashSales=sales.filter(s=>s.method.isCash&&s.status.canReverse).sort((a,b)=>a.date.localeCompare(b.date));
+    const opening=(id:string,instant:string,reason:string)=>({id,date:new Date(new Date(instant).getTime()-60000).toISOString(),kind:DemoMovementKind.Opening,amount:5000000,reason});
+    const saleMovement=(s:Sale)=>({id:`m${s.id}`,date:s.date,kind:DemoMovementKind.Sale,amount:s.total,reason:`Venta ${s.id}`});
+    const current=(s:Sale)=>DemoCalendar.BuenosAires.sameDay(s.date,date);
+    const movements=[...cashSales.filter(s=>!current(s)).flatMap(s=>[opening(`opening-${s.id}`,s.date,'Fondo inicial histórico demo'),saleMovement(s)]),opening('m0',date,'Fondo inicial demo'),...cashSales.filter(current).map(saleMovement)];
     this.state = Object.freeze({products:Object.freeze(products),customers:Object.freeze(customers),cart:[],customerId:'c0',discount:0,sales:Object.freeze(sales),movements:Object.freeze(movements),stockMovements:[],cashStatus:scenario.closed?DemoCashStatus.Closed:DemoCashStatus.Open,role:DemoRole.Manager,scenario});
     this.state=this.freeze({...this.state});this.listeners.forEach(listener=>listener(this.state));
   }
@@ -46,6 +51,11 @@ export class LocalDemoRepository extends DemoRepository {
   }
   cart(productId: string, quantity: number): void {
     this.require(DemoAction.EditCart);
+    if (!Number.isSafeInteger(quantity) || quantity<0) throw new Error('La cantidad debe ser entera y no superar el stock disponible.');
+    if (quantity===0 && this.state.cart.some(line=>line.productId===productId)) {
+      this.publish({cart:this.state.cart.filter(line=>line.productId!==productId)});
+      return;
+    }
     const product=this.state.products.find(p=>p.id===productId);
     if (!product || !product.status.canSell) throw new Error('Producto no disponible.');
     if (!Number.isSafeInteger(quantity) || quantity<0 || quantity>product.stock) throw new Error('La cantidad debe ser entera y no superar el stock disponible.');

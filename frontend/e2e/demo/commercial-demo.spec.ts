@@ -1,6 +1,38 @@
 import { test, expect } from '@playwright/test';
 import { DemoCashStatus, DemoRole, DemoSaleStatus, DemoScenario } from '../../src/app/features/demo/domain/demo-types';
 import { StaffRole } from '../../src/app/core/domain/pos-types';
+import { money } from '../../src/app/features/demo/domain/demo-types';
+import { readFile } from 'node:fs/promises';
+
+test('Astra: seeded current shift closes with its unchanged ARS declaration and zero difference',async({page})=>{
+ await page.goto('/demo/caja');await expect(page.getByLabel('Efectivo declarado (ARS)')).toHaveValue('62500');
+ await expect(page.locator('.list-row')).toHaveCount(2);await expect(page.locator('.list-row').last()).toContainText('Venta V-90');await expect(page.locator('.list-row').filter({hasText:'V-93'})).toHaveCount(0);await expect(page.locator('.list-row').filter({hasText:'V-96'})).toHaveCount(0);
+ await expect(page.getByLabel('Motivo si hay diferencia')).toHaveValue('');await page.getByRole('button',{name:'Confirmar cierre'}).click();await page.getByRole('button',{name:'Confirmar',exact:true}).click();
+ await expect(page.locator('.cash-pill')).toContainText(DemoCashStatus.Closed.label);await expect(page.getByRole('alert')).toHaveCount(0);await expect(page.locator('.metric').filter({hasText:'Declarado / diferencia'})).toContainText(money(0));
+});
+
+test('Astra: a stale deactivated cart line can be removed individually',async({page})=>{
+ await page.goto('/demo/pos');await page.locator('.product-card').first().getByRole('button',{name:'Agregar',exact:false}).click();await page.getByRole('link',{name:'Productos',exact:true}).click();await page.locator('.product-card').first().getByRole('button',{name:'Desactivar',exact:true}).click();await page.getByRole('link',{name:'Nueva venta',exact:true}).first().click();
+ await page.locator('.quantity').first().getByRole('button',{name:'Aumentar cantidad'}).click();await expect(page.getByRole('alert')).toContainText('Producto no disponible');await expect(page.locator('.cart-line')).toHaveCount(1);
+ await page.getByRole('link',{name:'Continuar al pago'}).click();await page.getByRole('radio',{name:'Tarjeta',exact:true}).check();await page.getByRole('button',{name:'Confirmar cobro'}).click();await expect(page.getByRole('alert')).toContainText('catálogo cambió');await page.getByRole('link',{name:'Volver al carrito',exact:false}).click();
+ await page.locator('.quantity').first().getByRole('button',{name:'Quitar producto'}).click();await expect(page.locator('.cart-line')).toHaveCount(0);await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test.describe('Astra business calendar in a UTC browser',()=>{
+ test.use({timezoneId:'UTC'});
+ test('sales, expenses, displayed dates and CSV reports agree across Buenos Aires midnight',async({page})=>{
+  await page.clock.setFixedTime(new Date('2026-10-21T02:59:00Z'));await page.goto('/demo/pos');
+  await page.locator('.product-card').first().getByRole('button',{name:'Agregar',exact:false}).click();await page.getByRole('link',{name:'Continuar al pago'}).click();await page.getByRole('radio',{name:'Tarjeta',exact:true}).check();await page.getByRole('button',{name:'Confirmar cobro'}).click();const first=(await page.locator('.receipt h2').textContent())!;await expect(page.locator('.receipt')).toContainText('20/10/26');
+  await page.getByRole('link',{name:'Caja',exact:true}).click();await page.getByLabel('Importe (ARS)').fill('100');await page.getByLabel('Motivo / categoría').fill('Antes de medianoche');await page.getByRole('button',{name:'Guardar movimiento'}).click();
+  await page.clock.setFixedTime(new Date('2026-10-21T03:01:00Z'));await page.getByRole('link',{name:'Nueva venta',exact:true}).first().click();await page.locator('.product-card').nth(1).getByRole('button',{name:'Agregar',exact:false}).click();await page.getByRole('link',{name:'Continuar al pago'}).click();await page.getByRole('radio',{name:'Tarjeta',exact:true}).check();await page.getByRole('button',{name:'Confirmar cobro'}).click();const second=(await page.locator('.receipt h2').textContent())!;await expect(page.locator('.receipt')).toContainText('21/10/26');
+  await page.getByRole('link',{name:'Caja',exact:true}).click();await page.getByLabel('Importe (ARS)').fill('200');await page.getByLabel('Motivo / categoría').fill('Después de medianoche');await page.getByRole('button',{name:'Guardar movimiento'}).click();
+  await page.getByRole('link',{name:'Ventas',exact:true}).click();await page.getByLabel('Desde',{exact:true}).fill('2026-10-20');await page.getByLabel('Hasta',{exact:true}).fill('2026-10-20');await page.getByLabel('Buscar',{exact:true}).fill('V-10');await expect(page.locator('tbody')).toContainText(first);await expect(page.locator('tbody')).not.toContainText(second);await expect(page.locator('tbody')).toContainText('20/10/26');
+  const salesDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Exportar CSV'}).click();const csv=await readFile((await (await salesDownload).path())!,'utf8');expect(csv).toContain('"'+first+'"');expect(csv).not.toContain('"'+second+'"');expect(csv).toContain('20/10/26');
+  await page.getByRole('link',{name:'Reportes',exact:true}).click();await page.getByLabel('Desde',{exact:true}).fill('2026-10-20');await page.getByLabel('Hasta',{exact:true}).fill('2026-10-20');await expect(page.locator('.metric').filter({hasText:'Egresos de caja'})).toContainText(money(10000));await expect(page.locator('.metric').filter({hasText:'Ventas netas'})).toContainText(money(2500000));
+  const reportDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Exportar reporte'}).click();const report=await readFile((await (await reportDownload).path())!,'utf8');expect(report).toContain('"Egresos ARS";"100"');expect(report).toContain('"Ventas netas ARS";"25000"');
+  await page.getByLabel('Desde',{exact:true}).fill('2026-10-21');await page.getByLabel('Hasta',{exact:true}).fill('2026-10-21');await expect(page.locator('.metric').filter({hasText:'Egresos de caja'})).toContainText(money(20000));await expect(page.locator('.metric').filter({hasText:'Ventas netas'})).toContainText(money(1480000));
+ });
+});
 
 test('E01: cold demo and reload never construct operational IO with valid, absent or expired SID', async ({ page, context }) => {
  const routes=['','pos','pago','productos','inventario','clientes','ventas','caja','reportes','escenarios','ventas/missing'];

@@ -1,8 +1,10 @@
 import { DemoProductStatus, DemoCashStatus, DemoMovementKind, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoViewState } from '../domain/demo-types';
 import { DemoAction, DemoPermissionDecision } from '../domain/demo-permissions';
 import { DemoPage } from '../domain/demo-page';
+import { DemoDateRange } from '../domain/demo-calendar';
 /** The only external input translator. Domain objects never retain unknown wire values. */
 export class DemoWireMapper {
+  static period(from: unknown, to: unknown) { return DemoDateRange.fromWire(from, to); }
   static productStatus(value: unknown) { return DemoProductStatus.fromWire(value); }
   static payment(value: unknown) { return DemoPaymentMethod.fromWire(value); }
   static cashStatus(value: unknown) { return DemoCashStatus.fromWire(value); }
