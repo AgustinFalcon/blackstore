@@ -1,4 +1,4 @@
-import { DemoProductStatus, DemoCashStatus, DemoMovementKind, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoViewState } from '../domain/demo-types';
+import { DemoProductStatus, DemoPaymentStatus, DemoStockFilter, DemoCashStatus, DemoMovementKind, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoViewState } from '../domain/demo-types';
 import { DemoAction, DemoPermissionDecision } from '../domain/demo-permissions';
 import { DemoPage } from '../domain/demo-page';
 import { DemoDateRange } from '../domain/demo-calendar';
@@ -6,6 +6,8 @@ import { DemoDateRange } from '../domain/demo-calendar';
 export class DemoWireMapper {
   static period(from: unknown, to: unknown) { return DemoDateRange.fromWire(from, to); }
   static productStatus(value: unknown) { return DemoProductStatus.fromWire(value); }
+  static paymentStatus(value: unknown) { return DemoPaymentStatus.fromWire(value); }
+  static stockFilter(value: unknown) { return DemoStockFilter.fromWire(value); }
   static payment(value: unknown) { return DemoPaymentMethod.fromWire(value); }
   static cashStatus(value: unknown) { return DemoCashStatus.fromWire(value); }
   static saleStatus(value: unknown) { return DemoSaleStatus.fromWire(value); }
