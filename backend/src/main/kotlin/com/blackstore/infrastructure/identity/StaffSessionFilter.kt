@@ -17,7 +17,7 @@ import java.util.UUID
 /** Closed route table: unlisted endpoints are private and have zero permissions. */
 object StaffHttpPermission {
     fun permission(method: String,path: String): StaffPermission = when {
-        method=="OPTIONS" && path.startsWith("/api/v1/") -> StaffPermission.CorsPreflight
+        method=="OPTIONS" && (path.startsWith("/api/v1/") || path.startsWith("/api/v2/")) -> StaffPermission.CorsPreflight
         method=="GET" && path=="/api/v1/health" -> StaffPermission.PublicHealthRead
         method=="GET" && path=="/api/v1/auth/csrf" -> StaffPermission.CsrfBootstrap
         method=="POST" && path=="/api/v1/auth/login" -> StaffPermission.StaffLogin
@@ -25,6 +25,7 @@ object StaffHttpPermission {
         method=="POST" && path=="/api/v1/auth/logout" -> StaffPermission.StaffLogout
         method=="GET" && path=="/api/v1/catalog" -> StaffPermission.CatalogRead
         method=="GET" && path=="/api/v1/workspace" -> StaffPermission.WorkspaceRead
+        method=="GET" && path=="/api/v2/pos/context" -> StaffPermission.WorkspaceRead
         method=="GET" && path=="/api/v1/cash-sessions" -> StaffPermission.CashSessionList
         method=="POST" && path=="/api/v1/cash-sessions" -> StaffPermission.CashSessionOpen
         method=="POST" && Regex("/api/v1/cash-sessions/[^/]+/close").matches(path) -> StaffPermission.CashSessionClose
@@ -35,8 +36,22 @@ object StaffHttpPermission {
         method=="POST" && path=="/api/v1/payments" -> StaffPermission.PaymentCapture
         method=="POST" && Regex("/api/v1/payments/[^/]+/reversals").matches(path) -> StaffPermission.PaymentReverse
         method=="POST" && path=="/api/v1/expenses" -> StaffPermission.ExpenseRecord
+        method=="GET" && path=="/api/v2/reports/shift" -> StaffPermission.ShiftReportRead
+        method=="GET" && path=="/api/v2/reports/day" -> StaffPermission.DailyReportRead
         method=="GET" && path=="/api/v1/reports/shift" -> StaffPermission.ShiftReportRead
         method=="GET" && path=="/api/v1/reports/daily" -> StaffPermission.DailyReportRead
+        method=="POST" && path=="/api/v2/cash-sessions" -> StaffPermission.CashSessionOpen
+        method=="POST" && Regex("/api/v2/cash-sessions/[^/]+/close").matches(path) -> StaffPermission.CashSessionClose
+        method=="POST" && path=="/api/v2/expenses" -> StaffPermission.ExpenseRecord
+        method=="POST" && path=="/api/v2/payments" -> StaffPermission.PaymentCapture
+        method=="POST" && Regex("/api/v2/payments/[^/]+/reversals").matches(path) -> StaffPermission.PaymentReverse
+        method=="GET" && Regex("/api/v2/accounting/commands/[^/]+").matches(path) -> StaffPermission.AccountingCommandRead
+        method=="GET" && Regex("/api/v2/expenses/commands/[^/]+/projection").matches(path) -> StaffPermission.AccountingCommandRead
+        method=="GET" && path=="/api/v2/accounting/runtime" -> StaffPermission.AccountingRuntimeRead
+        method=="POST" && path=="/api/v2/sales/reservations" -> StaffPermission.SaleReserve
+        method=="POST" && Regex("/api/v2/sales/[^/]+/commit").matches(path) -> StaffPermission.SaleCommit
+        method=="POST" && Regex("/api/v2/sales/[^/]+/release").matches(path) -> StaffPermission.SaleRelease
+        method=="GET" && Regex("/api/v2/sales/commands/[^/]+").matches(path) -> StaffPermission.SaleCommandRead
         else -> StaffPermission.Unknown
     }
     fun public(permission: StaffPermission)=permission in setOf(StaffPermission.PublicHealthRead,StaffPermission.CorsPreflight,StaffPermission.CsrfBootstrap,StaffPermission.StaffLogin)

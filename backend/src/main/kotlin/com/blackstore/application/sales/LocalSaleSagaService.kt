@@ -35,7 +35,9 @@ import com.blackstore.domain.port.out.counter.CounterEntryStore
 import com.blackstore.domain.sales.OperationLedger
 import com.blackstore.domain.sales.PaymentSnapshot
 import com.blackstore.domain.sales.PaymentTransitionPolicy
+import com.blackstore.domain.sales.PaymentLedgerSemantics
 import com.blackstore.domain.sales.TransitionDecision
+import com.blackstore.domain.port.out.accounting.AccountingRuntimeQuery
 import java.util.concurrent.ConcurrentHashMap
 import com.blackstore.application.identity.AuthorizeStaffAction
 import com.blackstore.domain.identity.*
@@ -54,7 +56,11 @@ class LocalSaleSagaService(
     private val coordinator: LocalSaleCoordinator = LocalSaleCoordinator.local,
     private val authorization: AuthorizeStaffAction? = null,
     @Value("\${blackstore.persistence.enabled:false}") private val persistenceEnabled: Boolean = false,
+    private val paymentLedgerSemantics: PaymentLedgerSemantics = PaymentLedgerSemantics.LegacyCapturedOnly,
+    private val accountingRuntime: AccountingRuntimeQuery? = null,
 ) : SaleOperationQuery {
+    private fun currentPaymentLedgerSemantics() = accountingRuntime?.paymentLedgerSemantics() ?: paymentLedgerSemantics
+    private fun paymentPolicy() = PaymentTransitionPolicy(currentPaymentLedgerSemantics())
     private fun durable(): com.blackstore.domain.port.out.sales.DurableSaleStore? =
         (saleRecordStore as? com.blackstore.domain.port.out.sales.DurableSaleStore).also {
             check(!persistenceEnabled || it != null) { "durable persistence unavailable" }
@@ -102,8 +108,11 @@ class LocalSaleSagaService(
         val stored = durable()?.findDurable(operationId) ?: return null
         if (stored.saga.cashSessionId != cash.id) throw StaffSecurityException(StaffSecurityFailure.NOT_FOUND)
         val entries = ledger(stored.saga.quadruple)
-        return DurableSaleView(stored, cash.cashierId.value, PaymentTransitionPolicy().snapshot(stored.saga, entries),
-            (entries as? OperationLedger.Known)?.entries.orEmpty(), com.blackstore.domain.sales.DurableSaleActions().allowed(stored, entries, cash.open))
+        val semantics = currentPaymentLedgerSemantics()
+        val policy = PaymentTransitionPolicy(semantics)
+        return DurableSaleView(stored, cash.cashierId.value, policy.snapshot(stored.saga, entries),
+            (entries as? OperationLedger.Known)?.entries.orEmpty(),
+            com.blackstore.domain.sales.DurableSaleActions(semantics).allowed(stored, entries, cash.open))
     }
 
     fun list(staff: AuthenticatedStaff, cursor: Long, limit: Int, state: com.blackstore.domain.sales.DurableSaleState?): DurableSalePage {
@@ -202,7 +211,7 @@ class LocalSaleSagaService(
     private fun commitCoordinated(identity: OperationQuadruple, now: Instant, audit: com.blackstore.domain.sales.SaleStaffCommandAudit? = null): SaleSaga {
         val current = findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
         retiredPolicy.assertCanPost(current.retired || retirementPort.isRetired(identity.operationId))
-        val decision = PaymentTransitionPolicy().terminal(current, ledger(identity), StoreCoreOperationKind.COMMIT)
+        val decision = paymentPolicy().terminal(current, ledger(identity), StoreCoreOperationKind.COMMIT)
         decision.assertAllowed()
         if (decision == TransitionDecision.RecoverExistingCommand || decision == TransitionDecision.TerminalReplay) assertOriginalCommand(current, StoreCoreOperationKind.COMMIT)
         if (decision == TransitionDecision.TerminalReplay) return current
@@ -243,7 +252,7 @@ class LocalSaleSagaService(
             throw IllegalArgumentException("a committed sale is not released")
         }
         retiredPolicy.assertCanPost(current.retired || retirementPort.isRetired(identity.operationId))
-        val decision = PaymentTransitionPolicy().terminal(current, ledger(identity), StoreCoreOperationKind.RELEASE)
+        val decision = paymentPolicy().terminal(current, ledger(identity), StoreCoreOperationKind.RELEASE)
         decision.assertAllowed()
         if (decision == TransitionDecision.RecoverExistingCommand || decision == TransitionDecision.TerminalReplay) assertOriginalCommand(current, StoreCoreOperationKind.RELEASE)
         if (decision == TransitionDecision.TerminalReplay) return current
@@ -546,5 +555,5 @@ class LocalSaleSagaService(
         durable()?.findDurable(identity.operationId)?.saga?.takeIf { it.quadruple == identity }
             ?: if (durable() == null) sales[identity] else null
     private fun ledger(identity: OperationQuadruple): OperationLedger = counterEntryStore?.paymentLedger(identity) ?: OperationLedger.Unknown
-    fun paymentSnapshot(sale: SaleSaga): PaymentSnapshot = coordinator.coordinate(sale.quadruple) { PaymentTransitionPolicy().snapshot(findSale(sale.quadruple) ?: sale, ledger(sale.quadruple)) }
+    fun paymentSnapshot(sale: SaleSaga): PaymentSnapshot = coordinator.coordinate(sale.quadruple) { paymentPolicy().snapshot(findSale(sale.quadruple) ?: sale, ledger(sale.quadruple)) }
 }

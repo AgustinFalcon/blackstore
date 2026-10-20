@@ -1,123 +1,108 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { SessionStore } from '../../core/services/session.store';
+import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { API_BASE } from '../../core/api';
+import { AccountingReportRequest } from '../../core/domain/accounting-report';
+import { StaffPermission } from '../../core/domain/session-types';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
-import { BaseResponse } from '../../core/models/base-response';
-import { ShiftReportData, ShiftReportWire } from '../../core/models/pos-models';
+import { BaseResponse, isSuccessResponse } from '../../core/models/base-response';
+import { CashSessionData, CashSessionWire } from '../../core/models/pos-models';
+import { AccountingReportsStore } from '../../core/services/accounting-reports.store';
+import { SessionStore } from '../../core/services/session.store';
+import { AccountingReportPanelComponent } from './accounting-report-panel.component';
 
 @Component({
-  selector: 'bs-shift-report',
-  standalone: true,
+  selector: 'bs-shift-report', standalone: true, imports: [FormsModule, AccountingReportPanelComponent], providers: [AccountingReportsStore],
   template: `
     <section class="page">
-      <h2>Reportes</h2>
-      <p class="lede">Sin costo validado el margen es desconocido. La proyección no es resultado fiscal ni caja libre.</p>
-      <p class="retry-row">
-        <button type="button" class="primary" (click)="load()">Actualizar</button>
-      </p>
-      @if (loading() && !report()) {
-        <p class="skeleton" aria-hidden="true"></p>
-      }
-      @if (report(); as item) {
-        <div class="metrics">
-          <div class="card metric">
-            <dt>Bruto turno</dt>
-            <dd class="money">{{ item.grossSales }}</dd>
-          </div>
-          <div class="card metric">
-            <dt>Descuentos</dt>
-            <dd class="money">{{ item.discounts }}</dd>
-          </div>
-          <div class="card metric">
-            <dt>Neto</dt>
-            <dd class="money">{{ item.netSales }}</dd>
-          </div>
-          <div class="card metric">
-            <dt>Cobrado</dt>
-            <dd class="money">{{ item.collected }}</dd>
-          </div>
-          <div class="card metric">
-            <dt>Reembolsos</dt>
-            <dd class="money">{{ item.refunds }}</dd>
-          </div>
-          <div class="card metric">
-            <dt>Comisiones</dt>
-            <dd class="money">{{ item.feesPaid }}</dd>
-          </div>
-          <div class="card metric">
-            <dt>Gastos</dt>
-            <dd class="money">{{ item.expensesPaid }}</dd>
-          </div>
-          <div class="card metric">
-            <dt>Caja operativa</dt>
-            <dd class="money">{{ item.operatingCashFlow }}</dd>
-          </div>
-          <div class="card metric">
-            <dt>Margen</dt>
-            <dd>
-              @if (item.margin === null) {
-                <span class="badge warn">desconocido</span>
-              } @else {
-                <span class="money">{{ item.margin }}</span>
+      <h2>Reportes y arqueo</h2>
+      <p class="lede">Lecturas contables por turno y día. El backend verifica permisos, titular, terminal y zona autorizada en cada consulta.</p>
+      <section aria-labelledby="shift-heading" [attr.aria-busy]="store.shift.loading()">
+        <h3 id="shift-heading">Turno</h3>
+        <form (ngSubmit)="loadShift()">
+          <label>Caja visible
+            <select name="shiftSession" [ngModel]="shiftSessionId" (ngModelChange)="selectShift($event)" required>
+              <option [ngValue]="null">Seleccioná una caja</option>
+              @for (item of sessions(); track item.id) {
+                <option [ngValue]="item.id">Caja {{ item.id }} · terminal {{ item.terminalId }} · titular {{ item.cashierId }} · {{ item.status.label }}</option>
               }
-            </dd>
-          </div>
-        </div>
-        <p>{{ item.formulaName.label }} · {{ item.periodKind.label }} · {{ fiscalLabel(item.fiscalResult) }}</p>
-      }
-      @if (daily(); as item) {
-        <div class="card">
-          <p>Día · {{ item.formulaName.label }} · {{ item.periodKind.label }} · neto <span class="money">{{ item.netSales }}</span> · caja operativa <span class="money">{{ item.operatingCashFlow }}</span> · {{ fiscalLabel(item.fiscalResult) }}</p>
-        </div>
-      }
-      @if (error() && !report()) {
-        <div class="retry-row">
-          <p>{{ error() }}</p>
-          <button type="button" class="ghost" (click)="load()">Reintentar</button>
-        </div>
-      }
+            </select>
+          </label>
+          <button type="submit" [disabled]="!identity.can(permissions.ShiftReportRead) || !shiftSessionId">Consultar turno</button>
+        </form>
+        @if (sessionsError()) { <p role="status">{{ sessionsError() }}</p><button type="button" (click)="loadSessions()">Actualizar cajas</button> }
+        @if (store.shift.loading()) { <p role="status">Consultando turno…</p> }
+        @if (store.shift.error(); as error) { <p role="alert">Turno: {{ error.label }}</p> }
+        @if (store.shift.report(); as report) { <bs-accounting-report-panel [report]="report" /> }
+      </section>
+      <section aria-labelledby="day-heading" [attr.aria-busy]="store.day.loading()">
+        <h3 id="day-heading">Día</h3>
+        <form (ngSubmit)="loadDay()">
+          <label>Fecha local <input name="localDate" type="date" [ngModel]="localDate" (ngModelChange)="localDate = $event; store.day.clear()" required /></label>
+          <label>Zona IANA autorizada <input name="zone" [ngModel]="zone" (ngModelChange)="zone = $event; store.day.clear()" placeholder="America/Argentina/Buenos_Aires" required /></label>
+          <fieldset>
+            <legend>Filtros opcionales (el cajero es el titular de la caja)</legend>
+            <label>Terminal <input name="terminalId" type="number" min="1" step="1" [ngModel]="terminalId" (ngModelChange)="terminalId = $event; store.day.clear()" /></label>
+            <label>Titular <input name="cashierId" type="number" min="1" step="1" [ngModel]="cashierId" (ngModelChange)="cashierId = $event; store.day.clear()" /></label>
+            <label>Caja <input name="daySessionId" type="number" min="1" step="1" [ngModel]="daySessionId" (ngModelChange)="daySessionId = $event; store.day.clear()" /></label>
+          </fieldset>
+          <button type="submit" [disabled]="!identity.can(permissions.DailyReportRead)">Consultar día</button>
+        </form>
+        @if (store.day.loading()) { <p role="status">Consultando día…</p> }
+        @if (store.day.error(); as error) { <p role="alert">Día: {{ error.label }}</p> }
+        @if (store.day.report(); as report) { <bs-accounting-report-panel [report]="report" /> }
+      </section>
     </section>
   `,
 })
-export class ShiftReportComponent implements OnInit {
+export class ShiftReportComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
-  readonly report = signal<ShiftReportData | null>(null);
-  readonly daily = signal<ShiftReportData | null>(null);
-  readonly error = signal<string | null>(null);
-  readonly loading = signal(false);
-
+  readonly identity = inject(SessionStore);
+  readonly permissions = StaffPermission;
+  readonly store = inject(AccountingReportsStore);
+  readonly sessions = signal<CashSessionData[]>([]);
+  readonly sessionsError = signal<string | null>(null);
+  shiftSessionId: number | null = null;
+  localDate = '';
+  zone = '';
+  terminalId: number | null = null;
+  cashierId: number | null = null;
+  daySessionId: number | null = null;
+  private sessionsEpoch = 0;
+  private pending: Subscription | null = null;
   constructor() {
-    inject(SessionStore).changed.pipe(takeUntilDestroyed()).subscribe(() => {
-      this.report.set(null); this.daily.set(null); this.error.set(null); this.loading.set(false);
+    this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.cancelSessions(); this.sessions.set([]); this.sessionsError.set(null); this.shiftSessionId = null;
+      this.localDate = ''; this.zone = ''; this.terminalId = null; this.cashierId = null; this.daySessionId = null;
     });
   }
-
-  ngOnInit(): void {
-    this.load();
+  ngOnInit(): void { this.loadSessions(); }
+  ngOnDestroy(): void { this.cancelSessions(); this.store.clear(); }
+  private cancelSessions(): void { this.sessionsEpoch++; this.pending?.unsubscribe(); this.pending = null; }
+  selectShift(id: number | null): void { this.shiftSessionId = id; this.store.shift.clear(); }
+  loadShift(): void {
+    const selected = this.sessions().some(item => item.id === this.shiftSessionId);
+    this.store.shift.load(selected ? AccountingReportRequest.shift(this.shiftSessionId) : null);
   }
-
-  fiscalLabel(fiscalResult: boolean): string {
-    return fiscalResult ? 'dato marcado, sin emisión' : 'no es resultado fiscal';
+  loadDay(): void {
+    this.store.day.load(AccountingReportRequest.day(this.localDate, this.zone, {
+      terminalId: this.terminalId, cashierId: this.cashierId, cashSessionId: this.daySessionId,
+    }));
   }
-
-  load(): void {
-    this.loading.set(true);
-    this.error.set(null);
-    this.http.get<BaseResponse<ShiftReportWire>>(`${API_BASE}/reports/shift`).subscribe({
-      next: (response) => {
-        this.report.set(response.data ? PosWireMapper.report(response.data) : null);
-        this.loading.set(false);
+  loadSessions(): void {
+    this.cancelSessions(); this.sessions.set([]); this.sessionsError.set(null); this.selectShift(null);
+    if (!this.identity.can(StaffPermission.CashSessionList)) return;
+    const generation = this.identity.generation(); const epoch = this.sessionsEpoch;
+    const current = () => generation === this.identity.generation() && epoch === this.sessionsEpoch;
+    this.pending = this.http.get<BaseResponse<CashSessionWire[]>>(`${API_BASE}/cash-sessions`).subscribe({
+      next: response => {
+        if (!current()) return;
+        if (isSuccessResponse(response) && Array.isArray(response.data)) this.sessions.set(PosWireMapper.cashSessions(response.data));
+        else this.sessionsError.set('No se pudo comprobar la lista de cajas visibles');
       },
-      error: () => {
-        this.error.set('Reporte no disponible');
-        this.loading.set(false);
-      },
-    });
-    this.http.get<BaseResponse<ShiftReportWire>>(`${API_BASE}/reports/daily`).subscribe({
-      next: (response) => this.daily.set(response.data ? PosWireMapper.report(response.data) : null),
-      error: () => this.daily.set(null),
+      error: () => { if (current()) this.sessionsError.set('Lista de cajas temporalmente no disponible'); },
     });
   }
 }

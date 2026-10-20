@@ -1,12 +1,94 @@
 # Plan y cortes revisables
 
+## Corte PR #45 vigente — 2026-10-20
+
+Este prefijo contiene CLR/DCT y V12 sobre `79c612c`. Debe cerrar unitarios,
+backend completo, build, matriz browser V2, review exact-head y CI sin atribuir
+resultados del árbol combinado. El snapshot
+`115fad53006b55d27b021883bf49153a3de050fa` y sus evidencias 17/17/APPROVE son
+antecedentes externos: incluyen POSC/Demo y escenarios que no integran #45.
+Live y homologación siguen siendo gates separados.
+
+La evidencia propia del candidato #45 registra backend 293/293, frontend
+242/242 y browser PG16 8/8. Respuesta perdida, cross-tab mismo SID y
+RELEASE_PENDING continúan NOT_RUN; CI y reviews exact-head pendientes.
+Los apartados siguientes conservan antecedentes de sus respectivos sources
+y no sustituyen este estado ni los gates de `tasks.json`.
+
+## Antecedente externo de aceptación frontend — 2026-10-16
+
+2026-10-16: autoridad de catálogo/descuento cero se valida antes del journal,
+el medio principal deja de estar fijado a efectivo, caja y reversas usan modal
+accesible con snapshot inmutable, el dinero se pre-valida y el shell se adapta a
+390 px. Backend 291/291, frontend 241/241, focales finales 10/10,
+typechecks/build y browser PG16 17/17 PASS con teardown.
+Producto/UX, técnica/SOLID y seguridad Astra aprobaron el source exacto sin
+P1/P2; CI hospedado continúa pendiente y no se habilitan live, homologación ni
+publicación.
+[Evidencia](../evidence/CLR-T09-frontend-product-corrections-20261016.md).
+
+## Antecedente externo CLR-T09 — 2026-10-16
+
+2026-10-16: UI_ACCEPTANCE local completó backend 291/291, frontend 234/234,
+typechecks/build y browser PostgreSQL 16/JAR/Angular 17/17 con teardown total.
+El fence V12 también prueba shadow temporal, snapshot stale y carrera de
+activación. Bug/Product, Security y SDD/SOLID aprobaron el diff local final sin
+P0–P3; sólo CI hospedado permanece pendiente. Homologación/publicación siguen
+bloqueadas y no hubo PR/merge.
+[Evidencia histórica del overlay; no acredita #45](../evidence/CLR-T09-cash-browser-pg16-local-20261016.md).
+
+## Estado integrado local T08-D — antecedente
+
+2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
+
+Ver [evidencia local](../evidence/CLR-T08-D-frontend-local-20261008.md).
+
+## Antecedentes conservados — no son estado vigente
+
+## Antecedente T08-D — precedencia y DAG de aquel corte
+
+Base exacta backend POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`. [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) proposed; documentación preparada sin GO/review heredado ni código productivo. El DAG de aquel corte era B-POS → D documental/review/GO específico → D-BACKEND → C → T09. C dependía explícitamente de B-POS y D-BACKEND y quedaba `blocked_on_pos_context_and_evidence`; T08 seguía parcial, T09 planned y B-POS conservaba PG16/browser/CI/reviews pendientes. Este registro es histórico.
+
+CLR-T08-D / SDD_EVIDENCE_CONTRACTS prepara contrato de originalPaymentId nullable/refund→capture y query de proyección de gasto con Found/NotFound/Unavailable/Unknown, autoridad/opacidad, snapshot y evidencia contable. Estado prepared_pending_specific_review, no done. CLR-T08-D-BACKEND / ACCOUNTING_EVIDENCE_BACKEND planned depende D y B-POS: dominio/puerto/query/pasos SOLID, propagación DTO durable, traductores y GET read-only SID/no-store, PG16/HTTP/snapshot/recovery, CI y reviews exact-head. No nueva migración salvo necesidad demostrada y revisión propia; las fuentes ya persistidas no autorizan backfill.
+
+C incorpora consumo de ambos contratos, correlación receipt/proyección, refund→capture, journal y generación/actor/ámbito; Unknown/NotFound/Unavailable conservan bloqueo sin POST automático. T09 acredita esos escenarios con browser/PG16/reinicio propios y evidencia sanitizada de snapshots/IDs, build y teardown. Documentación, fixtures y CI de otros cortes no cierran estos gates. No activación/live/fiscal/homologación/publicación ni /sdd.finish.
+
+## Antecedente de contexto POS — precedencia de aquel corte
+
+### Antecedente T08-C integrado (conservado)
+
+Estado histórico tras review 0a6bb36: C `blocked_on_authoritative_read_models`; T08 parcial. T08-D backend en addendum separado debía aportar refund→capture y lectura de egreso/liquidación antes de integrar funcionalidad completa/cerrar C. Aquel corte sólo corregía frontend y bloqueaba explícitamente lo no comprobable. [Evidencia histórica](../evidence/CLR-T08-C-review-corrections-20261008.md). Nueva validación exact-head entonces pendiente, sin npm en aquel turno; no heredaba PASS previo.
+
+Antecedente C source 8227177 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: entonces `implemented_pending_pg16_browser_ci_review`, sustituido en aquel período por blocked_on_authoritative_read_models. [Evidencia histórica](../evidence/CLR-T08-C-foreground-20261008.md): 7516b0e focused5/full194/typecheck/build PASS; focus/visible nuevo NOT_RUN. T08-D/PG16/browser/crash/CI estaban pendientes.
+
+## Antecedente del addendum de contexto POS — no estado actual de C
+
+2026-10-08: B-POS implementado por encargo explícito sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`, estado `implemented_pending_pg16_ci_review`. [Evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md) registra el runner y las pruebas reales. La revisión específica de ADR-003/implementación permanece pendiente, sin heredar GO; C conserva `blocked_on_pos_context` hasta integración/reviews y T08 sigue parcial. Ningún gate PG16/browser/CI se acredita por fixtures preparados.
+
+[ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) separa CLR-T08-B-POS (backend/schema) de T08-C. Base T08-B exacta `39aa9d6dad199d88328e9c3799911e355a9cbddd`. Orden: SDD/revisión específica → B-POS → C → T09; no mezclar migración/endpoints con frontend. B-POS depende B; C depende B-POS y queda `blocked_on_pos_context`. T08 sigue parcial, B conserva sus gates previos. Las menciones planned de C debajo son antecedentes, sustituidos por este estado. JSON es fuente del DAG vigente.
+
+B-POS entrega dominio/puerto/query/context validator, V11 tras comprobar numeración, provisión explícita de harness, contrato HTTP y validación transaccional Reserve/replay. No enrollment browser ni identificación física. Aceptación: constraints/grants, PG16 clean/upgrade, autoridad/opacidad, conector concordante, terminal/caja/contexto inválidos sin efectos, carrera desactivación, recuperación histórica y reviews bugs/seguridad/SDD exact-head. C cubre mapper/store/journal/actor/tab/generación; T09 prueba browser/PG16/restart propios. Ninguno se marca done por documentación.
+
+## Residuales T08 — cortes apilados propuestos desde 9e6e2cb
+
+La ampliación [ADR-002](../2-technical/adr/ADR-002-sale-v2-lifecycle-command-journal.md) recibió GO DE DISEÑO explícito del usuario y APPROVE documental/Security sobre `0b4cddc7f26ec6965ad81443ec4cde74aadd2ce5`; el GO original que figura abajo sigue siendo antecedente del alcance anterior. No activar runtime ni marcar T08 done por el GO documental.
+
+1. **CLR-T08-A / SDD_CONTRACTS** done: documentación solamente en `feat/cash-ledger-contracts-t08a`, base `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`. Saga v2/Accepted, lifecycle GET, permisos/replay, journal/actor/tab, fee y matriz PG16/crash/browser; JSON, links y diff validados. APPROVE documental/Security sobre 0b4cddc y GO de diseño explícito registrados en evidencia, sin review runtime heredada. No crear V10 ni endpoints en este corte.
+2. **CLR-T08-B / SAGA_V2_BACKEND** depende de T08-A aprobado: puertos/tipos/pasos SOLID, controllers/traductores, admisión/receipt/outbox atómicos, lifecycle read-only, clasificación de rutas SID/CSRF, rechazo explícito feeAmount y alineación de permisos de receipts. Proponer V10 forward-only tras verificar numeración. Tests unitarios/HTTP y PG16 clean/upgrade/replay/locks/crash/grants; revisión bugs + seguridad/arquitectura + SDD exact-head y CI. No GO productivo por un PASS local.
+3. **CLR-T08-C / DURABLE_COMMAND_UI** depende de T08-B: migrar los tres POST saga a v2, lifecycle preventivo sin fallback, journal IndexedDB antes de POST para caja/pago/saga, rehidratación y aislamiento de actor/tab/generación. GET de receipt más refresh autoritativo antes de avanzar. Tests de tipos/mapper/store/componentes y build productivo. No recuperar con POST automático ni habilitar captura con fee.
+4. **CLR-T09 / UI_ACCEPTANCE** depende de T08 completo (incluido B/C): escenarios CLR aislados por fixture/runtime aunque reutilicen el ownership de infraestructura DCT; el escenario legacy usa su propio runtime PRE_ACTIVATION y no comparte la activación V2. SID + PG16 + source/build exactos, browser y reinicio/crash reales, teardown y rollback/kill switch. Completar CLR-010 y pruebas de denegación v1 en ACTIVE/PAUSED. CI backend/frontend/PG16/browser y reviews exact-head; no atribuir PASS desde pruebas de otros WIPs.
+
+La matriz por caso y archivos previstos están en ADR-002. Cada PR se apila sobre el head aprobado anterior; registrar base/head y volver a revisar si cambia. El estado de T08 sigue `partial_v2_operations_receipts_pending_saga_contract_browser_review`; T08-A done por GO de diseño, T08-B/C planned, T09 planned. El amend registra aprobación del head revisado sin cambiar sus contratos ni atribuir una nueva review. T09 conserva PG16, browser/restart, rollback/restore, CI/reviews como gates propios; homologación/publicación/live/fiscal siguen separados y bloqueados. No archive ni `/sdd.finish`.
+
+## Plan original y gates conservados
+
 Estado active. GO de diseño aprobado 2026-10-07 tras revisiones Astra funcional/arquitectura, Sol factibilidad/Bugbot y Sol seguridad, con hallazgos resueltos. Los pasos de implementación se ejecutan sólo en los cortes secuenciales siguientes y conservan sus gates propios.
 
 1. PR SDD/GO: revisar alcance, fórmulas, legado, terminalidad de ventas, protocolo global de locks, V8 y permisos; resolver hallazgos funcionales/arquitectura/seguridad; fijar base y versionado contractual. El arnés DCT base ya está acreditado; no sustituye la aceptación CLR todavía NOT_RUN.
 2. PR dominio + migración: tipos cerrados y traductores, políticas puras, puertos, V8 aditiva, constraints/roles/cobertura y contratos v2. PG16 clean/upgrade poblada e inmutabilidad. Revisar numeración V8 contra master antes de crearla; fijar lifecycle durable PreActivation→Active↔Paused, `LegacyContractDisabled` y la imposibilidad Active/Paused→PreActivation.
 3. PR escrituras + arqueo: adaptar todos los writers, receipts/idempotencia, pago/reversión/fee/egreso/apertura/reconocimiento/cierre y orden caja→venta→delivery; lifecycle/kill switch. Atomicidad, crash, carreras, legacy cierre Unavailable y authority tests PG16. PreActivation admite sólo v1, Active sólo v2 y Paused ninguno; sin camino antiguo que salte postings después de activar.
 4. PR lecturas SHIFT/DAY: repositorio snapshot consistente, filtros/timezone [inicio,fin), reconocimiento comercial y movimientos separados, fórmulas/versiones/completitud y API tipada. Boundary/DST/fan-out/RBAC; no cero sintético para datos faltantes.
-5. PR UI + aceptación: dominio TS/mapper/store, migración total de clientes internos a v2, lectura de recibos, estados de arqueo y completitud; browser con SID/PG16/reinicio, CI y reviews independientes exact-head. Demostrar que ninguna mutación v1 escribe después de activar, documentar rollback/kill switch y teardown; integrar sólo el corte aprobado.
+5. PR UI + aceptación: dominio TS/mapper/store, migración total de clientes internos a v2, lectura de recibos, estados de arqueo y completitud; browser con SID/PG16/reinicio, CI y reviews independientes exact-head. Demostrar que ninguna mutación v1 escribe después de activar, incluido un writer de binario anterior bloqueado por el fence diferido V12; documentar rollback/kill switch y teardown; integrar sólo el corte aprobado.
 
 Cada PR se revisa contra su head exacto; un cambio posterior invalida la revisión heredada. CI y evidencia almacenan source/build/migración/PG major. Dependencias secuenciales: diseño→dominio/schema→writers→queries→UI/aceptación. Los contratos y tests de dominio pueden prepararse dentro de su PR; ningún runtime se activa sólo por merge de V8.
 

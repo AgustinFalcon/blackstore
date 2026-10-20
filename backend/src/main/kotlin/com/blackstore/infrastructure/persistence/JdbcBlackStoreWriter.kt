@@ -15,6 +15,45 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 class JdbcBlackStoreWriter {
     private val jsonMapper = jacksonObjectMapper()
 
+    /** Reserving identity values permits an immutable complete receipt before payment's BEFORE trigger. */
+    fun reserveAccountingId(connection: Connection, table: AccountingIdentityTable): Long =
+        connection.prepareStatement("SELECT nextval(pg_get_serial_sequence(?, 'id'))").use { statement ->
+            statement.setString(1, table.sqlName)
+            statement.executeQuery().use { rows -> rows.next(); rows.getLong(1) }
+        }
+
+    fun insertAccountingPayment(connection: Connection, saleId: Long, payment: com.blackstore.domain.sales.PaymentRecord, commandId: UUID) {
+        connection.prepareStatement("""
+            INSERT INTO payments(id,sale_id,payment_method,amount,fee_amount,status,original_payment_id,accounting_command_id,accounting_version)
+            OVERRIDING SYSTEM VALUE VALUES(?,?,?,?,?,?,?,?,2)
+        """.trimIndent()).use { statement ->
+            statement.setLong(1,payment.id); statement.setLong(2,saleId); statement.setString(3,payment.method.name)
+            statement.setBigDecimal(4,MoneyPolicy.normalize(payment.amount)); statement.setBigDecimal(5,MoneyPolicy.normalize(payment.feeAmount))
+            statement.setString(6,payment.status.name); statement.setObject(7,payment.originalPaymentId); statement.setObject(8,commandId)
+            statement.executeUpdate()
+        }
+    }
+
+    fun insertAccountingPosting(connection: Connection, id: Long,
+        receipt: com.blackstore.domain.accounting.AccountingCommandReceipt,
+        posting: com.blackstore.domain.accounting.LedgerPosting, at: Instant, sequence: Long,
+        saleId: Long? = null, paymentId: Long? = null, expenseId: Long? = null) {
+        connection.prepareStatement("""
+            INSERT INTO cash_ledger_events(id,cash_session_id,event_type,amount_delta,sale_id,expense_id,original_event_id,
+                actor_id,reason,evidence_ref,occurred_at,payment_method,payment_id,command_id,origin_kind,origin_id,component,
+                accounting_version,evidence_json,local_sequence,recorded_at)
+            OVERRIDING SYSTEM VALUE VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,2,?::jsonb,?,?)
+        """.trimIndent()).use { statement ->
+            val values = listOf(id,receipt.cashSessionId,posting.kind.name,MoneyPolicy.normalize(posting.amount),saleId,expenseId,
+                posting.evidence?.originalEventId,receipt.actorId,posting.evidence?.reason,posting.evidence?.reference,Timestamp.from(at),
+                posting.method.name,paymentId,receipt.commandId,posting.origin.kind.name,posting.origin.id,posting.component.name,
+                jsonMapper.writeValueAsString(mapOf("accountingVersion" to 2,"commandId" to receipt.commandId.toString(),
+                    "originalEventId" to posting.evidence?.originalEventId,"reference" to posting.evidence?.reference)),sequence,Timestamp.from(at))
+            values.forEachIndexed { index,value -> statement.setObject(index+1,value) }
+            statement.executeUpdate()
+        }
+    }
+
     fun insertOpenCashSession(
         connection: Connection,
         terminalId: Long,
@@ -434,3 +473,5 @@ class JdbcBlackStoreWriter {
 
     private fun json(value: String): String = jsonMapper.writeValueAsString(value)
 }
+
+enum class AccountingIdentityTable(val sqlName: String) { Payment("payments"), Ledger("cash_ledger_events"), Settlement("expense_settlements") }

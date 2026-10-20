@@ -4,11 +4,13 @@ import com.blackstore.domain.model.StoreCoreOperationKind
 
 enum class SaleAllowedAction { CAPTURE_PAYMENT, COMMIT, RELEASE, REVERSE_PAYMENT }
 
-class DurableSaleActions {
+class DurableSaleActions(
+    private val paymentLedgerSemantics: PaymentLedgerSemantics = PaymentLedgerSemantics.LegacyCapturedOnly,
+) {
     fun allowed(sale: StoredSale, ledger: OperationLedger, cashOpen: Boolean): Set<SaleAllowedAction> {
         if (!cashOpen || sale.state in setOf(DurableSaleState.UNKNOWN, DurableSaleState.LEGACY_INCOMPLETE,
                 DurableSaleState.RECONCILIATION_REQUIRED) || sale.saga.retired || sale.saga.blockSameOperationRepost) return emptySet()
-        val policy = PaymentTransitionPolicy()
+        val policy = PaymentTransitionPolicy(paymentLedgerSemantics)
         val snapshot = policy.snapshot(sale.saga, ledger)
         if (!snapshot.evidenceValid || snapshot.paymentCoverage == PaymentCoverage.InvalidUnknown) return emptySet()
         return buildSet {

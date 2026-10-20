@@ -1,5 +1,37 @@
 # Especificación funcional
 
+## Estado actual CLR-T09 — corte PR #45 en validación
+
+El corte separa exclusivamente CLR/DCT sobre la base `79c612c`: fence V12,
+recuperación contable, confirmaciones destructivas y matriz browser V2. Sus
+pruebas locales, review exact-head y CI hospedado se registran únicamente contra
+el commit que resulte de este corte. Las ejecuciones de 2026-10-16 pertenecen al
+overlay combinado conservado en el snapshot `115fad53006b55d27b021883bf49153a3de050fa`;
+son antecedentes y no acreditan este head, sus escenarios ausentes ni sus gates.
+No hay homologación, activación live, publicación ni merge.
+
+## Estado integrado local T08-D — antecedente
+
+2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
+
+Ver [evidencia local](../evidence/CLR-T08-D-frontend-local-20261008.md).
+
+## Antecedentes conservados — no son estado vigente
+
+## Addendum T08-D — evidencia de pagos y gastos
+
+Precedencia 2026-10-08: [ADR-004](../2-technical/adr/ADR-004-accounting-command-projection-evidence.md) proposed sobre backend POS exacto `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, revisión/GO propios pendientes. Amplía CLR-001/003/004/009/010: la lectura durable publica originalPaymentId nullable y valida refund→capture de la misma venta/medio/importe exacto, una reversión íntegra por captura; relación ausente/contradictoria/Unknown bloquea decisiones dependientes. La evidencia de gasto se recupera con GET /api/v2/expenses/commands/{commandId}/projection: Found completo y correlacionado al receipt del comando, NotFound opaco, Unavailable o Unknown conservan bloqueo/journal y nunca generan POST automático. Devengo, pago inmediato y liquidación total de gasto previo permanecen distintos; una liquidación posterior no reescribe la evidencia de un comando anterior.
+
+SID/permisos/ownership actuales se revalidan antes de exponer existencia o completitud. Caja cerrada admite lectura histórica autorizada sin conceder nuevo egreso; revocación/actor inactivo/caja ajena/rol Unknown fallan cerrados. Snapshot read-only único acredita receipt/gasto/settlement/postings y cutoff/asOf/version/completitud; Found no equivale a período/caja completos ni habilita siguiente mutación sin refresh autoritativo. Sólo documentación preparada: D-BACKEND planned, C `blocked_on_pos_context_and_evidence`, T08 parcial y T09 planned. Aprobaciones y evidencias anteriores no acreditan este contrato ni implementación.
+
+### Antecedente T08-C integrado (conservado)
+
+Estado vigente C: `blocked_on_authoritative_read_models`, T08 parcial. Antecedente: consola/journal/contexto v2 preparados sobre B-POS `fc858de42a5e021aab2f47ab68794a2519ff2cb5`, entonces implemented_pending_pg16_browser_ci_review. T08-D debe acreditar refund→capture y egreso/liquidación. Al volver a foco/visible, controles y handler se bloquean inmediatamente hasta contexto/lifecycle frescos. [Evidencia actual](../evidence/CLR-T08-C-foreground-20261008.md); PG16/browser CLR/crash/CI pendientes.
+
+## Addendum POS — CLR-004/009/010
+
+[ADR-003](../2-technical/adr/ADR-003-pos-execution-context.md) fija contexto de instalación/terminal lógica provisionado por servidor antes de nueva intención. SID autentica al actor, no identifica dispositivo. Contexto ausente/contradictorio bloquea; journal conserva evidencia ante nuevo SID, cambio de actor/contexto o pérdida de respuesta. No inventar IDs de instalación en browser ni reinterpretar historia. IndexedDB sólo coordina mismo origen/perfil, no acredita identidad física ni exclusión entre perfiles. T08-C `blocked_on_pos_context`; T08 parcial. Backend addendum/reviews y aceptación browser/PG16 pendientes.
+
 ## Objetivo y vocabulario
 
 CLR-001. Un único libro durable conserva hechos contables inmutables con origen, componente, actor, medio y versión. Apertura, pago, devolución, comisión efectivamente pagada, devengo, egreso pagado y corrección son tipos cerrados. Un valor externo desconocido se traduce a Unknown; bloquea escrituras y hace incompleto el resultado. Nunca se presenta el texto crudo como estado válido.
@@ -25,6 +57,8 @@ CLR-008. netSales = grossSales − discounts. collected = capturas; refunds = de
 CLR-009. SID es autoridad única. CASHIER ve y actúa sobre caja propia, pero no obtiene SHIFT mientras la política vigente no le otorgue ShiftReportRead; SUPERVISOR/OWNER leen SHIFT/DAY y operan según permisos vigentes y motivo de override; AUDITOR tiene lectura cuando el permiso vigente lo autoriza, nunca escritura. DAY requiere DailyReportRead y filtros autorizados. Caja ajena o inexistente devuelve 404 opaco antes de revelar recibo, mismatch, conflicto o completitud. Unknown de rol/estado/medio no habilita acciones. 401/403/404/409/400/503 se traducen a resultados cerrados y mensajes seguros. Historial, ledger y arqueo no se modifican desde el browser. La consulta de recibo exige el mismo permiso y ownership actuales del comando original; no autoriza una nueva mutación. FEE y ADJUSTMENT son capacidades internas no expuestas en UI: sólo OWNER mediante un puerto operativo separado, motivo/evidencia obligatorios y auditoría; CASHIER/SUPERVISOR/AUDITOR no las emiten.
 
 ## Aceptación y exclusiones
+
+Ampliación CLR-T08-A con GO de diseño específico registrado en ADR-002: CLR-004/009 requieren conservar commandId/payload de cada intención antes del POST también tras reload/nuevo SID, recuperar sólo mediante GET con permisos actuales y evitar duplicados entre pestañas. Cambio de actor oculta evidencia previa sin borrarla ni convertirla en autorización. CLR-003/005 distinguen recibo Accepted de admisión de saga de la confirmación comercial/stock terminal; no habilitar captura, commit ni cierre a partir del recibo solo. CLR-001/009 exigen lectura lifecycle autoritativa y bloqueo preventivo de la consola v2 mientras no sea Active conocido. Detalle de contratos, permisos, comisión y límites en [ADR-002](../2-technical/adr/ADR-002-sale-v2-lifecycle-command-journal.md); no se afirma implementación ni aceptación runtime.
 
 CLR-010. Browser real con SID + backend exacto + PG16 aislada: abrir cero/no cero, split CASH/CARD, egreso pagado, devengo y su única liquidación total, captura parcial/total, reversión íntegra de un componente (parcial respecto de la venta) y reversión de todos los componentes pre-COMMIT seguida de RELEASED, cierre y arqueo, filtros SHIFT/DAY, reiniciar backend y recargar sin doble POST. Probar respuesta perdida/timeout de RELEASE: conservar RELEASE_PENDING, recuperar con la misma identidad durable, bloquear cierre hasta RELEASED y no duplicar comando. Mostrar Balanced/Shortage/Overage/Unavailable y Unknown neutral; demostrar que caja ajena no se filtra, cutoff es visible y respuesta vieja de otra identidad se descarta. Incluir DAY mixto con caja legacy sin postings V8, caja nueva completa y venta previa sin recognition; nunca presentarlo completo por omisión. Conservar evidencia de fallo/bloqueo; MockMvc, fixtures o CI verde no equivalen a este PASS.
 

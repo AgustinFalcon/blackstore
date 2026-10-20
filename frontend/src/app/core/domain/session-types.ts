@@ -20,6 +20,7 @@ export class StaffPermission {
   static readonly ExpenseRecord = new StaffPermission('ExpenseRecord');
   static readonly ShiftReportRead = new StaffPermission('ShiftReportRead');
   static readonly DailyReportRead = new StaffPermission('DailyReportRead');
+  static readonly AccountingRuntimeRead = new StaffPermission('AccountingRuntimeRead');
   static readonly Unknown = new StaffPermission('Unknown');
   private constructor(readonly wire: string) {}
   static fromWire(raw: unknown): StaffPermission {
@@ -48,7 +49,7 @@ const operations = [StaffPermission.CatalogRead, StaffPermission.WorkspaceRead, 
 const reports = [StaffPermission.ShiftReportRead, StaffPermission.DailyReportRead];
 export function permits(role: StaffRole, permission: StaffPermission): boolean {
   if (role === StaffRole.Unknown || permission === StaffPermission.Unknown) return false;
-  const common = [StaffPermission.SessionRead, StaffPermission.StaffLogout, StaffPermission.CsrfBootstrap];
+  const common = [StaffPermission.SessionRead, StaffPermission.StaffLogout, StaffPermission.CsrfBootstrap, StaffPermission.AccountingRuntimeRead];
   if (role === StaffRole.Cashier) return [...common, ...operations].includes(permission);
   if (role === StaffRole.Supervisor || role === StaffRole.Owner) return [...common, ...operations, ...reports].includes(permission);
   if (role === StaffRole.Auditor) return [...common, StaffPermission.CashSessionList, ...reports].includes(permission);

@@ -2,21 +2,39 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, OnInit, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AccountingCommand, AccountingCommandKind, CommandOutcome } from '../../core/domain/accounting-command';
+import { AccountingCommandsStore } from '../../core/services/accounting-commands.store';
+import { SaleCommandsStore } from '../../core/services/sale-commands.store';
+import { SaleCommand, SaleCommandKind, SaleAdmissionOutcome } from '../../core/domain/sale-command';
+import { CommandHttp } from '../../core/infrastructure/command-http';
 import { API_BASE } from '../../core/api';
-import { PaymentMethod, SaleAction } from '../../core/domain/pos-types';
+import { PaymentMethod, PaymentStatus, SaleAction } from '../../core/domain/pos-types';
 import { SessionStore } from '../../core/services/session.store';
 import { StaffPermission } from '../../core/domain/session-types';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse } from '../../core/models/base-response';
 import { CounterContextService } from '../../core/services/counter-context.service';
-import { concatMap, finalize, takeUntil, throwError } from 'rxjs';
-import { PaymentAttempt, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
+import { concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
+import { PaymentAttempt, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, StartNewSale } from './ticket-steps';
+import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
+import { ReversalReason } from '../../core/domain/reversal-reason';
+import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
+
+interface TicketReversalReview {
+  readonly operationId: string;
+  readonly paymentId: number;
+  readonly reason: ReversalReason;
+}
+
+interface TicketReleaseReview {
+  readonly operationId: string;
+}
 
 @Component({
   selector: 'bs-sale-ticket',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, ConfirmationDialogComponent],
   template: `
     <section class="page">
       <h2>Ticket</h2>
@@ -46,7 +64,7 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
             </tr>
           </tbody>
         </table>
-        <p>Cobrado <span class="money">{{ amount }}</span> · comisiones <span class="money">{{ fee }}</span></p>
+        <p>Cobrado <span class="money">{{ amount }}</span></p>
       </div>
       <div class="card">
         <form (ngSubmit)="reserve()">
@@ -79,7 +97,7 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
           <label>Importe efectivo
             <input name="amount" type="number" class="money" [(ngModel)]="amount" min="0.01" required />
           </label>
-          <label>Comisión <input name="fee" type="number" class="money" [(ngModel)]="fee" min="0" required /></label>
+          <p>Las comisiones pagadas se registran por el circuito operativo del titular.</p>
           <label>Motivo de operación sobre caja ajena <input name="operationReason" [(ngModel)]="operationReason" /></label>
           <label>
             Segundo medio
@@ -99,6 +117,15 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
           <button type="button" (click)="clearAmount()">C</button>
         </div>
       </div>
+      @if (commands.unresolved(); as command) {
+        <p>Comando {{ command.commandId }} pendiente de comprobación.</p>
+        <button type="button" (click)="consultReceipt()" [disabled]="busy()">Consultar recibo</button>
+      }
+      <p role="status">{{ commands.runtime.notice() }}</p>
+      <button type="button" (click)="commands.runtime.refresh()" [disabled]="busy()">Comprobar contexto y evidencia</button>
+      @if (sales.unresolved()) {
+        <button type="button" (click)="consultSaleReceipt()" [disabled]="busy()">Consultar admisión pendiente</button>
+      }
       @if (message()) {
         <div class="card">
           <p>{{ message() }}</p>
@@ -108,18 +135,27 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
           <p class="actions">
             <button type="button" class="ghost" (click)="refresh()" [disabled]="busy()">Consultar estado</button>
             <button type="button" class="primary" (click)="commit()" [disabled]="!canFinish(commitAction)">Confirmar venta</button>
-            <button type="button" class="ghost" (click)="release()" [disabled]="!canFinish(releaseAction)">Liberar reserva</button>
+            <button type="button" class="ghost" (click)="requestRelease()" [disabled]="!canFinish(releaseAction)">Liberar reserva</button>
           </p>
         </div>
       }
       @if (paymentId(); as id) {
         <div class="card">
-          <form (ngSubmit)="reverse(id)">
-            <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" required /></label>
-            <button type="submit" [disabled]="!canFinish(reverseAction)">Reversar pago {{ id }}</button>
+          <form (ngSubmit)="requestReverse(id)">
+            <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" aria-describedby="ticket-reversal-reason-guidance" required /></label>
+            <p id="ticket-reversal-reason-guidance">{{ reversalReasonGuidance }}</p>
+            <button type="submit" [disabled]="!canFinish(reverseAction) || !validReversalReason()">Reversar pago {{ id }}</button>
           </form>
         </div>
       }
+      <bs-confirmation-dialog [phase]="reversalPhase()" title="Confirmar reversa" titleId="ticket-reversal-title"
+        [description]="reversalDescription()" [detail]="reversalReview() ? 'Motivo: ' + reversalReview()!.reason.wire : ''"
+        confirmLabel="Confirmar reversa" cancelLabel="Cancelar"
+        (confirmed)="confirmReverse()" (cancelled)="cancelReverse()" />
+      <bs-confirmation-dialog [phase]="releasePhase()" title="Liberar reserva" titleId="ticket-release-title"
+        description="La reserva volverá a quedar disponible. Los pagos y su historial no se eliminan."
+        [detail]="operationRef() ? 'Operación: ' + operationRef() : ''" confirmLabel="Liberar reserva" cancelLabel="Mantener reserva"
+        (confirmed)="confirmRelease()" (cancelled)="cancelRelease()" />
     </section>
   `,
   styles: [
@@ -134,6 +170,9 @@ import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttempt
 })
 export class SaleTicketComponent implements OnInit {
   private readonly http = inject(HttpClient);
+  readonly commands = inject(AccountingCommandsStore);
+  readonly sales = inject(SaleCommandsStore);
+  private readonly commandHttp = inject(CommandHttp);
   private readonly identity = inject(SessionStore);
   private readonly destroyRef = inject(DestroyRef);
   readonly counter = inject(CounterContextService);
@@ -144,11 +183,14 @@ export class SaleTicketComponent implements OnInit {
   originalUnitPrice = 20;
   discountAmount = 2;
   amount = 18;
-  fee = 0.5;
   readonly paymentMethods = PaymentMethod.selectable;
   secondMethod: PaymentMethod = PaymentMethod.Card;
   secondAmount = 0;
-  reversalReason = 'devolucion';
+  reversalReason = '';
+  readonly reversalPhase = signal(ConfirmationPhase.Idle);
+  readonly releasePhase = signal(ConfirmationPhase.Idle);
+  readonly reversalReview = signal<TicketReversalReview | null>(null);
+  readonly releaseReview = signal<TicketReleaseReview | null>(null);
   operationReason = '';
   readonly keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
   readonly busy = signal(false);
@@ -158,13 +200,26 @@ export class SaleTicketComponent implements OnInit {
   private attempt: TicketAttemptContext | null = null;
   private readonly snapshot = signal<TicketSnapshot | null>(null);
   private readonly port: TicketFlowPort = {
-    reserve: (body) => this.http.post<unknown>(`${API_BASE}/sales/reservations`, { ...body, reason: this.operationReason }),
-    capture: (attempt) => this.http.post<unknown>(`${API_BASE}/payments`, {
-      ...attempt.identity, method: attempt.method.wire, amount: attempt.amount.decimal, feeAmount: attempt.fee.decimal, reason: this.operationReason,
-    }),
-    refresh: (identity) => this.http.get<unknown>(`${API_BASE}/sales/${identity.operationId}`),
+    reserve: (body) => {
+      const identity: TicketIdentity = { clientInstanceId: body['clientInstanceId'] as string, deviceId: body['deviceId'] as string, saleId: body['saleId'] as string, operationId: body['operationId'] as string };
+      const command = SaleCommand.create(SaleCommandKind.Reserve, identity, Number(body['cashSessionId']), { ...body, reason: this.operationReason });
+      return this.sales.execute(command).pipe(concatMap(result => result.outcome === SaleAdmissionOutcome.Accepted
+        ? this.commandHttp.ticket(command.identity) : throwError(() => new Error(result.outcome.label))));
+    },
+    capture: () => throwError(() => new Error('El contrato de captura anterior está deshabilitado.')),
+    capturePayment: (attempt) => {
+      if (!this.identity.can(StaffPermission.PaymentCapture) || attempt.fee.cents !== 0n) return throwError(() => new Error('Captura no autorizada o comisión no admitida.'));
+      const command = AccountingCommand.create(AccountingCommandKind.Capture, {
+        ...attempt.identity, paymentMethod: attempt.method.wire, amount: attempt.amount.decimal, reason: this.operationReason,
+      });
+      return this.commands.execute(command).pipe(map(receipt => {
+        if (receipt.outcome !== CommandOutcome.Committed || !receipt.paymentId) throw new Error(receipt.failure.label || receipt.outcome.label);
+        return Object.freeze({ paymentId: receipt.paymentId, status: PaymentStatus.Captured, amount: attempt.amount, fee: attempt.fee });
+      }));
+    },
+    refresh: (identity) => this.commandHttp.ticket(identity),
   };
-  private readonly refreshStep = new RefreshTicketStep(this.port);
+  private readonly refreshStep = new RefreshTicketStep(this.port,PaymentLedgerSemantics.Net);
   readonly operationRef = signal<string | null>(null);
   readonly message = signal<string | null>(null);
   readonly paymentId = signal<number | null>(null);
@@ -193,10 +248,15 @@ export class SaleTicketComponent implements OnInit {
     this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
       this.attempt = null; this.snapshot.set(null); this.operationRef.set(null); this.paymentId.set(null);
       this.message.set(null); this.busy.set(false); this.sku = ''; this.productName = ''; this.variantId = '';
+      this.cancelReverse(); this.cancelRelease();
     });
   }
 
   blockReason(): string | null {
+    if (!this.commands.runtime.canWrite()) return this.commands.runtime.notice();
+    if (this.commands.unresolved()) return 'Hay un comando pendiente. Consultá su recibo antes de operar.';
+    if (this.commands.blocked().blocksWrites) return this.commands.blocked().label;
+    if (!this.identity.can(StaffPermission.PaymentCapture)) return 'Permiso insuficiente para cobrar.';
     if (!this.identity.can(StaffPermission.SaleReserve)) return 'Permiso insuficiente para operar ventas.';
     return this.counter.blockReason();
   }
@@ -236,19 +296,20 @@ export class SaleTicketComponent implements OnInit {
     // Acquire before UUID creation: synchronous double submit cannot create another identity.
     this.busy.set(true);
     const amount = TicketMoney.fromDecimal(this.amount);
-    const fee = TicketMoney.fromDecimal(this.fee);
+    const fee = TicketMoney.fromDecimal(0);
     const extra = TicketMoney.fromDecimal(this.secondAmount);
     const price = TicketMoney.fromDecimal(this.originalUnitPrice);
     const discount = TicketMoney.fromDecimal(this.discountAmount);
     const decision = TicketTransitionPolicy.reservationAmounts({ price, discount, amount, fee, extra, secondMethod: this.secondMethod });
-    if (!decision.permitsWrite || !price || !discount || !amount || !fee || !extra) {
+    if (fee?.cents !== 0n || !decision.permitsWrite || !price || !discount || !amount || !fee || !extra) {
       this.message.set(decision.label);
       this.busy.set(false);
       return;
     }
+    const pos = this.commands.runtime.context();
+    if (!pos || this.counter.openSession()?.terminalId !== pos.terminalId) { this.busy.set(false); this.message.set('Caja y contexto POS no coinciden.'); return; }
     const identity: TicketIdentity = Object.freeze({
-      clientInstanceId: '11111111-1111-1111-1111-111111111111',
-      deviceId: 'terminal-1', saleId: crypto.randomUUID(), operationId: crypto.randomUUID(),
+      clientInstanceId: pos.clientInstanceId, deviceId: pos.deviceId, saleId: crypto.randomUUID(), operationId: crypto.randomUUID(),
     });
     const payments: PaymentAttempt[] = [Object.freeze({ identity, method: PaymentMethod.Cash, amount, fee })];
     if (extra.cents > 0n) payments.push(Object.freeze({ identity, method: this.secondMethod, amount: extra, fee: TicketMoney.fromDecimal(0)! }));
@@ -302,6 +363,21 @@ export class SaleTicketComponent implements OnInit {
   }
 
   release(): void {
+    this.requestRelease();
+  }
+
+  requestRelease(): void {
+    const operationId = this.attempt?.identity.operationId;
+    if (!operationId || !this.canFinish(SaleAction.Release)) return;
+    this.releaseReview.set(Object.freeze({ operationId }));
+    this.releasePhase.set(ConfirmationPhase.Reviewing);
+  }
+  cancelRelease(): void { this.releaseReview.set(null); this.releasePhase.set(ConfirmationPhase.Idle); }
+  confirmRelease(): void {
+    const review = this.releaseReview();
+    if (!this.releasePhase().isReviewing || !review || this.attempt?.identity.operationId !== review.operationId ||
+        !this.canFinish(SaleAction.Release)) { this.cancelRelease(); return; }
+    this.cancelRelease();
     this.finish(SaleAction.Release);
   }
 
@@ -313,8 +389,10 @@ export class SaleTicketComponent implements OnInit {
     this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
       if (this.attempt !== context) return throwError(() => new Error('El intento ya no está activo.'));
       const decision = TicketTransitionPolicy.decide(snapshot, action);
-      if (!decision.permitsRequest) return throwError(() => new Error(decision.label));
-      return this.http.post<unknown>(`${API_BASE}/sales/${context.identity.operationId}/${action.wire}`, { reason: this.operationReason });
+      if (!decision.permitsWrite) return throwError(() => new Error(decision.label));
+      const kind = action === SaleAction.Commit ? SaleCommandKind.Commit : SaleCommandKind.Release;
+      return this.sales.execute(SaleCommand.create(kind, context.identity, Number(this.counter.openSession()?.id), { reason: this.operationReason })).pipe(
+        concatMap(result => result.outcome === SaleAdmissionOutcome.Accepted ? this.commandHttp.ticket(context.identity) : throwError(() => new Error(result.outcome.label))));
     }), concatMap((response) => {
       const snapshot = PosWireMapper.ticket(response, context.identity);
       if (!snapshot.evidenceValid) return throwError(() => new Error('Respuesta de venta no válida. Consultá el estado.'));
@@ -329,10 +407,11 @@ export class SaleTicketComponent implements OnInit {
   }
 
   canFinish(action: SaleAction): boolean {
+    if (!this.commands.runtime.canWrite()) return false;
     const permission = action === SaleAction.Commit ? StaffPermission.SaleCommit : action === SaleAction.Release ? StaffPermission.SaleRelease : action === SaleAction.Reverse ? StaffPermission.PaymentReverse : StaffPermission.Unknown;
-    if (!this.identity.can(permission)) return false;
+    if (!this.identity.can(permission) || this.commands.unresolved() || this.commands.blocked().blocksWrites) return false;
     const decision = TicketTransitionPolicy.decide(this.snapshot(), action);
-    return !this.busy() && (action === SaleAction.Reverse ? decision.permitsWrite : decision.permitsRequest);
+    return !this.busy() && decision.permitsWrite;
   }
 
   private recordJourneyProgress(result: TicketFlowResult): void {
@@ -345,29 +424,76 @@ export class SaleTicketComponent implements OnInit {
     return error instanceof Error && !(error instanceof HttpErrorResponse) ? error.message : 'No se pudo comprobar la operación. Consultá su estado.';
   }
 
-  reverse(paymentId: number): void {
+  consultReceipt(): void {
     const context = this.attempt;
-    if (!context || !this.canFinish(SaleAction.Reverse) || paymentId !== this.paymentId()) return;
+    const command = this.commands.unresolved();
+    if (!command || this.busy()) return;
+    this.busy.set(true);
+    this.commands.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.identity.changed),
+      takeUntilDestroyed(this.destroyRef)).subscribe(receipt => {
+      this.snapshot.set(null);
+      if (context && this.attempt === context && receipt.outcome === CommandOutcome.Committed) {
+        if (command?.kind === AccountingCommandKind.Capture && receipt.paymentId) this.paymentId.set(receipt.paymentId);
+        if (command?.kind === AccountingCommandKind.Reverse) this.paymentId.set(null);
+      }
+      this.message.set(`${receipt.failure.label || receipt.outcome.label}. Consultá la venta antes de continuar.`);
+    });
+  }
+  consultSaleReceipt(): void {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.sales.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef))
+      .subscribe(result => { this.snapshot.set(null); this.message.set(result.outcome.label); });
+  }
+
+  readonly reversalReasonGuidance = ReversalReason.guidance;
+
+  validReversalReason(): boolean { return ReversalReason.fromInput(this.reversalReason) !== null; }
+
+  requestReverse(paymentId: number): void {
+    const operationId = this.attempt?.identity.operationId;
+    const reason = ReversalReason.fromInput(this.reversalReason);
+    if (!operationId || !reason || !this.canFinish(SaleAction.Reverse) || paymentId !== this.paymentId()) return;
+    this.reversalReview.set(Object.freeze({ operationId, paymentId, reason }));
+    this.reversalPhase.set(ConfirmationPhase.Reviewing);
+  }
+
+  cancelReverse(): void {
+    this.reversalReview.set(null);
+    this.reversalPhase.set(ConfirmationPhase.Idle);
+  }
+
+  reversalDescription(): string {
+    const review = this.reversalReview();
+    return review == null ? '' : `Vas a reversar el pago ${review.paymentId}. Esta acción queda auditada y no se puede deshacer desde esta pantalla.`;
+  }
+
+  confirmReverse(): void {
+    const review = this.reversalReview();
+    if (!this.reversalPhase().isReviewing || !review || this.attempt?.identity.operationId !== review.operationId ||
+        review.paymentId !== this.paymentId() || !this.canFinish(SaleAction.Reverse)) { this.cancelReverse(); return; }
+    this.cancelReverse();
+    this.executeReverse(review);
+  }
+
+  private executeReverse(review: TicketReversalReview): void {
+    const context = this.attempt;
+    if (!context || context.identity.operationId !== review.operationId || !this.canFinish(SaleAction.Reverse) || review.paymentId !== this.paymentId()) return;
     this.busy.set(true);
     this.snapshot.set(null);
     this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
       const decision = TicketTransitionPolicy.decide(snapshot, SaleAction.Reverse);
       if (this.attempt !== context || !decision.permitsWrite) return throwError(() => new Error(decision.label));
-      return this.http.post<BaseResponse<{ status: unknown }>>(`${API_BASE}/payments/${paymentId}/reversals`, {
-        ...context.identity,
-        reason: this.reversalReason,
-        evidenceRef: `rev-${paymentId}`,
-      }, {
-        headers: {
-          'X-Trace-Id': crypto.randomUUID(),
-        },
-      });
+      return this.commands.execute(AccountingCommand.create(AccountingCommandKind.Reverse, {
+        ...context.identity, originalPaymentId: review.paymentId,
+        reason: review.reason.wire, evidenceRef: `rev-${review.paymentId}`,
+      }, review.paymentId));
     }), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef),
     finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
         next: (response) => {
           if (this.attempt !== context) return;
-          this.paymentId.set(null);
-          this.message.set(`Reversa ${PosWireMapper.paymentStatus(response.data).label}. Consultá la venta antes de continuar.`);
+          if (response.outcome === CommandOutcome.Committed) this.paymentId.set(null);
+          this.message.set(`${response.failure.label || response.outcome.label}. Consultá la venta antes de continuar.`);
         },
         error: (err: unknown) => { if (this.attempt === context) this.message.set(this.failureMessage(err)); },
       });

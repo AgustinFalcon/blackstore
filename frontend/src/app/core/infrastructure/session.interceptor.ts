@@ -1,11 +1,11 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { EMPTY, catchError, filter, takeUntil, throwError } from 'rxjs';
-import { API_BASE } from '../api';
+import { ACCOUNTING_API_BASE, API_BASE } from '../api';
 import { SessionStore } from '../services/session.store';
 
 export const sessionInterceptor: HttpInterceptorFn = (request, next) => {
-  if (!(request.url === API_BASE || request.url.startsWith(`${API_BASE}/`))) return next(request);
+  if (![API_BASE, ACCOUNTING_API_BASE].some(base => request.url === base || request.url.startsWith(`${base}/`))) return next(request);
   const session = inject(SessionStore);
   const generation = session.generation();
   const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
