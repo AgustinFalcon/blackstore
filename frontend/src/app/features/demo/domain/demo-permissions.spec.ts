@@ -42,4 +42,19 @@ describe('demo action authorization', () => {
   it('allows cashier cash movements, close and reopen under the demo policy', () => {
     const repo = new LocalDemoRepository(); repo.setRole(DemoRole.Cashier); repo.moveCash(DemoMovementKind.Expense, 100, 'Bolsas'); repo.moveCash(DemoMovementKind.Income, 200, 'Fondo'); repo.closeCash(repo.expectedCash(), ''); repo.openCash(300); expect(repo.expectedCash()).toBe(300);
   });
+  it('preserves cashier authority through every scenario reset', () => {
+    const repo=new LocalDemoRepository();repo.setRole(DemoRole.Cashier);
+    for(const scenario of DemoScenario.values){
+      repo.reset(scenario);expect(repo.snapshot().role).toBe(DemoRole.Cashier);const before=repo.snapshot();
+      expect(()=>repo.discount(1)).toThrowError(DemoPermissionError);expect(()=>repo.adjust('p1',1,'demo')).toThrowError(DemoPermissionError);expect(()=>repo.saveProduct(before.products[0])).toThrowError(DemoPermissionError);
+      expect(repo.snapshot()).toBe(before);
+    }
+  });
+  it('rejects unsafe stock results before publishing or allocating movement IDs', () => {
+    const repo=new LocalDemoRepository();const initial=repo.snapshot();
+    expect(()=>repo.adjust('p1',Number.MAX_SAFE_INTEGER,'overflow')).toThrow();expect(repo.snapshot()).toBe(initial);
+    repo.adjust('p1',Number.MAX_SAFE_INTEGER-initial.products[0].stock,'maximum');expect(repo.snapshot().products[0].stock).toBe(Number.MAX_SAFE_INTEGER);expect(repo.snapshot().stockMovements[0].id).toBe('101');
+    const maximum=repo.snapshot();expect(()=>repo.adjust('p1',1,'overflow')).toThrow();expect(repo.snapshot()).toBe(maximum);expect(()=>repo.adjust('p1',-Number.MAX_SAFE_INTEGER-1,'unsafe delta')).toThrow();expect(repo.snapshot()).toBe(maximum);
+    repo.adjust('p1',-Number.MAX_SAFE_INTEGER,'empty');expect(repo.snapshot().products[0].stock).toBe(0);expect(repo.snapshot().stockMovements[0].id).toBe('102');
+  });
 });
