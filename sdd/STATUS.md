@@ -1,8 +1,8 @@
 # Estado canónico del SDD — BlackStore
 
-## Propuesta POSC — 2026-10-08
+## Diseño POSC aprobado — 2026-10-20
 
-[Carrito de mostrador y cobro explícito](wip/20261008-blackstore-pos-cart-explicit-payment/meta.md), base exacta PR #45 `79c612c78160135df0e9011d5bcd93533d14d4e8`: SDD-only, diseño pendiente de revisión. Secuencia D/B/T/U/E: backend multiline versionado antes de tipos/journal y UX. Preserva fingerprints/journal v1; no acredita implementación, aceptación ni live. Los estados históricos siguientes conservan sus fuentes y no sustituyen gates POSC.
+[Carrito de mostrador y cobro explícito](wip/20261008-blackstore-pos-cart-explicit-payment/meta.md), origen PR #45 `79c612c78160135df0e9011d5bcd93533d14d4e8`: POSC-D aprobado por revisión coordinada técnica, seguridad y producto/UX, sin P0–P3 pendientes. Secuencia D/B/T/U/E: backend multiline versionado antes de tipos/journal y UX. Preserva fingerprints/journal v1; B/T/U/E, aceptación, CI y live permanecen pendientes en este head documental. Los estados históricos siguientes conservan sus fuentes y no sustituyen gates POSC.
 
 **Validado:** 2026-10-07.
 **Madurez:** core local fail-closed integrado; aceptación DCT aún parcial. Companion live y homologación pendientes.

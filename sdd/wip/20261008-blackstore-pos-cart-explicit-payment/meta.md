@@ -1,10 +1,10 @@
 # Mostrador: carrito y cobro explícito
 
 - Feature: `blackstore-pos-cart-explicit-payment` (POSC).
-- Fecha: 2026-10-08. Estado: `proposed_pending_design_review`.
-- Base exacta: BlackStore PR #45, `79c612c78160135df0e9011d5bcd93533d14d4e8`; branch documental `sdd/pos-cart-explicit-payment`.
-- Alcance D: especificación solamente. Design REVIEW_PENDING; Implementation NOT_RUN; Integration NOT_RUN; Homologation BLOCKED; Publication NOT_RUN. No se heredan aprobaciones del head base.
-- Fuentes inspeccionadas: AGENTS.md; STATUS/PROJECT/PATTERNS; CLR ADR-002 y contexto POS; `SaleV2Contracts.kt`, `SaleCommand.kt`, `SaleCommandFingerprint.kt`, `sale-command.ts`, `sale-admission-fingerprint.ts`, journal IndexedDB y pantalla de ticket; política previa ticket/payment.
+- Fecha: 2026-10-08; diseño reconciliado 2026-10-20. Estado: `design_approved_implementation_pending`.
+- Origen documental: BlackStore PR #45, `79c612c78160135df0e9011d5bcd93533d14d4e8`; branch documental `sdd/pos-cart-explicit-payment`. Head documental de este corte: `b9def6fc00c5ea84682c6e59a2bb929f4b3d0091` más este delta de revisión. POSC-B debe registrar su SHA exacto antes de elegir la siguiente migración Flyway.
+- Alcance D cerrado: Design APPROVED por técnica, seguridad y producto/UX sin P0–P3 pendientes. Implementación, integración, CI, homologación y publicación permanecen NOT_RUN/BLOCKED en este head documental; sus evidencias se incorporan en B/T/U/E sobre sus respectivos heads, no retroactivamente aquí.
+- Fuentes inspeccionadas: AGENTS.md; STATUS/PROJECT/PATTERNS; CLR ADR-002 y contexto POS; `SaleV2Contracts.kt`, `SaleCommand.kt`, `SaleCommandFingerprint.kt`, `sale-command.ts`, `sale-admission-fingerprint.ts`, journal IndexedDB y pantalla de ticket; política previa ticket/payment. Revisión coordinada Astra 2026-10-20: técnica, seguridad y producto/UX; seis P2 y una precisión P3 incorporados. Re-review: APPROVED en los tres gates, sin P0–P3.
 - Dependencias: identidad staff, contexto POS autoritativo, lifecycle CLR, runtime durable, lectura de venta/cobertura/pagos y locks DCT del head base. La aceptación DCT del padre no satisface escenarios POSC.
 - Decisión: backend multiline primero; después tipos/traductores/journal y finalmente UX de carrito y cobro. No implementar un carrito que emita múltiples reservas monolínea para simular una venta.
 - Entregables: [funcional](1-functional/spec.md), [contratos](2-technical/spec.md), [secuencia y allowlist](3-tasks/plan.md), [tareas](3-tasks/tasks.json), [fixtures y aceptación](4-implementation/acceptance.md).

@@ -2,9 +2,9 @@
 
 Todos los cortes se apilan en este orden, con base/head registrados y revisión propia. D sólo fija diseño; no es implementación del frontend completo.
 
-1. **POSC-D — diseño:** estos documentos, fixtures especificadas, trazabilidad y decisión sobre compatibilidad. Salida: SHA documental limpio y revisión de diseño resuelta; B no inicia por inferencia de CI anterior.
-2. **POSC-B — backend primero:** admisión v3 multiline, tipos/codec, validación de todas las líneas, persistence forward-only, recibos/queries correlacionados y paridad v1. Debe demostrar atomicidad/replay/recovery PG16 y seguridad HTTP antes de usar UI nueva.
-3. **POSC-T — tipos y traducción frontend:** dominio puro/cart/políticas/pasos, codecs por versión, cliente v3 y journal no destructivo; fixtures/golden parity Kotlin/TS. No publicar UX que llame un backend aún ausente. Prueba de upgrade de journal v1 obligatoria.
+1. **POSC-D — diseño:** estos documentos, fixtures especificadas, trazabilidad y decisión sobre compatibilidad. Incluye matriz ruta/codec, metadata append-only, presupuesto AdmissionV2, Unicode sin NUL, contexto de sesión v3, orden caja→terminal→venta, recuperación de venta resuelta y salida de rechazo por línea. Salida: SHA documental limpio y re-review de diseño resuelta; B no inicia por inferencia de CI anterior.
+2. **POSC-B — backend primero:** admisión v3 multiline, tipos/codec, validación de todas las líneas, persistence forward-only, metadata de familia, recibos/queries correlacionados, revalidación de sesión/terminal y paridad v1. Debe demostrar atomicidad/replay/recovery PG16 y seguridad HTTP antes de usar UI nueva.
+3. **POSC-T — tipos y traducción frontend:** dominio puro/cart/políticas/pasos, codecs por versión, cliente v3 y journal no destructivo con presupuesto V2 de bytes; fixtures/golden parity Kotlin/TS. No publicar UX que llame un backend aún ausente. Prueba de upgrade de journal v1 y roundtrip máximo V2 obligatorias.
 4. **POSC-U — UI:** carrito en ruta de venta existente, reserva separada del cobro, medios/importe/split explícitos, lectura autoritativa y confirmación final. Accesibilidad/responsive/errores y dos tabs. Componente compone casos de uso; no reglas de negocio duplicadas.
 5. **POSC-E — evidencia:** browser real + JAR + PG16 + fixture declarada, reinicio/pérdida de respuesta/upgrade/concurrencia, CI y reviews del head exacto. Publica comandos/assertions y límites. No cambia gates live ni homologa con datos simulados.
 
