@@ -17,6 +17,9 @@
 backend/build/
 backend/.gradle/
 frontend/node_modules/
+**/node_modules/
 frontend/dist/
 frontend/.angular/
 frontend/work/
+frontend/demo-test-results/
+frontend/demo-test-report/

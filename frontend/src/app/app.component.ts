@@ -21,6 +21,7 @@ import { StaffPermission } from './core/domain/session-types';
           @if (session.can(permissions.SaleRead)) { <a routerLink="/ventas" routerLinkActive="active">Reabrir venta</a> }
           @if (session.can(permissions.ShiftReportRead)) { <a routerLink="/reportes" routerLinkActive="active">Reportes</a> }
           <a routerLink="/sesion">Sesión</a>
+          <a href="/demo">Ver demostración</a>
         </nav>
       </aside>
       <div class="main">
