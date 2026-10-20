@@ -10,6 +10,7 @@
     "lint": "ng lint",
     "test:dct": "playwright test --config playwright.dct.config.ts",
     "typecheck:dct": "tsc --noEmit -p tsconfig.dct.json",
+    "typecheck:demo": "tsc --noEmit -p tsconfig.demo.json",
     "test:demo": "playwright test --config playwright.demo.config.ts",
     "test:demo:domain": "node e2e/demo/unit-runner.cjs"
   },
