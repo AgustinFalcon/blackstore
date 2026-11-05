@@ -10,7 +10,7 @@ test('opaque ticket deep link survives reload and remains read-only', async ({ p
   const writes: string[] = [];
   page.on('request', request => { if (request.method() !== 'GET') writes.push(`${request.method()} ${request.url()}`); });
 
-  await page.goto('/ticket/Sale%2FAa-01');
+  await page.goto('/ticket/id%3ASale%2FAa-01');
   await expect(page.getByRole('heading', { name: 'Detalle de venta' })).toBeVisible();
   await expect(page.getByText('Evidencia comprobada')).toBeVisible();
   await expect(page.getByText(saleId, { exact: true })).toBeVisible();
@@ -20,6 +20,13 @@ test('opaque ticket deep link survives reload and remains read-only', async ({ p
   await expect(page.getByRole('heading', { name: 'Detalle de venta' })).toBeVisible();
   await expect(page.getByText('Pantalla no disponible')).toHaveCount(0);
   expect(writes).toEqual([]);
+});
+
+test('dot-only opaque ids retain their route identity before lookup', async ({ page }) => {
+  await page.goto('/ticket/id%3A..');
+  await expect(page.getByRole('heading', { name: 'Detalle de venta' })).toBeVisible();
+  await expect(page).toHaveURL(/\/ticket\/id(?::|%3A)\.\.$/i);
+  await expect(page.getByText('Pantalla no disponible')).toHaveCount(0);
 });
 
 test('dedicated cash close hides opening and expense controls on mobile', async ({ page }) => {

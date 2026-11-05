@@ -20,13 +20,13 @@ describe('SaleTicketSnapshotComponent', () => {
         lines: [], payments: [], allowedActions: [], valid: true, receipt: 'receipt-1',
         reservationRef: 'reservation-1', pendingCommand: null,
       }),
-      load: jasmine.createSpy(), retry: jasmine.createSpy(),
+      loadPathSegment: jasmine.createSpy(), retry: jasmine.createSpy(),
     };
     TestBed.configureTestingModule({
       imports: [SaleTicketSnapshotComponent],
       providers: [
         provideRouter([]),
-        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ saleId })) } },
+        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ saleId: `id:${saleId}` })) } },
       ],
     });
     TestBed.overrideComponent(SaleTicketSnapshotComponent, {
@@ -37,7 +37,7 @@ describe('SaleTicketSnapshotComponent', () => {
     fixture.detectChanges();
     const screen = fixture.nativeElement as HTMLElement;
 
-    expect(store.load).toHaveBeenCalledOnceWith(saleId);
+    expect(store.loadPathSegment).toHaveBeenCalledOnceWith(`id:${saleId}`);
     expect(screen.textContent).toContain(saleId);
     expect(screen.textContent).toContain('Snapshot durable de sólo lectura');
     expect(screen.textContent).toContain('Esta ruta no ofrece acciones mutantes');

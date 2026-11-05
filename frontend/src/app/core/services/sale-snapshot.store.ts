@@ -72,6 +72,11 @@ export class SaleSnapshotStore {
 
   retry(): void { if (this.requested) this.load(this.requested.wire); }
 
+  loadPathSegment(rawSegment: unknown): void {
+    const routeId = SaleRouteId.fromPathSegment(rawSegment);
+    this.load(routeId?.wire ?? null);
+  }
+
   private resolve(saleId: SaleRouteId, cursor: string | null, seen: ReadonlySet<string>, match: DurableSaleSummary | null): Observable<SaleRouteResolution> {
     let params = new HttpParams().set('limit', 100);
     if (cursor) params = params.set('cursor', cursor);

@@ -2,7 +2,7 @@
 
 ## Decisiones
 
-- `AppSurface` reconoce exactamente `/caja/cierre` y `/ticket/<segmento-opaco>`. La estructura se separa antes de decodificar: delimitadores codificados dentro del identificador son datos opacos válidos, mientras segmentos adicionales o referencias que violan `SaleTextV2.ref` siguen en `Unknown`.
+- `AppSurface` reconoce exactamente `/caja/cierre` y `/ticket/<representación>`. `SaleRouteId` serializa el valor como `id:<opaco>` antes de entregarlo al router y lo reconstruye sólo en el borde; el prefijo evita que `.` o `..` sean normalizados por el navegador. La estructura se separa antes de decodificar: delimitadores codificados son datos, mientras segmentos adicionales, ausencia del prefijo o referencias que violan `SaleTextV2.ref` siguen en `Unknown`.
 - `CashPageMode`, `CashCloseAvailability` y `SaleSnapshotState` son clases cerradas con constructor privado, instancias estáticas, `Unknown` y único `fromWire`.
 - `SaleRouteId` es value object, no estado finito. Reutiliza `SaleTextV2.ref` para validar el contrato opaco sin normalizar ni cambiar mayúsculas.
 - `SaleSnapshotStore` es lectura aislada del store mutante: lista páginas por `GET`, exige una coincidencia exacta, luego consulta el detalle existente por `operationId` y correlaciona la cuádruple.

@@ -64,6 +64,6 @@ export class SaleTicketSnapshotComponent {
   private readonly route = inject(ActivatedRoute);
 
   constructor() {
-    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.store.load(params.get('saleId')));
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.store.loadPathSegment(params.get('saleId')));
   }
 }

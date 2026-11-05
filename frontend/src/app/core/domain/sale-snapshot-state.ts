@@ -2,6 +2,7 @@ import { SaleTextV2 } from './sale-text-v2';
 
 /** Opaque route identity. It validates the shared V2 reference contract without changing case or content. */
 export class SaleRouteId {
+  private static readonly pathPrefix = 'id:';
   private constructor(readonly wire: string) {}
 
   static fromWire(raw: unknown): SaleRouteId | null {
@@ -9,6 +10,13 @@ export class SaleRouteId {
     try { return new SaleRouteId(SaleTextV2.ref(raw)); }
     catch { return null; }
   }
+
+  static fromPathSegment(raw: unknown): SaleRouteId | null {
+    return typeof raw === 'string' && raw.startsWith(this.pathPrefix)
+      ? this.fromWire(raw.slice(this.pathPrefix.length)) : null;
+  }
+
+  get pathSegment(): string { return `${SaleRouteId.pathPrefix}${this.wire}`; }
 
   matches(raw: unknown): boolean { return SaleRouteId.fromWire(raw)?.wire === this.wire; }
 }

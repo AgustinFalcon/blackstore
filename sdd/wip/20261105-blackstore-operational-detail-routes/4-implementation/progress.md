@@ -17,9 +17,9 @@ No reutilizar como evidencia del port actual los PASS históricos del snapshot `
 - `npm run typecheck:dct`: PASS.
 - `npm run typecheck:demo`: PASS.
 - `npm run build`: PASS.
-- `npm test -- --no-progress`: PASS, 395/395 pruebas.
+- `npm test -- --no-progress`: PASS, 396/396 pruebas.
 - `npm run test:demo`: PASS, 50/50 escenarios Playwright.
-- `npm run test:odr`: PASS, 2/2 escenarios Playwright específicos: deep-link opaco con recarga y cero escrituras; cierre dedicado a 320 px sin controles ajenos ni overflow.
+- `npm run test:odr`: PASS, 3/3 escenarios Playwright específicos: deep-link opaco con recarga y cero escrituras; identidad `..` preservada por codec de ruta; cierre dedicado a 320 px sin controles ajenos ni overflow.
 - `git diff --check`: PASS.
 - `npm run lint`: no ejecutable porque el proyecto Angular no define un target `lint`; no se declara como evidencia.
 - Verificación posterior: ningún proceso quedó escuchando en el puerto demo `4215`.
@@ -30,4 +30,5 @@ No reutilizar como evidencia del port actual los PASS históricos del snapshot `
 - Astra seguridad: REQUEST_CHANGES P2 por correlación incompleta de la identidad técnica; sin IDOR ni mutación nueva demostrada.
 - Sol arquitectura/SDD: REQUEST_CHANGES P2 por correlación incompleta y ausencia de aceptación browser específica ODR.
 - Correcciones aplicadas: delimitadores codificados conservados como datos opacos, correlación fail-closed de la cuádruple y suite Playwright ODR dedicada.
-- Segunda ronda pendiente sobre el nuevo head exacto.
+- Segunda ronda sobre `9e57931`: arquitectura y seguridad aprobaron; producto detectó el caso residual `.`/`..` normalizado por el navegador.
+- Corrección residual: codec reversible `id:<opaco>` en el borde de navegación, con prueba unitaria y Chromium específico. Tercera ronda pendiente sobre nuevo head exacto.

@@ -7,6 +7,7 @@ import { DurableSalesStore } from '../../core/services/durable-sales.store';
 import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
 import { ReversalReason } from '../../core/domain/reversal-reason';
 import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
+import { SaleRouteId } from '../../core/domain/sale-snapshot-state';
 
 interface DurableReversalReview {
   readonly operationId: string;
@@ -39,7 +40,7 @@ interface DurableReleaseReview {
               <p>{{ sale.status.label }} · caja {{ sale.cashSessionId }} · total {{ sale.total?.decimal ?? 'No comprobado' }}</p>
               <p class="sku">{{ sale.identity.operationId }}</p>
               <a routerLink="/ticket" [queryParams]="{operationId:sale.identity.operationId}">Continuar en punto de venta</a>
-              <a [routerLink]="['/ticket', sale.identity.saleId]">Ver ticket</a>
+              <a [routerLink]="['/ticket', ticketPathSegment(sale.identity.saleId)]">Ver ticket</a>
             </article>
           } @empty { <p>No hay ventas visibles en esta página.</p> }
           @if (store.nextCursor(); as cursor) { <button type="button" (click)="store.list(cursor, filter)">Página siguiente</button> }
@@ -102,6 +103,7 @@ interface DurableReleaseReview {
   `,
 })
 export class DurableSalesComponent implements OnInit {
+  ticketPathSegment(raw: string): string { return SaleRouteId.fromWire(raw)?.pathSegment ?? 'id:'; }
   readonly store = inject(DurableSalesStore);
   readonly actions = AllowedAction;
   readonly captured = PaymentStatus.Captured;

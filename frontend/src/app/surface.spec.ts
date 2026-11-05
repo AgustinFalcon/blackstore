@@ -5,10 +5,11 @@ describe('document surface boundary', () => {
     for (const path of ['/demografia', '/demo%2fpos', '/demo/../sesion', '/demo/%zz', '/unknown', '/caja/x', '/ticket/a/b', null, 1]) expect(AppSurface.fromWire(path)).toBe(AppSurface.Unknown);
   });
   it('selects only known operational entry points', () => {
-    for (const path of ['/', '/sesion', '/caja', '/caja/cierre', '/catalogo', '/ticket', '/ticket/Sale-Aa-01',
-      '/ticket/Sale%2FAa-01', '/ticket/Sale%23Aa-01', '/ticket/Sale%3FAa-01', '/ventas', '/reportes']) {
+    for (const path of ['/', '/sesion', '/caja', '/caja/cierre', '/catalogo', '/ticket', '/ticket/id%3ASale-Aa-01',
+      '/ticket/id%3ASale%2FAa-01', '/ticket/id%3ASale%23Aa-01', '/ticket/id%3ASale%3FAa-01',
+      '/ticket/id%3A.', '/ticket/id%3A..', '/ventas', '/reportes']) {
       expect(AppSurface.fromWire(path)).toBe(AppSurface.Operational);
     }
-    for (const path of ['/ticket/a/b', '/ticket/%00', '/caja%2Fcierre']) expect(AppSurface.fromWire(path)).toBe(AppSurface.Unknown);
+    for (const path of ['/ticket/Sale-Aa-01', '/ticket/a/b', '/ticket/%00', '/caja%2Fcierre']) expect(AppSurface.fromWire(path)).toBe(AppSurface.Unknown);
   });
 });

@@ -14,6 +14,15 @@ describe('sale snapshot route domain', () => {
     expect(SaleRouteId.fromWire('')).toBeNull();
   });
 
+  it('round-trips dot segments through an explicit path representation', () => {
+    for (const wire of ['.', '..', 'Sale/Aa-01', 'Sale#Aa-01', 'Sale?Aa-01']) {
+      const value = SaleRouteId.fromWire(wire)!;
+      expect(SaleRouteId.fromPathSegment(value.pathSegment)?.wire).toBe(wire);
+    }
+    expect(SaleRouteId.fromPathSegment('..')).toBeNull();
+    expect(SaleRouteId.fromPathSegment('id:')).toBeNull();
+  });
+
   it('keeps every lookup result closed and fail-closed', () => {
     expect(SaleSnapshotState.fromWire('FOUND')).toBe(SaleSnapshotState.Found);
     expect(SaleSnapshotState.fromWire('future')).toBe(SaleSnapshotState.Unknown);

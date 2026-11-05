@@ -17,7 +17,7 @@ export class AppSurface {
       const direct = segments.length <= 1 && ['', 'sesion', 'caja', 'catalogo', 'ticket', 'ventas', 'reportes'].includes(root);
       const cashClose = safeOperationalSegments && segments.length === 2 && root === 'caja' && segments[1] === 'cierre';
       // The second segment is an opaque V2 reference. Encoded delimiters are data, not route structure.
-      const ticketDetail = segments.length === 2 && root === 'ticket' && SaleRouteId.fromWire(segments[1]) !== null;
+      const ticketDetail = segments.length === 2 && root === 'ticket' && SaleRouteId.fromPathSegment(segments[1]) !== null;
       return safeOperationalSegments && direct || cashClose || ticketDetail ? this.Operational : this.Unknown;
     } catch { return this.Unknown; }
   }
