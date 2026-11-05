@@ -102,12 +102,20 @@ export class DemoProductStatus {
   get toggled(): DemoProductStatus { return this === DemoProductStatus.Active ? DemoProductStatus.Inactive : this === DemoProductStatus.Inactive ? DemoProductStatus.Active : DemoProductStatus.Unknown; }
   static fromWire(value: unknown): DemoProductStatus { return this.values.find(item => item.key === value) ?? this.Unknown; }
 }
-export const money = (cents: number): string => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 }).format(cents / 100);
+export const money = (cents: number): string => {
+  if(!Number.isSafeInteger(cents))return 'Monto no disponible';
+  const value=BigInt(cents),negative=value<0n,absolute=negative?-value:value;
+  const pesos=new Intl.NumberFormat('es-AR',{maximumFractionDigits:0}).format(absolute/100n);
+  return `${negative?'-':''}$ ${pesos},${String(absolute%100n).padStart(2,'0')}`;
+};
 export interface Product { readonly id: string; readonly name: string; readonly sku: string; readonly category: string; readonly art: DemoProductArt; readonly price: number; readonly cost?: number; readonly stock: number; readonly status: DemoProductStatus; readonly version: number; readonly icon: string; }
 export interface Customer { readonly id: string; readonly name: string; readonly email: string; readonly phone: string; }
 export interface CartLine { readonly productId: string; readonly quantity: number; readonly version: number; readonly price: number; }
 export interface SaleLine { readonly productId: string; readonly name: string; readonly sku: string; readonly category: string; readonly quantity: number; readonly price: number; readonly cost?: number; }
 export interface Sale { readonly id: string; readonly date: string; readonly customerId: string; readonly customerName: string; readonly lines: readonly SaleLine[]; readonly total: number; readonly discount: number; readonly method: DemoPaymentMethod; readonly cashAmount: number; readonly received: number; readonly reference: string; readonly status: DemoSaleStatus; readonly cashier: string; readonly reversalReason?: string; }
 export interface Movement { readonly id: string; readonly date: string; readonly kind: DemoMovementKind; readonly amount: number; readonly reason: string; }
+export interface DemoCashShift { readonly id: string; readonly openedAt: string; readonly opening: number; readonly movements: readonly Movement[]; readonly expected: number; readonly status: DemoCashStatus; }
+/** A closing records its own immutable ledger, independently of later shifts. */
+export interface DemoCashClosure extends DemoCashShift { readonly closedAt: string; readonly declared: number; readonly reason: string; }
 export interface StockMovement { readonly id: string; readonly productId: string; readonly date: string; readonly quantity: number; readonly reason: string; }
-export interface DemoSnapshot { readonly products: readonly Product[]; readonly customers: readonly Customer[]; readonly cart: readonly CartLine[]; readonly customerId: string; readonly discount: number; readonly sales: readonly Sale[]; readonly movements: readonly Movement[]; readonly stockMovements: readonly StockMovement[]; readonly cashStatus: DemoCashStatus; readonly role: DemoRole; readonly scenario: DemoScenario; readonly payment?: DemoPaymentAttempt; readonly cashCount?: {readonly declared: number; readonly expected: number; readonly reason: string}; }
+export interface DemoSnapshot { readonly products: readonly Product[]; readonly customers: readonly Customer[]; readonly cart: readonly CartLine[]; readonly customerId: string; readonly discount: number; readonly sales: readonly Sale[]; readonly movements: readonly Movement[]; readonly cashClosures: readonly DemoCashClosure[]; readonly stockMovements: readonly StockMovement[]; readonly cashStatus: DemoCashStatus; readonly role: DemoRole; readonly scenario: DemoScenario; readonly payment?: DemoPaymentAttempt; readonly cashCount?: {readonly declared: number; readonly expected: number; readonly reason: string}; }

@@ -17,7 +17,7 @@ export class DemoCalendar {
 }
 
 export class DemoDateRange {
-  private constructor(private readonly from: string | null, private readonly to: string | null, private readonly valid = true) {}
+  private constructor(private readonly from: string | null, private readonly to: string | null, readonly isValid = true) {}
   static readonly All = new DemoDateRange(null, null);
   static readonly Unknown = new DemoDateRange(null, null, false);
   static fromWire(from: unknown, to: unknown): DemoDateRange {
@@ -32,6 +32,6 @@ export class DemoDateRange {
   }
   includes(instant: string, calendar = DemoCalendar.BuenosAires): boolean {
     const day = calendar.day(instant);
-    return this.valid && day !== null && (!this.from || day >= this.from) && (!this.to || day <= this.to);
+    return this.isValid && day !== null && (!this.from || day >= this.from) && (!this.to || day <= this.to);
   }
 }

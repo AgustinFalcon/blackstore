@@ -11,9 +11,9 @@ import { StaffPermission } from './core/domain/session-types';
   imports: [RouterLink, RouterLinkActive, RouterOutlet],
   template: `
     <div class="frame">
-      <aside class="rail">
+      <a class="skip-link" href="#pos-content">Ir al contenido</a><aside class="rail">
         <p class="brand">BlackStore</p>
-        <nav>
+        <nav aria-label="Navegación principal">
           @if (session.can(permissions.WorkspaceRead)) { <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a> }
           @if (session.can(permissions.CashSessionList)) { <a routerLink="/caja" routerLinkActive="active">Caja</a> }
           @if (session.can(permissions.CatalogRead)) { <a routerLink="/catalogo" routerLinkActive="active">Catálogo</a> }
@@ -24,7 +24,7 @@ import { StaffPermission } from './core/domain/session-types';
           <a href="/demo">Ver demostración</a>
         </nav>
       </aside>
-      <div class="main">
+      <main class="main" id="pos-content" tabindex="-1">
         <header>
           <h1>BlackStore POS</h1>
           @if (session.staff(); as staff) {
@@ -43,14 +43,14 @@ import { StaffPermission } from './core/domain/session-types';
         }
         @if (session.notice()) { <p class="banner warn" role="alert">{{ session.notice() }}</p> }
         <router-outlet />
-      </div>
+      </main>
     </div>
   `,
   styles: [
     `
       .frame {
         display: grid;
-        grid-template-columns: 13rem 1fr;
+        grid-template-columns: 13rem minmax(0,1fr);
         min-height: 100vh;
       }
       .rail {
@@ -81,6 +81,7 @@ import { StaffPermission } from './core/domain/session-types';
       }
       .main {
         padding: 1.25rem 1.5rem 2rem;
+        min-width:0; overflow-wrap:anywhere;
       }
       header {
         display: flex;
@@ -110,6 +111,10 @@ import { StaffPermission } from './core/domain/session-types';
         background: #fef3c7;
         border-color: var(--bs-warning);
       }
+      .skip-link{position:absolute;top:-100px;left:1rem;z-index:50;background:white;padding:1rem}.skip-link:focus{top:1rem}
+      a:focus-visible,button:focus-visible{outline:3px solid #1d4ed8;outline-offset:3px}
+      @media(max-width:760px){.frame{grid-template-columns:minmax(0,1fr)}.rail{padding:1rem}.brand{margin-bottom:.75rem}nav{flex-direction:row;flex-wrap:wrap;gap:.25rem}nav a{flex:1 1 8rem;min-width:0} .main{padding:1rem}header{align-items:center}header h1{flex:1 1 100%}}
+      @media print{.rail,header,.skip-link{display:none}.frame{display:block}.main{padding:0}}
       .banner.info {
         background: #dbeafe;
         border-color: var(--bs-info);

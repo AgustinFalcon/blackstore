@@ -1,9 +1,11 @@
 import { DemoRepository } from '../application/demo-repository';
-import { Customer, DemoPaymentAttempt, DemoPaymentStatus, DemoProductArt, DemoProductStatus, DemoCashStatus, DemoMovementKind, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoSnapshot, Product, Sale } from '../domain/demo-types';
+import { Customer, DemoCashClosure, DemoPaymentAttempt, DemoPaymentStatus, DemoProductArt, DemoProductStatus, DemoCashStatus, DemoMovementKind, DemoPaymentMethod, DemoRole, DemoSaleStatus, DemoScenario, DemoSnapshot, Product, Sale } from '../domain/demo-types';
 import { CheckoutFlow } from '../domain/checkout-flow';
 import { DemoAction, DemoPermissionDecision, DemoPermissionError, DemoPermissionPolicy } from '../domain/demo-permissions';
 import { StockRestorationPlan } from '../domain/stock-restoration';
-import { DemoCalendar } from '../domain/demo-calendar';
+import { DemoCalendar, DemoDateRange } from '../domain/demo-calendar';
+import { DemoQueries } from '../domain/demo-queries';
+import { DemoMoney } from '../domain/demo-money';
 
 /** In-memory adapter. Never reads session, recovery storage or HTTP. */
 export class LocalDemoRepository extends DemoRepository {
@@ -23,7 +25,10 @@ export class LocalDemoRepository extends DemoRepository {
   private publish(patch: Partial<DemoSnapshot>): void { this.state = this.freeze({...this.state, ...patch}); this.listeners.forEach(listener => listener(this.state)); }
   private id(): string { return String(++this.sequence); }
   private now(): string { return this.clock().toISOString(); }
-  private cents(value: number): void { if (!Number.isSafeInteger(value) || value < 0) throw new Error('Ingresá un importe válido, sin valores negativos.'); }
+  private cents(value: number): void { DemoMoney.integer(value); }
+  private cashAfter(kind: DemoMovementKind, amount: number): number {
+    return DemoMoney.number(DemoMoney.integer(this.expectedCash())+DemoMoney.integer(amount)*BigInt(kind.sign));
+  }
   authorize(action: DemoAction): DemoPermissionDecision { return DemoPermissionPolicy.decide(this.state.role, action); }
   private require(action: DemoAction): void { const decision=this.authorize(action); if(!decision.allowed)throw new DemoPermissionError(decision); }
   reset(scenario: DemoScenario): void {
@@ -45,7 +50,15 @@ export class LocalDemoRepository extends DemoRepository {
     const saleMovement=(s:Sale)=>({id:`m${s.id}`,date:s.date,kind:DemoMovementKind.Sale,amount:s.total,reason:`Venta ${s.id}`});
     const current=(s:Sale)=>DemoCalendar.BuenosAires.sameDay(s.date,date);
     const movements=[...cashSales.filter(s=>!current(s)).flatMap(s=>[opening(`opening-${s.id}`,s.date,'Fondo inicial histórico demo'),saleMovement(s)]),opening('m0',date,'Fondo inicial demo'),...cashSales.filter(current).map(saleMovement)];
-    this.state = Object.freeze({products:Object.freeze(products),customers:Object.freeze(customers),cart:[],customerId:'c0',discount:0,sales:Object.freeze(sales),movements:Object.freeze(movements),stockMovements:[],cashStatus:scenario.closed?DemoCashStatus.Closed:DemoCashStatus.Open,role,scenario});
+    const cashClosures: DemoCashClosure[]=cashSales.filter(s=>!current(s)).map(s=>{
+      const ledger=[opening(`opening-${s.id}`,s.date,'Fondo inicial histórico demo'),saleMovement(s)];
+      const expected=DemoMoney.sum([5000000,s.total]);
+      return {id:ledger[0].id,openedAt:ledger[0].date,opening:ledger[0].amount,closedAt:s.date,movements:ledger,expected,declared:expected,reason:'Cierre histórico demo',status:DemoCashStatus.Closed};
+    });
+    const currentLedger=movements.slice(movements.map(m=>m.kind).lastIndexOf(DemoMovementKind.Opening));
+    const currentExpected=DemoMoney.balance(currentLedger);
+    if(scenario.closed)cashClosures.push({id:currentLedger[0].id,openedAt:currentLedger[0].date,opening:currentLedger[0].amount,closedAt:date,movements:currentLedger,expected:currentExpected,declared:currentExpected,reason:'Cierre demo',status:DemoCashStatus.Closed});
+    this.state = Object.freeze({products:Object.freeze(products),customers:Object.freeze(customers),cart:[],customerId:'c0',discount:0,sales:Object.freeze(sales),movements:Object.freeze(movements),cashClosures,stockMovements:[],cashStatus:scenario.closed?DemoCashStatus.Closed:DemoCashStatus.Open,role,scenario,...(scenario.closed?{cashCount:{declared:currentExpected,expected:currentExpected,reason:'Cierre demo'}}:{})});
     this.state=this.freeze({...this.state});this.listeners.forEach(listener=>listener(this.state));
   }
   setRole(role: DemoRole): void {
@@ -66,17 +79,15 @@ export class LocalDemoRepository extends DemoRepository {
     if (!Number.isSafeInteger(quantity) || quantity<0 || quantity>product.stock) throw new Error('La cantidad debe ser entera y no superar el stock disponible.');
     const lines=this.state.cart.filter(l=>l.productId!==productId);
     if(quantity) lines.push({productId,quantity,version:product.version,price:product.price});
+    DemoMoney.discounted(lines,this.state.discount);
     this.publish({cart:Object.freeze(lines)});
   }
   clearCart(): void { this.require(DemoAction.EditCart); this.editable(); this.publish({cart:[],discount:0,customerId:'c0'}); }
   selectCustomer(id: string): void { this.require(DemoAction.SelectCustomer); this.editable(); if(!this.state.customers.some(c=>c.id===id)) throw new Error('Cliente no disponible.'); this.publish({customerId:id}); }
-  discount(percent: number): void { this.require(DemoAction.Discount); this.editable(); if(!Number.isSafeInteger(percent)||percent<0||percent>30) throw new Error('El descuento permitido es de 0 a 30 %.'); this.publish({discount:percent}); }
-  total(): number {
-    const subtotal=this.state.cart.reduce((sum,line)=>sum+line.price*line.quantity,0);
-    this.cents(subtotal);
-    const total=Number((BigInt(subtotal)*BigInt(100-this.state.discount)+50n)/100n);
-    this.cents(total);
-    return total;
+  discount(percent: number): void { this.require(DemoAction.Discount); this.editable(); DemoMoney.discounted(this.state.cart,percent); this.publish({discount:percent}); }
+  total(): number { return DemoMoney.discounted(this.state.cart,this.state.discount); }
+  private validateSaleAggregate(total:number):void {
+    DemoMoney.sum([...this.state.sales.filter(s=>s.status.canReverse).map(s=>s.total),total]);
   }
   checkout(commandId: string, method: DemoPaymentMethod, received: number, reference: string): Sale {
     if(!method.isCash) throw new Error('El pago electrónico requiere confirmación en el terminal simulado.');
@@ -99,10 +110,11 @@ export class LocalDemoRepository extends DemoRepository {
     this.editable();
     if(!commandId || method===DemoPaymentMethod.Unknown || this.state.role===DemoRole.Unknown) throw new Error('Elegí un medio de pago y perfil válido.');
     const total=this.total();
+    this.validateSaleAggregate(total);
     new CheckoutFlow().validate({snapshot:this.state,method,received,total});
     this.cents(cashAmount);
     if(!method.isCash&&(cashAmount>=total||received<cashAmount)) throw new Error('La parte en efectivo debe ser menor al total y estar cubierta por el recibido.');
-    this.cents(this.expectedCash()+(method.isCash?total:cashAmount));
+    this.cashAfter(DemoMovementKind.Sale,method.isCash?total:cashAmount);
     if(this.state.scenario.fail&&!this.failed) { this.failed=true; throw new Error('No se pudo procesar el pago simulado. Reintentá: tu carrito sigue disponible.'); }
     const attempt:DemoPaymentAttempt=this.freeze({id:commandId,method,status:DemoPaymentStatus.Pending,total,cashAmount:method.isCash?total:cashAmount,received,reference:reference.trim()||`DEMO-${commandId.slice(0,8).toUpperCase()}`});
     this.fingerprints.set(commandId,{input,cart:this.cartFingerprint()});
@@ -118,8 +130,9 @@ export class LocalDemoRepository extends DemoRepository {
     if(this.state.payment?.id!==commandId||!attempt.status.canResolveTo(decision)) throw new Error('Elegí una resolución válida para el pago actual.');
     if(!decision.approved){const resolved=this.freeze({...attempt,status:decision});this.attempts.set(commandId,resolved);this.publish({payment:resolved});return resolved;}
     const {method,received,reference,total,cashAmount}=attempt;
+    this.validateSaleAggregate(total);
     const lines=new CheckoutFlow().validate({snapshot:this.state,method,received,total});
-    this.cents(this.expectedCash()+cashAmount);
+    this.cashAfter(DemoMovementKind.Sale,cashAmount);
     const customer=this.state.customers.find(c=>c.id===this.state.customerId)!;
     const sale:Sale=Object.freeze({id:`V-${this.id()}`,date:this.now(),customerId:customer.id,customerName:customer.name,lines:Object.freeze(lines),total,discount:this.state.discount,method,cashAmount,received:cashAmount?received:total,reference,status:DemoSaleStatus.Completed,cashier:this.state.role.label+' Demo'});
     const products=this.state.products.map(p=>({...p,stock:p.stock-(lines.find(l=>l.productId===p.id)?.quantity??0)}));
@@ -134,8 +147,8 @@ export class LocalDemoRepository extends DemoRepository {
   saveProduct(product:Product):void { this.require(DemoAction.SaveProduct); this.editable(); if(!DemoProductStatus.values.includes(product.status)) throw new Error('Producto no disponible.'); this.cents(product.price); if(!product.name.trim()||!product.sku.trim()||!product.category.trim()) throw new Error('Completá nombre, SKU y categoría.'); if(this.state.products.some(p=>p.id!==product.id&&p.sku.toLowerCase()===product.sku.toLowerCase())) throw new Error('Ya existe un producto con ese SKU.'); const previous=this.state.products.find(p=>p.id===product.id); const saved={...product,id:previous?.id??`p${this.id()}`,stock:previous?.stock??0,version:(previous?.version??0)+1}; this.publish({products:previous?this.state.products.map(p=>p.id===saved.id?saved:p):[...this.state.products,saved]}); }
   saveCustomer(customer:Customer):void { this.require(DemoAction.SaveCustomer); if(this.state.role===DemoRole.Unknown) throw new Error('Elegí un perfil válido.'); if(!customer.name.trim()||(customer.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email))) throw new Error('Completá el nombre y un email válido si lo informás.'); if(customer.id==='c0') throw new Error('Cliente ocasional siempre disponible.'); const previous=this.state.customers.find(c=>c.id===customer.id); const saved={...customer,id:previous?.id??`c${this.id()}`}; this.publish({customers:previous?this.state.customers.map(c=>c.id===saved.id?saved:c):[...this.state.customers,saved]}); }
   adjust(productId:string,quantity:number,reason:string):void { this.require(DemoAction.AdjustStock); this.editable(); const product=this.state.products.find(p=>p.id===productId); if(!product||!Number.isSafeInteger(quantity)||!quantity||!Number.isSafeInteger(product.stock+quantity)||product.stock+quantity<0||!reason.trim()) throw new Error('Ingresá un ajuste entero, un motivo y mantené el stock no negativo.'); this.publish({products:this.state.products.map(p=>p.id===productId?{...p,stock:p.stock+quantity}:p),stockMovements:[{id:this.id(),productId,date:this.now(),quantity,reason},...this.state.stockMovements]}); }
-  openCash(amount:number):void { this.require(DemoAction.OpenCash); if(this.state.role===DemoRole.Unknown) throw new Error('Elegí un perfil válido.'); if(this.state.cashStatus!==DemoCashStatus.Closed) throw new Error('La caja ya está abierta o no está disponible.'); this.cents(amount); this.publish({cashStatus:DemoCashStatus.Open,movements:[...this.state.movements,{id:this.id(),date:this.now(),kind:DemoMovementKind.Opening,amount,reason:'Nueva apertura demo'}],cashCount:undefined}); }
-  moveCash(kind:DemoMovementKind,amount:number,reason:string):void { this.require(DemoAction.MoveCash); if(!this.state.cashStatus.canSell) throw new Error('Abrí la caja para registrar movimientos.'); this.cents(amount); if(!amount||!reason.trim()||![DemoMovementKind.Income,DemoMovementKind.Expense].includes(kind)) throw new Error('Indicá importe, categoría y motivo.'); if(kind===DemoMovementKind.Expense&&amount>this.expectedCash()) throw new Error('El egreso supera el efectivo disponible.'); this.publish({movements:[...this.state.movements,{id:this.id(),date:this.now(),kind,amount,reason}]}); }
-  expectedCash():number { const start=this.state.movements.map(m=>m.kind).lastIndexOf(DemoMovementKind.Opening);return this.state.movements.slice(Math.max(0,start)).reduce((sum,m)=>sum+m.amount*m.kind.sign,0); }
-  closeCash(declared:number,reason:string):void { this.require(DemoAction.CloseCash); this.editable(); this.cents(declared); if(!this.state.cashStatus.canSell) throw new Error('La caja no está abierta.'); const expected=this.expectedCash(); if(declared!==expected&&!reason.trim()) throw new Error('Explicá la diferencia antes de cerrar.'); this.publish({cashStatus:DemoCashStatus.Closed,cashCount:{declared,expected,reason}}); }
+  openCash(amount:number):void { this.require(DemoAction.OpenCash); if(this.state.role===DemoRole.Unknown) throw new Error('Elegí un perfil válido.'); if(this.state.cashStatus!==DemoCashStatus.Closed) throw new Error('La caja ya está abierta o no está disponible.'); this.cents(amount); this.publish({cashStatus:DemoCashStatus.Open,movements:[...this.state.movements,{id:this.id(),date:this.now(),kind:DemoMovementKind.Opening,amount,reason:'Nueva apertura demo'}]}); }
+  moveCash(kind:DemoMovementKind,amount:number,reason:string):void { this.require(DemoAction.MoveCash); if(!this.state.cashStatus.canSell) throw new Error('Abrí la caja para registrar movimientos.'); this.cents(amount); if(!amount||!reason.trim()||![DemoMovementKind.Income,DemoMovementKind.Expense].includes(kind)) throw new Error('Indicá importe, categoría y motivo.'); if(kind===DemoMovementKind.Expense&&amount>this.expectedCash()) throw new Error('El egreso supera el efectivo disponible.'); this.cashAfter(kind,amount); if(kind===DemoMovementKind.Expense)DemoMoney.sum([new DemoQueries(this.state).expenses(DemoDateRange.All),amount]); this.publish({movements:[...this.state.movements,{id:this.id(),date:this.now(),kind,amount,reason}]}); }
+  expectedCash():number { return new DemoQueries(this.state).currentCashShift()?.expected??0; }
+  closeCash(declared:number,reason:string):void { this.require(DemoAction.CloseCash); this.editable(); this.cents(declared); if(!this.state.cashStatus.canSell) throw new Error('La caja no está abierta.'); const shift=new DemoQueries(this.state).currentCashShift(); if(!shift)throw new Error('Turno de caja no disponible.'); const expected=shift.expected; if(declared!==expected&&!reason.trim()) throw new Error('Explicá la diferencia antes de cerrar.'); const closure:DemoCashClosure={...shift,status:DemoCashStatus.Closed,closedAt:this.now(),declared,reason}; this.publish({cashStatus:DemoCashStatus.Closed,cashCount:{declared,expected,reason},cashClosures:[...this.state.cashClosures,closure]}); }
 }
