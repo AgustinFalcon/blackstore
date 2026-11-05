@@ -2,7 +2,14 @@
 
 Fecha: 2026-11-05. Rama: `codex/blackstore-posc-e`. Base integrada: `68ad3df60c39b53ba9cddc76cf234b5a06e26134`.
 
-El SHA candidato, los veredictos Astra, el PR y los runs de GitHub se incorporarán después de crear el commit revisable. Este documento no los anticipa.
+Implementación revisada: `939a1f3cdf768f040732dad782526ca3682430ea` sobre `68ad3df60c39b53ba9cddc76cf234b5a06e26134`.
+
+## Revisiones del SHA de implementación
+
+- Astra bug/product/UX: **APPROVE**, cero P0–P3. El primer pase detectó la falta de restart A08; el segundo verificó PID nuevo, reload multiline, hechos intactos y un solo POST.
+- Astra seguridad: **APPROVE**, cero P0–P3. Validó fencing, identidad/caja/generación, recuperación GET-only, cardinalidad, artefactos y el restart corregido.
+- Sol arquitectura/SDD: **APPROVE**, cero P0–P3. Confirmó trazabilidad POSC-001…008, tipos cerrados, honestidad de evidencia y cierre del P2 A08.
+- El commit documental que contiene estos veredictos aún debe recibir comprobación final, PR y CI hospedado; no se anticipan aquí.
 
 ## Aceptación real combinada
 
