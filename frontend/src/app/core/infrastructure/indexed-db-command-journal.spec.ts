@@ -2,14 +2,39 @@ import { TestBed } from '@angular/core/testing';
 import { AccountingCommand,AccountingCommandKind } from '../domain/accounting-command';
 import { JournalEntry,JournalFamily,JournalPhase } from '../domain/command-journal';
 import { IndexedDbCommandJournal,JOURNAL_DATABASE,JournalDecoder } from './indexed-db-command-journal';
-import {SaleAdmissionRoute,SaleCommand,SaleCommandKind,SaleFingerprintVersion} from '../domain/sale-command';
+import {SaleAdmissionRoute,SaleCommand,SaleCommandKind,SaleFingerprintVersion,SaleAdmissionOutcome,SaleCommandFailure,SaleLineFailureCode} from '../domain/sale-command';
 import {SaleAdmissionFingerprint,SaleAdmissionV2Fingerprint} from './sale-admission-fingerprint';
 describe('untrusted journal decoder and transactional IndexedDB claim',()=>{
+  const rejectedCommand=()=>SaleCommand.createMultilineReserve({clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'sale',operationId:'33333333-3333-3333-3333-333333333333'},2,[{variantId:'a',quantity:1,sku:'SKU',productName:'Artículo',expectedPriceVersion:'P1',originalUnitPrice:'1.00',discountAmount:'0.00'}]);
+  const rejection=()=>({outcome:SaleAdmissionOutcome.Rejected,receipt:null,failure:SaleCommandFailure.Validation,lineFailures:[{variantId:'a',code:SaleLineFailureCode.PriceVersionMismatch}]});
+
   const entry=():JournalEntry=>({version:1,scope:{origin:location.origin,clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',terminalId:10},
     family:JournalFamily.Accounting,command:AccountingCommand.create(AccountingCommandKind.Open,{terminalId:10,cashierId:7,openingCash:'0'}),actorId:7,cashSessionId:null,phase:JournalPhase.Prepared,tabId:crypto.randomUUID()});
   let dbName:string;let journal:IndexedDbCommandJournal;
   beforeEach(()=>{dbName='blackstore-test-'+crypto.randomUUID();TestBed.configureTestingModule({providers:[{provide:JOURNAL_DATABASE,useValue:dbName}]});journal=TestBed.inject(IndexedDbCommandJournal);});
   afterEach(async()=>{await new Promise<void>((resolve,reject)=>{const r=indexedDB.deleteDatabase(dbName);r.onsuccess=()=>resolve();r.onerror=()=>reject(r.error);});});
+  it('persists terminal rejection atomically and never reopens it from a stale tab',async()=>{
+    const command=rejectedCommand(),saved:JournalEntry={...entry(),version:2,family:JournalFamily.Sale,command,cashSessionId:2,
+      expectedPayloadHash:await new SaleAdmissionV2Fingerprint().hash(command,7),fingerprintVersion:SaleFingerprintVersion.AdmissionV2,admissionRoute:SaleAdmissionRoute.ReserveV3};
+    await journal.prepare(saved);await journal.transition(saved,JournalPhase.AwaitingReceipt);
+    await expectAsync(journal.transition(saved,JournalPhase.Rejected)).toBeRejected();
+    await expectAsync(journal.resolveRejected({...saved,actorId:8},rejection())).toBeRejected();
+    await expectAsync(journal.resolveRejected(saved,{...rejection(),lineFailures:[]})).toBeRejected();
+    await journal.resolveRejected(saved,rejection());
+    const next=entry();await journal.prepare(next);
+    await journal.transition(saved,JournalPhase.ReceiptVerifiedAwaitingRefresh);
+    await journal.resolveRejected(saved,rejection());
+    const snapshot=await journal.list();expect(snapshot.entries.find(e=>e.command.commandId===command.commandId)?.phase).toBe(JournalPhase.Rejected);
+    expect(snapshot.entries.filter(e=>!e.phase.isTerminal).map(e=>e.command.commandId)).toEqual([next.command.commandId]);
+    const reopened=TestBed.runInInjectionContext(()=>new IndexedDbCommandJournal());const durable=(await reopened.list()).entries.find(e=>e.command.commandId===command.commandId)!;
+    expect(durable.rejection?.lineFailures).toEqual(rejection().lineFailures);
+    expect(durable.command.body).toEqual(command.body);expect(durable.expectedPayloadHash).toBe(saved.expectedPayloadHash);
+    const encoded=JournalDecoder.encode(durable) as any;
+    expect(JournalDecoder.decode({...encoded,rejection:{...encoded.rejection,lineFailures:[]}})).toBeNull();
+    expect(JournalDecoder.decode({...encoded,rejection:{...encoded.rejection,lineFailures:[{variantId:'foreign',code:SaleLineFailureCode.PriceMismatch.wire}]}})).toBeNull();
+    expect(JournalDecoder.decode({...encoded,rejection:{...encoded.rejection,lineFailures:[{variantId:'a',code:'Future'}]}})).toBeNull();
+    expect(JournalDecoder.decode({...encoded,phase:JournalPhase.Resolved.wire})).toBeNull();
+  });
   it('round trips frozen commands and excludes credentials',()=>{
     const saved=entry();const decoded=JournalDecoder.decode(JournalDecoder.encode(saved))!;
     expect(decoded.command.kind).toBe(saved.command.kind);expect(Object.isFrozen(decoded.command.body)).toBeTrue();
@@ -40,7 +65,7 @@ describe('untrusted journal decoder and transactional IndexedDB claim',()=>{
     await journal.transition(a,JournalPhase.ReceiptVerifiedAwaitingRefresh);await journal.transition(a,JournalPhase.AwaitingReceipt);await journal.transition(a,JournalPhase.Resolved);
     const snapshot=await journal.list();expect(snapshot.quarantined).toBeFalse();
     expect(snapshot.entries.find(v=>v.command.commandId===a.command.commandId)?.phase).toBe(JournalPhase.Resolved);
-    expect(snapshot.entries.filter(v=>v.phase!==JournalPhase.Resolved).map(v=>v.command.commandId)).toEqual([b.command.commandId]);
+    expect(snapshot.entries.filter(v=>!v.phase.isTerminal).map(v=>v.command.commandId)).toEqual([b.command.commandId]);
   });
   it('rejects skipping receipt verification atomically and preserves stored phase',async()=>{
     const a=entry();await journal.prepare(a);await expectAsync(journal.transition(a,JournalPhase.Resolved)).toBeRejected();

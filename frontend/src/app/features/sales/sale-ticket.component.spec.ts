@@ -10,7 +10,7 @@ import { DurableLineMetadata, DurableSaleState } from '../../core/domain/durable
 import { PaymentCoverage, PaymentLedgerSemantics, TicketMoney } from '../../core/domain/ticket-transition';
 import { SaleStatus } from '../../core/domain/pos-types';
 import { ReversalReason } from '../../core/domain/reversal-reason';
-import { SaleAdmissionOutcome, SaleAdmissionRoute, SaleCommand } from '../../core/domain/sale-command';
+import { SaleAdmissionOutcome, SaleAdmissionResolution, SaleAdmissionRoute, SaleCommand, SaleLineFailureCode } from '../../core/domain/sale-command';
 import { CommandHttp } from '../../core/infrastructure/command-http';
 import { CommandRuntimeStore } from '../../core/services/command-runtime.store';
 import { CounterContextService } from '../../core/services/counter-context.service';
@@ -30,7 +30,11 @@ describe('SaleTicketComponent explicit cart journey', () => {
   ] });
 
   beforeEach(() => {
-    runtime = { pending: signal(null), canWrite: signal(true), context: signal(context), notice: signal('Comprobado'),
+    catalog.set({ version:'v1',stale:false,importedAt:null,validUntil:null,items:[
+      {sku:'SKU-A',name:'Taladro profesional',variantId:'variant-a',priceVersion:'P1',unitPrice:10},
+      {sku:'SKU-B',name:'Amoladora compacta',variantId:'variant-b',priceVersion:'P2',unitPrice:17.5},
+    ]});
+    runtime = { rejected: signal([]), pending: signal(null), canWrite: signal(true), context: signal(context), notice: signal('Comprobado'),
       execute: jasmine.createSpy().and.returnValue(Promise.resolve({ outcome: SaleAdmissionOutcome.Unknown, receipt: null })),
       consult: jasmine.createSpy().and.returnValue(Promise.resolve(null)) };
     TestBed.configureTestingModule({ imports: [SaleTicketComponent], providers: [provideHttpClient(), provideHttpClientTesting(),
@@ -94,13 +98,15 @@ describe('SaleTicketComponent explicit cart journey', () => {
     expect(component.operationRef()).toBeNull();
   });
 
-  it('restores an invalid visible quantity and marks its field invalid',()=>{
+  it('restores an invalid visible quantity and keeps focus on its field',async()=>{
     const fixture=TestBed.createComponent(SaleTicketComponent),tested=fixture.componentInstance;
     tested.selectedSku='SKU-A';tested.addSelected();fixture.detectChanges();
     const input=fixture.nativeElement.querySelector('.quantity input') as HTMLInputElement;
+    await fixture.whenStable();
     input.value='0';input.dispatchEvent(new Event('change'));fixture.detectChanges();
     expect(input.value).toBe('1');expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(tested.cart.draft().lines[0].quantity).toBe(1);
+    await fixture.whenStable(); expect(document.activeElement).toBe(input);
   });
 
   it('associates concrete payment validation errors before submit',()=>{
@@ -135,4 +141,68 @@ describe('SaleTicketComponent explicit cart journey', () => {
     tested.cart.moveTo(CartPhase.Completed);tested.message.set('Pago comprobado');fixture.detectChanges();await fixture.whenStable();
     expect(tested.phase()).toBe(CartPhase.Completed);
   });
+  it('preserves a terminal rejected draft, refreshes without POST and retries the same logical sale',async()=>{
+    const fixture=TestBed.createComponent(SaleTicketComponent),tested=fixture.componentInstance;
+    fixture.autoDetectChanges();await fixture.whenStable();
+    tested.selectedSku='SKU-A';tested.addSelected();tested.selectedSku='SKU-B';tested.addSelected();
+    const original=tested.cart.draft();
+    runtime.execute.and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Rejected,receipt:null,
+      resolution:SaleAdmissionResolution.TerminalLineRejection,lineFailures:[{variantId:'variant-b',code:SaleLineFailureCode.PriceMismatch}]}));
+    tested.reserve();fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    const first=runtime.execute.calls.mostRecent().args[0] as SaleCommand;
+    expect(tested.cart.draft()).toBe(original);expect(tested.phase()).toBe(CartPhase.RecoveryRequired);
+    expect(tested.canReserve()).toBeFalse();
+    const error=fixture.nativeElement.querySelector('#frozen-line-error-1') as HTMLElement;
+    expect(error.textContent).toContain(SaleLineFailureCode.PriceMismatch.label);
+    expect(fixture.nativeElement.querySelector('[aria-describedby="frozen-line-error-1"]')).not.toBeNull();
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('[data-rejection-heading]'));
+    catalog.update(value=>({...value,items:value.items.map(item=>item.variantId==='variant-b'?{...item,unitPrice:20,priceVersion:'P3'}:item)}));
+    tested.refreshDraft();fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    expect(runtime.execute.calls.count()).toBe(1);expect(tested.cart.draft().total?.decimal).toBe('30.00');
+    expect(first.body['lines']).toEqual(original.freeze());expect(tested.canReserve()).toBeTrue();
+    tested.reserve();await fixture.whenStable();
+    const second=runtime.execute.calls.mostRecent().args[0] as SaleCommand;
+    expect(second.commandId).not.toBe(first.commandId);expect(second.identity.operationId).not.toBe(first.identity.operationId);
+    expect(second.identity.saleId).toBe(first.identity.saleId);expect(second.identity.clientInstanceId).toBe(first.identity.clientInstanceId);
+    expect(second.identity.deviceId).toBe(first.identity.deviceId);
+  });
+
+  it('keeps missing catalog lines visible and blocked until the operator removes them',async()=>{
+    const fixture=TestBed.createComponent(SaleTicketComponent);component=fixture.componentInstance;
+    fixture.autoDetectChanges();await fixture.whenStable();component.selectedSku='SKU-A';
+    component.addSelected();component.selectedSku='SKU-B';component.addSelected();
+    runtime.execute.and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Rejected,receipt:null,
+      resolution:SaleAdmissionResolution.TerminalLineRejection,lineFailures:[{variantId:'variant-b',code:SaleLineFailureCode.VariantMissing}]}));
+    component.reserve();await Promise.resolve();await Promise.resolve();
+    catalog.update(value=>({...value,items:value.items.filter(item=>item.variantId!=='variant-b')}));
+    component.refreshDraft();await fixture.whenStable();
+    expect(component.cart.lineCount()).toBe(2);expect(component.lineError('variant-b')).toBe(SaleLineFailureCode.VariantMissing.label);
+    expect(component.canReserve()).toBeFalse();component.reserve();expect(runtime.execute.calls.count()).toBe(1);
+    component.removeLine('variant-b','Amoladora compacta');expect(component.canReserve()).toBeTrue();
+  });
+
+  it('does not offer review for an unverified rejection',async()=>{
+    component.addSelected();const original=component.cart.draft();
+    runtime.execute.and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Rejected,receipt:null}));
+    component.reserve();await Promise.resolve();await Promise.resolve();
+    expect(component.rejectedCommand()).toBeNull();expect(component.phase()).toBe(CartPhase.RecoveryRequired);
+    component.refreshDraft();expect(component.refreshingDraft()).toBeFalse();expect(component.cart.draft()).toBe(original);
+  });
+
+  it('restores the original rejection by operation identity and keeps stale refresh blocked',async()=>{
+    const fixture=TestBed.createComponent(SaleTicketComponent),tested=fixture.componentInstance;
+    fixture.autoDetectChanges();await fixture.whenStable();tested.selectedSku='SKU-A';tested.addSelected();
+    runtime.execute.and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Rejected,receipt:null,
+      resolution:SaleAdmissionResolution.TerminalLineRejection,lineFailures:[{variantId:'variant-a',code:SaleLineFailureCode.PriceMismatch}]}));
+    tested.reserve();await fixture.whenStable();const command=runtime.execute.calls.mostRecent().args[0] as SaleCommand;
+    tested.rejectedCommand.set(null);tested.cart.reset();
+    runtime.rejected.set([{command,rejection:{outcome:SaleAdmissionOutcome.Rejected,receipt:null,
+      lineFailures:[{variantId:'variant-a',code:SaleLineFailureCode.PriceMismatch}]}}]);
+    await fixture.whenStable();
+    expect(command.body['lines']).toEqual(tested.cart.draft().freeze());expect(tested.phase()).toBe(CartPhase.RecoveryRequired);
+    const original=tested.cart.draft();catalog.update(value=>({...value,stale:true}));
+    tested.refreshDraft();await fixture.whenStable();
+    expect(tested.cart.draft()).toBe(original);expect(tested.canReserve()).toBeFalse();expect(runtime.execute.calls.count()).toBe(1);
+  });
+
 });

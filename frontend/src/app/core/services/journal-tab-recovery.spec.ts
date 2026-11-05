@@ -34,7 +34,7 @@ describe('cross-tab durable recovery cannot reopen a resolved command',()=>{
       lateA.next(commandEnvelope(a.command.commandId));await wait(()=>api.refresh.calls.count()===1 && runtime.pending()===null);
       const snapshot=await journal.list();expect(snapshot.quarantined).toBeFalse();
       expect(snapshot.entries.find(v=>v.command.commandId===a.command.commandId)?.phase).toBe(JournalPhase.Resolved);
-      expect(snapshot.entries.filter(v=>v.phase!==JournalPhase.Resolved).map(v=>v.command.commandId)).toEqual([b.command.commandId]);
+      expect(snapshot.entries.filter(v=>!v.phase.isTerminal).map(v=>v.command.commandId)).toEqual([b.command.commandId]);
       runtime.refresh();await wait(()=>api.receipt.calls.count()===2);
       expect(runtime.hydrated()).toBeTrue();expect(runtime.neutralBlock()).toBeFalse();expect(runtime.pending()?.command.commandId).toBe(b.command.commandId);
       expect(api.receipt.calls.mostRecent().args[0].commandId).toBe(b.command.commandId);expect(api.post).not.toHaveBeenCalled();

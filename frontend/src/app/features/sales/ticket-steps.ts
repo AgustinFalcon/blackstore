@@ -3,8 +3,8 @@ import {AwaitReservationReadStep,ReservationReadState} from '../../core/infrastr
 import { SaleAction, SaleStatus } from '../../core/domain/pos-types';
 import { CapturedPayment, PaymentAttempt, PaymentLedgerSemantics, TicketIdentity, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
-import { CartDraft } from '../../core/domain/cart';
-import { SaleAdmission, SaleAdmissionOutcome, SaleCommand, SaleCommandKind, SaleReservationLineV2 } from '../../core/domain/sale-command';
+import { CartDraft, CartLine } from '../../core/domain/cart';
+import { SaleAdmission, SaleAdmissionOutcome, SaleCommand, SaleCommandKind, SaleLineFailure, SaleLineFailureCode, SaleReservationLineV2 } from '../../core/domain/sale-command';
 
 export interface TicketFlowPort {
   reserve(body: Readonly<Record<string, unknown>>): Observable<unknown>;
@@ -32,12 +32,34 @@ export class ValidateCartStep {
   execute(draft:CartDraft):readonly SaleReservationLineV2[]{return draft.freeze();}
 }
 
+/** Reconciles a copy against one refreshed catalog; absent articles remain explicit and blocked. */
+export class ReviewRejectedDraftStep {
+  execute(original:CartDraft,items:readonly {variantId:string;sku:string;name:string;priceVersion?:string|null;unitPrice?:number|null}[]):
+    {readonly draft:CartDraft;readonly failures:readonly SaleLineFailure[]} {
+    let draft=CartDraft.empty();const failures:SaleLineFailure[]=[];
+    for(const line of original.lines){
+      const matches=items.filter(item=>item.variantId===line.variantId);
+      if(matches.length>1)throw new Error('Catálogo contradictorio.');
+      const item=matches[0];
+      if(!item){draft=draft.add(line);failures.push(Object.freeze({variantId:line.variantId,code:SaleLineFailureCode.VariantMissing}));}
+      else {
+        if(item.unitPrice==null||!item.priceVersion)throw new Error('Precio o versión no comprobados.');
+        draft=draft.add(CartLine.create({variantId:item.variantId,sku:item.sku,productName:item.name,quantity:line.quantity,
+          expectedPriceVersion:item.priceVersion,originalUnitPrice:String(item.unitPrice),discountAmount:'0.00'}));
+      }
+    }
+    return Object.freeze({draft,failures:Object.freeze(failures)});
+  }
+}
+
 /** Creates one immutable V3 reservation command after checking the POS/cash context boundary. */
 export class PrepareReservationStep {
-  execute(lines:readonly SaleReservationLineV2[],context:ReservationContext,reason:string):SaleCommand {
+  execute(lines:readonly SaleReservationLineV2[],context:ReservationContext,reason:string,previous?:TicketIdentity):SaleCommand {
     if(context.terminalId!==context.cashTerminalId)throw new Error('Caja y contexto POS no coinciden.');
+    if(previous && (previous.clientInstanceId!==context.clientInstanceId || previous.deviceId!==context.deviceId))
+      throw new Error('El contexto cambió. No se puede reintentar esta venta.');
     const identity:TicketIdentity=Object.freeze({clientInstanceId:context.clientInstanceId,deviceId:context.deviceId,
-      saleId:crypto.randomUUID(),operationId:crypto.randomUUID()});
+      saleId:previous?.saleId ?? crypto.randomUUID(),operationId:crypto.randomUUID()});
     return SaleCommand.createMultilineReserve(identity,context.cashSessionId,lines,reason||null);
   }
 }

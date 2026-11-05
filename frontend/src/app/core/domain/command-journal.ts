@@ -1,5 +1,5 @@
 import { AccountingCommand } from './accounting-command';
-import { SaleAdmissionRoute, SaleCommand,SaleFingerprintVersion } from './sale-command';
+import { SaleAdmissionRoute, SaleCommand,SaleFingerprintVersion, SaleAdmission } from './sale-command';
 export class JournalFamily {
   static readonly Accounting = new JournalFamily('Accounting');
   static readonly Sale = new JournalFamily('Sale');
@@ -12,14 +12,17 @@ export class JournalPhase {
   static readonly AwaitingReceipt = new JournalPhase('AwaitingReceipt');
   static readonly ReceiptVerifiedAwaitingRefresh = new JournalPhase('ReceiptVerifiedAwaitingRefresh');
   static readonly Resolved = new JournalPhase('Resolved');
+  static readonly Rejected = new JournalPhase('Rejected');
   static readonly Quarantined = new JournalPhase('Quarantined');
   static readonly Unknown = new JournalPhase('Unknown');
   private constructor(readonly wire: string) {}
-  static fromWire(raw: unknown): JournalPhase { return [this.Prepared, this.AwaitingReceipt, this.ReceiptVerifiedAwaitingRefresh, this.Resolved, this.Quarantined].find(value => value.wire === raw) ?? this.Unknown; }
+  static fromWire(raw: unknown): JournalPhase { return [this.Prepared, this.AwaitingReceipt, this.ReceiptVerifiedAwaitingRefresh, this.Resolved, this.Rejected, this.Quarantined].find(value => value.wire === raw) ?? this.Unknown; }
+  get isTerminal(): boolean { return this === JournalPhase.Resolved || this === JournalPhase.Rejected; }
   /** Applied to the persisted phase, never the caller's stale observation. */
   nextPhase(requested:JournalPhase):JournalPhase|null {
     if(this===JournalPhase.Unknown || requested===JournalPhase.Unknown)return null;
-    if(this===JournalPhase.Resolved)return this;
+    if(this.isTerminal)return this;
+    if(requested===JournalPhase.Rejected)return null;
     if(this===JournalPhase.Quarantined)return requested===this?this:null;
     if(requested===this)return this;
     if(requested===JournalPhase.Quarantined)return requested;
@@ -38,11 +41,13 @@ export interface JournalEntry {
   readonly expectedPayloadHash?:string;
   readonly fingerprintVersion?:SaleFingerprintVersion;
   readonly admissionRoute?:SaleAdmissionRoute;
+  readonly rejection?:SaleAdmission;
 }
 export interface JournalSnapshot { readonly entries: readonly JournalEntry[]; readonly quarantined: boolean; }
 export abstract class CommandJournal {
   abstract list(): Promise<JournalSnapshot>;
   abstract prepare(entry: JournalEntry): Promise<void>;
+  abstract resolveRejected(entry: JournalEntry, admission: SaleAdmission): Promise<void>;
   abstract transition(entry: JournalEntry, phase: JournalPhase): Promise<void>;
 }
 export function sameScope(a: JournalScope, b: JournalScope): boolean {

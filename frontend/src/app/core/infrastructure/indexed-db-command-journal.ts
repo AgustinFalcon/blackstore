@@ -1,7 +1,7 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { AccountingCommand, AccountingCommandKind, ExpenseOperation } from '../domain/accounting-command';
 import { CommandJournal, JournalEntry, JournalFamily, JournalPhase, JournalSnapshot,sameScope } from '../domain/command-journal';
-import { SaleAdmissionRoute, SaleCommand, SaleCommandKind,SaleFingerprintVersion } from '../domain/sale-command';
+import { SaleAdmissionRoute, SaleCommand, SaleCommandKind,SaleFingerprintVersion, SaleAdmission, SaleAdmissionResolution, SaleAdmissionOutcome, SaleCommandFailure, SaleLineFailureCode } from '../domain/sale-command';
 import { SaleTextV2 } from '../domain/sale-text-v2';
 import { PosWireMapper } from './pos-wire-mapper';
 import { TicketMoney } from '../domain/ticket-transition';
@@ -24,6 +24,7 @@ export class JournalDecoder {
         !id(r['actorId']) || (r['cashSessionId'] !== null && !id(r['cashSessionId'])) || !PosWireMapper.uuid(r['tabId']) ||
         family === JournalFamily.Unknown || phase === JournalPhase.Unknown || phase === JournalPhase.Quarantined && !allowQuarantined ||
         !command || !PosWireMapper.uuid(command['commandId']) || !body || Array.isArray(body) || body['commandId'] !== command['commandId']) return null;
+      if(r['version']===1 && (phase===JournalPhase.Rejected || 'rejection' in r))return null;
       if(r['version']===2)return this.decodeV2(r,scope,command,body,family,phase,allowQuarantined);
       // Historical V1 remains scalar and keeps its original character budget.
       const allowed = ['commandId','clientInstanceId','deviceId','saleId','operationId','cashSessionId','terminalId','cashierId','openingCash','declaredCash','amount','paymentMethod','reason','originalPaymentId','evidenceRef','operation','expenseId','category','variantId','quantity','expectedPriceVersion','sku','productName','originalUnitPrice','discountAmount'];
@@ -65,7 +66,7 @@ export class JournalDecoder {
   private static decodeV2(r:Record<string,unknown>,scope:Record<string,unknown>,command:Record<string,unknown>,body:Record<string,unknown>,family:JournalFamily,phase:JournalPhase,allowQuarantined:boolean):JournalEntry|null {
     const exact=(value:Record<string,unknown>,keys:readonly string[])=>Object.keys(value).length===keys.length&&keys.every(key=>key in value);
     const id=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
-    const envelope=['version','scope','family','command','actorId','cashSessionId','phase','tabId','expectedPayloadHash','fingerprintVersion','admissionRoute'];
+    const envelope=['version','scope','family','command','actorId','cashSessionId','phase','tabId','expectedPayloadHash','fingerprintVersion','admissionRoute',...(phase===JournalPhase.Rejected?['rejection']:[])];
     const commandKeys=['kind','commandId','identity','cashSessionId','body'];
     const bodyKeys=['commandId','clientInstanceId','deviceId','saleId','operationId','cashSessionId','lines','reason'];
     const lineKeys=['variantId','quantity','expectedPriceVersion','sku','productName','originalUnitPrice','discountAmount'];
@@ -96,16 +97,29 @@ export class JournalDecoder {
     const frozenBody=Object.freeze({...body,reason:SaleTextV2.reason(body['reason'] as string|null),lines:frozenLines});
     const decoded=SaleCommand.fromJournal(SaleCommandKind.Reserve,command['commandId'] as string,Object.freeze(candidate) as import('../domain/ticket-transition').TicketIdentity,
       r['cashSessionId'] as number,frozenBody,route);
+    let rejection:SaleAdmission|undefined;
+    if(phase===JournalPhase.Rejected){
+      const rejected=r['rejection'] as Record<string,unknown>;
+      if(!rejected||!exact(rejected,['failure','lineFailures'])||!Array.isArray(rejected['lineFailures']))return null;
+      const failures=rejected['lineFailures'].map(raw=>{
+        if(!raw||typeof raw!=='object'||!exact(raw,['variantId','code'])||typeof raw.variantId!=='string')throw new Error('Rechazo inválido');
+        return Object.freeze({variantId:SaleTextV2.ref(raw.variantId),code:SaleLineFailureCode.fromWire(raw.code)});
+      });
+      rejection=Object.freeze({outcome:SaleAdmissionOutcome.Rejected,receipt:null,failure:SaleCommandFailure.fromWire(rejected['failure']),
+        lineFailures:Object.freeze(failures),resolution:SaleAdmissionResolution.TerminalLineRejection});
+      if(SaleAdmissionResolution.fromAdmission(decoded,rejection)!==SaleAdmissionResolution.TerminalLineRejection)return null;
+    }
     return Object.freeze({version:2,scope:Object.freeze({...scope}) as unknown as JournalEntry['scope'],family,command:decoded,actorId:r['actorId'] as number,
       cashSessionId:r['cashSessionId'] as number,phase,tabId:r['tabId'] as string,expectedPayloadHash:r['expectedPayloadHash'] as string,
-      fingerprintVersion:SaleFingerprintVersion.AdmissionV2,admissionRoute:route});
+      fingerprintVersion:SaleFingerprintVersion.AdmissionV2,admissionRoute:route,...(rejection?{rejection}: {})});
   }
   static encode(entry: JournalEntry): unknown {
-    const {admissionRoute,...withoutRoute}=entry;
+    const {admissionRoute,rejection,...withoutRoute}=entry;
     const command=entry.command instanceof SaleCommand?{kind:entry.command.kind.wire,commandId:entry.command.commandId,identity:entry.command.identity,
       cashSessionId:entry.command.cashSessionId,body:entry.command.body}:{...entry.command,kind:entry.command.kind.wire};
     const base={...withoutRoute,family:entry.family.wire,phase:entry.phase.wire,fingerprintVersion:entry.fingerprintVersion?.wire,command};
-    return entry.version===2?{...base,admissionRoute:admissionRoute?.wire}:base;
+    return entry.version===2?{...base,admissionRoute:admissionRoute?.wire,...(rejection?{rejection:{failure:rejection.failure?.wire,
+      lineFailures:rejection.lineFailures?.map(line=>({variantId:line.variantId,code:line.code.wire}))}}:{})}:base;
   }
 }
 export const JOURNAL_DATABASE = new InjectionToken<string>('Journal database', { providedIn:'root',factory:()=> 'blackstore-command-journal-v1' });
@@ -147,22 +161,40 @@ export class IndexedDbCommandJournal extends CommandJournal {
     return this.transaction(true, (store,done,fail) => {
       const request = store.getAll(); request.onsuccess = () => {
         // The read and insert share one readwrite transaction: two tabs cannot both claim.
-        const occupied = request.result.some(raw => { const saved = JournalDecoder.decode(raw); return !saved || saved.phase !== JournalPhase.Resolved; });
+        const occupied = request.result.some(raw => { const saved = JournalDecoder.decode(raw); return !saved || !saved.phase.isTerminal; });
         if (occupied || !JournalDecoder.decode(JournalDecoder.encode(entry))) { fail(new Error('Intención pendiente')); return; }
         store.add(JournalDecoder.encode(entry)); done(undefined);
       };
     });
   }
+  resolveRejected(entry: JournalEntry, admission: SaleAdmission): Promise<void> {
+    if (!(entry.command instanceof SaleCommand) || SaleAdmissionResolution.fromAdmission(entry.command, admission) !== SaleAdmissionResolution.TerminalLineRejection)
+      return Promise.reject(new Error('Rechazo terminal no comprobado'));
+    const proof:SaleAdmission=Object.freeze({...admission,lineFailures:Object.freeze(admission.lineFailures!.map(line=>Object.freeze({...line})))});
+    return this.update(entry, saved => {
+      if (saved.phase === JournalPhase.Rejected) return saved.phase;
+      if (!(saved.command instanceof SaleCommand) || saved.phase !== JournalPhase.AwaitingReceipt ||
+        SaleAdmissionResolution.fromAdmission(saved.command, proof) !== SaleAdmissionResolution.TerminalLineRejection) return null;
+      return JournalPhase.Rejected;
+    },proof);
+  }
   transition(entry: JournalEntry, phase: JournalPhase): Promise<void> {
+    return this.update(entry, saved => saved.phase.nextPhase(phase));
+  }
+  private update(entry: JournalEntry, nextPhase: (saved: JournalEntry) => JournalPhase | null, rejection?:SaleAdmission): Promise<void> {
     return this.transaction(true, (store,done,fail) => {
       const request = store.get(entry.command.commandId); request.onsuccess = () => {
         const saved = JournalDecoder.decode(request.result,true);
         if (!saved || saved.family !== entry.family || saved.actorId !== entry.actorId || !sameScope(saved.scope,entry.scope) || saved.cashSessionId!==entry.cashSessionId ||
           saved.expectedPayloadHash!==entry.expectedPayloadHash || saved.fingerprintVersion!==entry.fingerprintVersion || saved.admissionRoute!==(entry.admissionRoute??(entry.command instanceof SaleCommand?entry.command.route:undefined)) || JSON.stringify(saved.command.body) !== JSON.stringify(entry.command.body)) { fail(new Error('Evidencia cambió')); return; }
-        const next=saved.phase.nextPhase(phase);
+        const next=nextPhase(saved);
         if(!next){fail(new Error('Transición de evidencia inválida'));return;}
         // Read, policy and write share the transaction. Terminal evidence cannot be reopened by a stale tab.
-        if(next!==saved.phase)store.put(JournalDecoder.encode({ ...saved, phase:next }));
+        if(next!==saved.phase){
+          const encoded=JournalDecoder.encode({ ...saved, phase:next,...(rejection?{rejection}: {}) });
+          if(!JournalDecoder.decode(encoded,true)){fail(new Error('Resolución inválida'));return;}
+          store.put(encoded);
+        }
         done(undefined);
       };
     });

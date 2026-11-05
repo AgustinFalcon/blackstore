@@ -1,16 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, ElementRef, OnInit, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
+import { EMPTY, concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
 import { AccountingCommand, AccountingCommandKind, CommandOutcome } from '../../core/domain/accounting-command';
-import { CartLine, CartPhase } from '../../core/domain/cart';
+import { CartDraft, CartLine, CartPhase } from '../../core/domain/cart';
 import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
 import { DurableLineMetadata, DurableSaleDetail } from '../../core/domain/durable-sale';
 import { PaymentMethod, PaymentStatus, SaleAction, SaleStatus } from '../../core/domain/pos-types';
 import { ReversalReason } from '../../core/domain/reversal-reason';
-import { SaleAdmissionOutcome, SaleCommand } from '../../core/domain/sale-command';
+import { SaleAdmissionOutcome, SaleAdmissionResolution, SaleCommand, SaleLineFailure, SaleReservationLineV2 } from '../../core/domain/sale-command';
 import { PaymentAttempt, PaymentCoverage, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { CommandHttp } from '../../core/infrastructure/command-http';
 import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
@@ -23,7 +23,7 @@ import { StaffPermission } from '../../core/domain/session-types';
 import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
 import { SaleCartStore } from './sale-cart.store';
 import { AwaitReservationStep, AwaitTerminalSaleStep, CapturePaymentStep, CommitSaleStep, PrepareReservationStep,
-  RefreshCoverageStep, RefreshTicketStep, TicketFlowPort, ValidateCartStep } from './ticket-steps';
+  RefreshCoverageStep, RefreshTicketStep, ReviewRejectedDraftStep, TicketFlowPort, ValidateCartStep } from './ticket-steps';
 
 interface ActiveTicket { readonly identity: TicketIdentity; readonly cashSessionId:number; }
 interface TicketReversalReview { readonly operationId: string; readonly paymentId: number; readonly reason: ReversalReason; }
@@ -47,6 +47,7 @@ export class SaleTicketComponent implements OnInit {
   private readonly session = inject(SessionStore);
   private readonly destroyRef = inject(DestroyRef);
   private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly injector = inject(Injector);
 
   readonly paymentMethods = PaymentMethod.selectable;
   readonly busy = signal(false);
@@ -64,6 +65,11 @@ export class SaleTicketComponent implements OnInit {
   readonly releaseAction = SaleAction.Release;
   readonly reverseAction = SaleAction.Reverse;
   readonly reversalReasonGuidance = ReversalReason.guidance;
+
+  readonly rejectedCommand = signal<SaleCommand | null>(null);
+  readonly lineFailures = signal<readonly SaleLineFailure[]>([]);
+  readonly refreshingDraft = signal(false);
+  private retryIdentity: TicketIdentity | undefined;
 
   selectedSku = '';
   operationReason = '';
@@ -108,13 +114,72 @@ export class SaleTicketComponent implements OnInit {
 
   private readonly adoptDurableSale = effect(() => {
     const requested = this.requestedOperationId(), detail = this.durableSales.detail();
-    if (requested && detail?.identity.operationId === requested) untracked(()=>this.openDurable(detail));
-    if (requested && this.durableSales.notice() && !this.durableSales.busy()) {
+    if (requested && !this.rejectedCommand() && detail?.identity.operationId === requested) untracked(()=>this.openDurable(detail));
+    if (requested && !this.rejectedCommand() && this.durableSales.notice() && !this.durableSales.busy()) {
       this.cart.moveTo(CartPhase.RecoveryRequired);
       this.message.set(this.durableSales.notice());
     }
     if(requested&&!this.durableSales.busy()&&(detail?.identity.operationId===requested||this.durableSales.notice()))this.busy.set(false);
   });
+
+  private readonly recoverRejectedDraft = effect(() => {
+    const requested = this.requestedOperationId();
+    const entry = this.commands.runtime.rejected().find(entry => entry.command instanceof SaleCommand && entry.command.identity.operationId === requested);
+    if (!entry || !(entry.command instanceof SaleCommand) || !entry.rejection || this.rejectedCommand()?.identity.operationId === entry.command.identity.operationId) return;
+    untracked(() => {
+      let original = CartDraft.empty();
+      try { for (const line of entry.command.body['lines'] as readonly SaleReservationLineV2[]) original = original.add(CartLine.create(line)); }
+      catch { return; }
+      const command = entry.command as SaleCommand;
+      this.active = Object.freeze({identity:command.identity,cashSessionId:command.cashSessionId});
+      this.operationRef.set(command.identity.operationId); this.cart.draft.set(original);
+      this.rejectedCommand.set(command); this.lineFailures.set(entry.rejection!.lineFailures ?? []);
+      this.snapshot.set(null); this.busy.set(false); this.cart.moveTo(CartPhase.RecoveryRequired);
+      this.message.set('La reserva fue rechazada. Conservamos los productos y cantidades para que puedas revisarlos.');
+      this.announcement.set('Reserva rechazada. Revisá los artículos señalados.');
+      this.focusSoon('[data-rejection-heading]');
+    });
+  });
+
+  private readonly refreshRejectedDraft = effect(() => {
+    if (!this.refreshingDraft() || this.counter.loading()) return;
+    untracked(() => this.finishDraftRefresh());
+  });
+
+  lineError(variantId: string): string | null {
+    const failures = this.lineFailures().filter(failure => failure.variantId === variantId);
+    return failures.length ? failures.map(failure => failure.code.label).join(' ') : null;
+  }
+
+  refreshDraft(): void {
+    if (!this.rejectedCommand() || this.busy() || this.refreshingDraft() || this.sales.unresolved()) return;
+    this.refreshingDraft.set(true);
+    this.announcement.set('Actualizando catálogo. El borrador original se conserva.');
+    this.counter.load();
+  }
+
+  private finishDraftRefresh(): void {
+    this.refreshingDraft.set(false);
+    const command = this.rejectedCommand(), catalog = this.counter.catalog(), context = this.commands.runtime.context();
+    if (!command || !context || command.identity.clientInstanceId !== context.clientInstanceId || command.identity.deviceId !== context.deviceId ||
+        this.counter.blockReason() || !catalog || catalog.stale || !catalog.items.length) {
+      this.message.set('No pudimos comprobar el catálogo y el contexto. Conservamos el borrador original.');
+      this.announcement.set(this.message()!); return;
+    }
+    let reviewed: ReturnType<ReviewRejectedDraftStep['execute']>;
+    try { reviewed = new ReviewRejectedDraftStep().execute(this.cart.draft(),catalog.items);
+    } catch {
+      this.message.set('El catálogo actualizado contiene datos que no se pueden comprobar. Conservamos el borrador original.');
+      this.announcement.set(this.message()!); return;
+    }
+    this.retryIdentity = command.identity;
+    this.cart.draft.set(reviewed.draft);
+    this.lineFailures.set(reviewed.failures);
+    this.cart.moveTo(CartPhase.Editing);
+    this.message.set('Catálogo actualizado. Revisá los precios y el total antes de volver a reservar.');
+    this.announcement.set(this.message()!);
+    this.focusSoon('[data-cart-heading]');
+  }
 
   constructor() { this.session.changed.pipe(takeUntilDestroyed()).subscribe(() => this.clearForActorChange()); }
   ngOnInit(): void {
@@ -159,20 +224,21 @@ export class SaleTicketComponent implements OnInit {
       const current=this.cart.draft().lines.find(line=>line.variantId===variantId);
       if(current)input.value=String(current.quantity);
       input.setAttribute('aria-invalid','true');input.focus();
-      this.failDraft(this.failureMessage(error));
+      const message=this.failureMessage(error); this.message.set(message); this.announcement.set(message);
     }
   }
 
   removeLine(variantId: string, name: string): void {
     try {
       this.cart.remove(variantId);
+      this.lineFailures.update(failures=>failures.filter(failure=>failure.variantId!==variantId));
       this.announcement.set(`${name} eliminado. ${this.cart.unitCount()} unidades en el carrito.`);
       this.focusSoon('#catalog-product');
     } catch (error) { this.failDraft(this.failureMessage(error)); }
   }
 
   reserve(): void {
-    if (!TicketTransitionPolicy.beginReserve(this.busy(), this.blockReason() === null).permitsWrite || !this.isEditing()) return;
+    if (!TicketTransitionPolicy.beginReserve(this.busy(), this.blockReason() === null).permitsWrite || !this.canReserve()) return;
     let lines;
     try { lines = this.validateCart.execute(this.cart.draft()); }
     catch (error) { this.failDraft(this.failureMessage(error)); return; }
@@ -181,9 +247,10 @@ export class SaleTicketComponent implements OnInit {
     if (!context || !cashSession || cashSession.terminalId !== context.terminalId) { this.failDraft('Caja y contexto POS no coinciden.'); return; }
     this.busy.set(true);
     let command: SaleCommand;
-    try { command = this.prepareReservation.execute(lines,{...context,cashSessionId:Number(cashSession.id),cashTerminalId:cashSession.terminalId},this.operationReason); }
+    try { command = this.prepareReservation.execute(lines,{...context,cashSessionId:Number(cashSession.id),cashTerminalId:cashSession.terminalId},this.operationReason,this.retryIdentity); }
     catch (error) { this.busy.set(false); this.failDraft(this.failureMessage(error)); return; }
     const active = Object.freeze({ identity: command.identity,cashSessionId:command.cashSessionId });
+    this.rejectedCommand.set(null); this.lineFailures.set([]);
     this.active = active;
     this.operationRef.set(command.identity.operationId);
     this.requestedOperationId.set(command.identity.operationId);
@@ -194,8 +261,19 @@ export class SaleTicketComponent implements OnInit {
     this.cart.moveTo(CartPhase.AwaitingReservation);
     this.announcement.set('Reserva enviada. Esperando comprobación autoritativa.');
     this.sales.execute(command).pipe(
-      concatMap(result => result.outcome === SaleAdmissionOutcome.Accepted ? this.commandHttp.ticket(command.identity)
-        : throwError(() => new Error(result.outcome.label))),
+      concatMap(result => {
+        if (result.resolution === SaleAdmissionResolution.TerminalLineRejection) {
+          this.rejectedCommand.set(command); this.lineFailures.set(result.lineFailures ?? []);
+          this.cart.moveTo(CartPhase.RecoveryRequired);
+          this.message.set('La reserva fue rechazada. Conservamos los productos y cantidades para que puedas revisarlos.');
+          this.announcement.set('Reserva rechazada. Revisá los artículos señalados.');
+          this.focusSoon('[data-rejection-heading]');
+          return EMPTY;
+        }
+        this.rejectedCommand.set(null); this.lineFailures.set([]);
+        return result.outcome === SaleAdmissionOutcome.Accepted ? this.commandHttp.ticket(command.identity)
+          : throwError(() => new Error(result.outcome.label));
+      }),
       map(response => PosWireMapper.ticket(response, command.identity, PaymentLedgerSemantics.Net)),
       concatMap(initial => this.awaitReservation.execute(command.identity, initial)),
       takeUntil(this.session.changed), takeUntilDestroyed(this.destroyRef),
@@ -249,7 +327,7 @@ export class SaleTicketComponent implements OnInit {
 
   refresh(): void {
     const operationId=this.active?.identity.operationId??this.requestedOperationId();
-    if(!operationId||this.busy()||this.durableSales.busy())return;
+    if(!operationId||this.busy()||this.durableSales.busy()||this.rejectedCommand())return;
     this.busy.set(true);this.requestedOperationId.set(operationId);this.durableSales.open(operationId);
   }
 
@@ -276,7 +354,7 @@ export class SaleTicketComponent implements OnInit {
   }
 
   canReserve(): boolean {
-    return this.isEditing() && this.cart.lineCount() > 0 && TicketTransitionPolicy.beginReserve(this.busy(), this.blockReason() === null).permitsWrite;
+    return this.isEditing() && !this.lineFailures().length && !this.refreshingDraft() && this.cart.lineCount() > 0 && TicketTransitionPolicy.beginReserve(this.busy(), this.blockReason() === null).permitsWrite;
   }
   hasPendingBalance(): boolean { return (this.snapshot()?.pending?.cents ?? 0n) > 0n; }
   paymentValidationMessage():string|null {
@@ -294,6 +372,7 @@ export class SaleTicketComponent implements OnInit {
 
   startNewSale(): void {
     if (this.busy() || (this.active && this.phase() !== CartPhase.Completed)) return;
+    this.rejectedCommand.set(null); this.lineFailures.set([]); this.refreshingDraft.set(false); this.retryIdentity=undefined;
     this.active = null; this.snapshot.set(null); this.operationRef.set(null); this.paymentId.set(null); this.paymentHistory.set([]); this.requestedOperationId.set(null);
     this.message.set(null); this.paymentAmount = ''; this.cart.reset();
     void this.router.navigate(['/ticket']);
@@ -485,8 +564,9 @@ export class SaleTicketComponent implements OnInit {
     return error instanceof Error && !(error instanceof HttpErrorResponse) ? error.message : 'No se pudo comprobar la operación. Consultá su estado.';
   }
   private clearForActorChange(): void {
+    this.rejectedCommand.set(null); this.lineFailures.set([]); this.refreshingDraft.set(false); this.retryIdentity=undefined;
     this.active = null; this.snapshot.set(null); this.operationRef.set(null); this.paymentId.set(null); this.paymentHistory.set([]); this.requestedOperationId.set(null);
     this.message.set(null); this.busy.set(false); this.cart.reset(); this.cancelReverse(); this.cancelRelease();
   }
-  private focusSoon(selector: string): void { setTimeout(() => (this.host.nativeElement.querySelector(selector) as HTMLElement | null)?.focus()); }
+  private focusSoon(selector: string): void { afterNextRender(() => (this.host.nativeElement.querySelector(selector) as HTMLElement | null)?.focus(), {injector:this.injector}); }
 }

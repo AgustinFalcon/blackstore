@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject, of } from 'rxjs';
 import { AccountingCommand, AccountingCommandKind, CommandOutcome,ExpenseOperation } from '../domain/accounting-command';
-import {SaleCommand,SaleCommandKind,SaleAdmissionOutcome} from '../domain/sale-command';
+import {SaleCommand,SaleCommandKind,SaleAdmissionOutcome,SaleAdmissionResolution,SaleAdmission,SaleCommandFailure,SaleLineFailureCode} from '../domain/sale-command';
 import {SaleAdmissionFingerprint} from '../infrastructure/sale-admission-fingerprint';
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
 import { JournalEntry, JournalPhase } from '../domain/command-journal';
@@ -37,7 +37,8 @@ describe('CommandRuntimeStore durable admission and recovery', () => {
     };
     journal={
       list:jasmine.createSpy().and.callFake(async()=>({entries:[...entries],quarantined:corrupt})),
-      prepare:jasmine.createSpy().and.callFake(async(e:JournalEntry)=>{ if(entries.some(x=>x.phase!==JournalPhase.Resolved)) throw Error('claim'); entries.push(e); }),
+      prepare:jasmine.createSpy().and.callFake(async(e:JournalEntry)=>{ if(entries.some(x=>!x.phase.isTerminal)) throw Error('claim'); entries.push(e); }),
+      resolveRejected:jasmine.createSpy().and.callFake(async(e:JournalEntry,admission:SaleAdmission)=>{entries=entries.map(x=>x.command.commandId===e.command.commandId?{...x,phase:JournalPhase.Rejected,rejection:admission}:x);}),
       transition:jasmine.createSpy().and.callFake(async(e:JournalEntry,phase:JournalPhase)=>{entries=entries.map(x=>x.command.commandId===e.command.commandId?{...x,phase}:x);}),
     };
     TestBed.configureTestingModule({providers:[{provide:SessionStore,useValue:session},{provide:CommandHttp,useValue:api},{provide:IndexedDbCommandJournal,useValue:journal},
@@ -149,5 +150,43 @@ describe('CommandRuntimeStore durable admission and recovery', () => {
     api.post.and.returnValue(of(envelope({outcome:SaleAdmissionOutcome.Accepted.wire,failure:null,receipt:{...identity,commandId:c.commandId,kind:c.kind.wire,actorId:7,cashSessionId:2,payloadHash:'f'.repeat(64),intentId:1,outboxId:2,acceptedAt:'2026-10-08T00:00:00Z'}})));
     await store.execute(c);expect(entries[0].expectedPayloadHash).toBe(expected);expect(entries[0].phase).toBe(JournalPhase.Quarantined);
     expect(api.refresh).not.toHaveBeenCalled();expect(store.canWrite()).toBeFalse();await store.consult();expect(api.receipt).not.toHaveBeenCalled();
+  });
+
+  const reserveV3=()=>SaleCommand.createMultilineReserve({...context,saleId:'sale',operationId:'33333333-3333-3333-3333-333333333333'},2,
+    [{variantId:'a',quantity:1,sku:'SKU',productName:'Artículo',expectedPriceVersion:'P1',originalUnitPrice:'1.00',discountAmount:'0.00'}]);
+  const rejectedRaw=(failure=SaleCommandFailure.Validation,variantId='a')=>({code:failure.httpStatus,traceId:'test',data:{outcome:SaleAdmissionOutcome.Rejected.wire,receipt:null,
+    failure:failure.wire,lineFailures:[{variantId,code:SaleLineFailureCode.PriceVersionMismatch.wire}]}});
+  it('publishes terminal rejection only after its durable resolution without receipt refresh',async()=>{
+    api.references.and.returnValue(of(2));api.post.and.returnValue(of(rejectedRaw()));
+    let commit!:()=>void;journal.resolveRejected.and.callFake((e:JournalEntry)=>new Promise<void>(resolve=>{commit=()=>{entries[0]={...e,phase:JournalPhase.Rejected,rejection:{outcome:SaleAdmissionOutcome.Rejected,receipt:null,failure:SaleCommandFailure.Validation,lineFailures:[{variantId:'a',code:SaleLineFailureCode.PriceVersionMismatch}]}};resolve();};}));
+    const pending=store.execute(reserveV3());for(let i=0;i<100&&!commit;i++)await new Promise<void>(resolve=>setTimeout(resolve,0));
+    expect(store.canWrite()).toBeFalse();expect(api.refresh).not.toHaveBeenCalled();commit();
+    const result=await pending;expect('resolution' in result&&result.resolution).toBe(SaleAdmissionResolution.TerminalLineRejection);
+    expect(entries[0].phase).toBe(JournalPhase.Rejected);expect(store.canWrite()).toBeTrue();expect(store.rejected().length).toBe(1);
+    expect(journal.transition.calls.allArgs().map((args:unknown[])=>args[1])).toEqual([JournalPhase.AwaitingReceipt]);
+    store.refresh();await settle();expect(api.receipt).not.toHaveBeenCalled();expect(store.canWrite()).toBeTrue();
+    expect(store.rejected()[0].rejection?.lineFailures?.[0].code).toBe(SaleLineFailureCode.PriceVersionMismatch);
+    session.changed.next();expect(store.rejected()).toEqual([]);
+  });
+  it('keeps the claim if terminal rejection storage fails',async()=>{
+    api.references.and.returnValue(of(2));api.post.and.returnValue(of(rejectedRaw()));journal.resolveRejected.and.rejectWith(Error('quota'));
+    const result=await store.execute(reserveV3());expect(result.outcome).toBe(SaleAdmissionOutcome.Unknown);
+    expect(entries[0].phase).toBe(JournalPhase.AwaitingReceipt);expect(store.canWrite()).toBeFalse();
+  });
+  it('does not deliver rejection to a changed actor while storage completes',async()=>{
+    api.references.and.returnValue(of(2));api.post.and.returnValue(of(rejectedRaw()));
+    let commit!:()=>void;journal.resolveRejected.and.callFake(()=>new Promise<void>(resolve=>{commit=resolve;}));
+    const pending=store.execute(reserveV3());for(let i=0;i<100&&!commit;i++)await new Promise<void>(resolve=>setTimeout(resolve,0));session.staff.set({id:8});session.generation.set(2);session.changed.next();commit();
+    expect((await pending).outcome).toBe(SaleAdmissionOutcome.Unknown);expect(store.canWrite()).toBeFalse();
+  });
+  for(const failure of [SaleCommandFailure.Forbidden,SaleCommandFailure.NotVisible,SaleCommandFailure.Unavailable]){
+    it('keeps rejection fail closed for '+failure.wire,async()=>{
+      api.references.and.returnValue(of(2));api.post.and.returnValue(of(rejectedRaw(failure)));await store.execute(reserveV3());
+      expect(journal.resolveRejected).not.toHaveBeenCalled();expect(entries[0].phase).toBe(JournalPhase.AwaitingReceipt);expect(store.canWrite()).toBeFalse();
+    });
+  }
+  it('does not resolve a validation response containing a foreign variant',async()=>{
+    api.references.and.returnValue(of(2));api.post.and.returnValue(of(rejectedRaw(SaleCommandFailure.Validation,'foreign')));await store.execute(reserveV3());
+    expect(journal.resolveRejected).not.toHaveBeenCalled();expect(store.canWrite()).toBeFalse();
   });
 });
