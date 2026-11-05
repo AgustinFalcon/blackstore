@@ -10,6 +10,7 @@ import { DurableSaleState } from '../domain/durable-sale';
 import { TicketMoney } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
 import {AwaitReservationReadStep,ReservationReadState} from './await-reservation-read-step';
+import {AwaitTerminalSaleReadStep,TerminalSaleReadState} from './await-terminal-sale-read-step';
 import { ExpenseProjectionPolicy, ExpenseProjectionState } from '../domain/expense-projection';
 @Injectable({ providedIn: 'root' })
 export class CommandHttp {
@@ -60,16 +61,24 @@ export class CommandHttp {
         return detail.status===DurableSaleState.Reserved && detail.valid ? ReservationReadState.Reserved : ReservationReadState.Unknown;
       },current).execute().pipe(map(()=>true),catchError(()=>of(false)));
     }
+    if(command instanceof SaleCommand && (command.kind===SaleCommandKind.Commit || command.kind===SaleCommandKind.Release)){
+      const read=()=>this.http.get(`${API_BASE}/sales/operations/${encodeURIComponent(command.identity.operationId)}`).pipe(map(raw=>PosWireMapper.durableDetail(raw,command.identity.operationId)));
+      return new AwaitTerminalSaleReadStep(read,detail=>{
+        if(!detail || !detail.valid || !importIdentity(detail.identity,command.identity) || detail.cashSessionId!==command.cashSessionId)
+          return TerminalSaleReadState.Unknown;
+        const completed=command.kind===SaleCommandKind.Commit?detail.status===DurableSaleState.Committed:detail.status===DurableSaleState.Released;
+        if(completed)return TerminalSaleReadState.Complete;
+        const pending=command.kind===SaleCommandKind.Commit?detail.status===DurableSaleState.CommitPending:
+          detail.status===DurableSaleState.ReleasePending;
+        return pending?TerminalSaleReadState.Pending:TerminalSaleReadState.Unknown;
+      },current).execute().pipe(map(()=>true),catchError(()=>of(false)));
+    }
     if (command instanceof SaleCommand || command.kind === AccountingCommandKind.Capture || command.kind === AccountingCommandKind.Reverse) {
       const identity = command instanceof SaleCommand ? command.identity : command.body as unknown as import('../domain/ticket-transition').TicketIdentity;
       return this.http.get(`${API_BASE}/sales/operations/${encodeURIComponent(identity.operationId)}`).pipe(map(raw => {
         const detail = PosWireMapper.durableDetail(raw, identity.operationId);
         if (!detail || !detail.valid || !importIdentity(detail.identity, identity)) return false;
-        if (command instanceof SaleCommand) {
-          if (detail.cashSessionId !== command.cashSessionId) return false;
-          const state = detail.status;
-          return command.kind === SaleCommandKind.Reserve ? state === DurableSaleState.Reserved : command.kind === SaleCommandKind.Commit ? state === DurableSaleState.Committed : state === DurableSaleState.Released;
-        }
+        if (command instanceof SaleCommand) return false;
         return detail.cashSessionId === receipt?.cashSessionId && !!receipt?.paymentId && detail.payments.some(p => p.paymentId === receipt.paymentId &&
           (command.kind === AccountingCommandKind.Capture ? p.status === PaymentStatus.Captured && p.amount?.cents === TicketMoney.fromDecimal(command.body['amount'])?.cents &&
             p.method === PaymentMethod.fromWire(command.body['paymentMethod']) : p.status === PaymentStatus.Refunded && p.originalPaymentId===command.body['originalPaymentId']));

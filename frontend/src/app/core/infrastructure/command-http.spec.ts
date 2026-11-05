@@ -1,6 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController,provideHttpClientTesting } from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { CommandHttp } from './command-http';
 import { API_BASE,ACCOUNTING_API_BASE } from '../api';
 import {AllowedAction,DurableSaleState} from '../domain/durable-sale';
@@ -92,4 +92,20 @@ describe('v2 command HTTP infrastructure',()=>{
         {paymentId:43,status:PaymentStatus.Refunded.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'}]}});
     expect(await result).toBeFalse();http.expectNone(r=>r.url.includes('cash-sessions')||r.method==='POST');
   });
+  for(const [kind,pending,complete] of [[SaleCommandKind.Commit,DurableSaleState.CommitPending,DurableSaleState.Committed],
+    [SaleCommandKind.Release,DurableSaleState.ReleasePending,DurableSaleState.Released]] as const){
+    it('waits through '+pending.wire+' using GET only until '+complete.wire,fakeAsync(()=>{
+      const command=SaleCommand.create(kind,identity,2,{reason:'motivo'});
+      const body=(state:DurableSaleState)=>({code:200,errorCode:null,traceId:'test',message:null,retryable:null,data:{...identity,cashSessionId:2,cashierId:7,createdBy:7,status:state.wire,
+        totalAmount:'18',pendingAmount:'0',paymentCoverage:PaymentCoverage.Paid.wire,hasPaymentHistory:true,evidenceValid:true,blocked:false,retired:false,
+        receipt:'receipt',reservationRef:'reservation',pendingCommand:null,allowedActions:AllowedAction.values.map(action=>action.wire),lines:[{variantId:'variant',sku:'SKU',productName:'Product',quantity:1,
+          originalUnitPrice:'18',priceVersion:'P1',totalAmount:'18'}],payments:[{paymentId:41,status:PaymentStatus.Captured.wire,originalPaymentId:null,
+            method:PaymentMethod.Cash.wire,amount:'18',feeAmount:'0'}]}});
+      let result:boolean|undefined;api.refresh(command).subscribe(value=>result=value);
+      http.expectOne(`${API_BASE}/sales/operations/${identity.operationId}`).flush(body(pending));
+      tick(100);
+      http.expectOne(`${API_BASE}/sales/operations/${identity.operationId}`).flush(body(complete));
+      tick();expect(result).toBeTrue();http.expectNone(r=>r.method==='POST');
+    }));
+  }
 });
