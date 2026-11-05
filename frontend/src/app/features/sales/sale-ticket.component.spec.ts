@@ -6,6 +6,7 @@ import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { AccountingCommand } from '../../core/domain/accounting-command';
 import { CartPhase } from '../../core/domain/cart';
+import { DurableLineMetadata, DurableSaleState } from '../../core/domain/durable-sale';
 import { PaymentCoverage, PaymentLedgerSemantics, TicketMoney } from '../../core/domain/ticket-transition';
 import { SaleStatus } from '../../core/domain/pos-types';
 import { ReversalReason } from '../../core/domain/reversal-reason';
@@ -109,5 +110,15 @@ describe('SaleTicketComponent explicit cart journey', () => {
     component.paymentAmount='10.001';expect(component.paymentValidationMessage()).toContain('dos decimales');
     component.paymentAmount='11';expect(component.paymentValidationMessage()).toContain('no puede superar');
     component.paymentAmount='10';expect(component.paymentValidationMessage()).toBeNull();
+  });
+
+  it('never upgrades an invalid durable detail into a capturable lightweight snapshot',()=>{
+    const money=TicketMoney.fromDecimal('10.00')!;
+    (component as any).openDurable({identity:{clientInstanceId:'c',deviceId:'d',saleId:'s',operationId:'o'},cashSessionId:2,
+      cashierId:7,createdBy:7,status:DurableSaleState.Reserved,total:money,pending:money,coverage:PaymentCoverage.Unpaid,
+      hasPaymentHistory:false,lines:[{metadata:DurableLineMetadata.Complete,variantId:'v',sku:'SKU',productName:'Producto',quantity:1,
+        originalUnitPrice:money,priceVersion:'P1',total:money}],payments:[],allowedActions:[],valid:false,receipt:'r',reservationRef:'x',pendingCommand:null});
+    expect(component.snapshot()?.evidenceValid).toBeFalse();expect(component.phase()).toBe(CartPhase.Unknown);
+    component.paymentAmount='10';expect(component.canCapture()).toBeFalse();
   });
 });

@@ -108,14 +108,12 @@ export class SaleTicketComponent implements OnInit {
 
   private readonly adoptDurableSale = effect(() => {
     const requested = this.requestedOperationId(), detail = this.durableSales.detail();
-    if (requested && detail?.identity.operationId === requested) {
-      if(this.active?.identity.operationId!==requested)this.openDurable(detail);
-      else this.syncPaymentHistory(detail);
-    }
+    if (requested && detail?.identity.operationId === requested) this.openDurable(detail);
     if (requested && this.durableSales.notice() && !this.durableSales.busy()) {
       this.cart.moveTo(CartPhase.RecoveryRequired);
       this.message.set(this.durableSales.notice());
     }
+    if(requested&&!this.durableSales.busy()&&(detail?.identity.operationId===requested||this.durableSales.notice()))this.busy.set(false);
   });
 
   constructor() { this.session.changed.pipe(takeUntilDestroyed()).subscribe(() => this.clearForActorChange()); }
@@ -250,27 +248,9 @@ export class SaleTicketComponent implements OnInit {
   }
 
   refresh(): void {
-    const active = this.active;
-    if (!active) {
-      const requested=this.requestedOperationId();
-      if(requested&&!this.durableSales.busy())this.durableSales.open(requested);
-      return;
-    }
-    if (this.busy()) return;
-    this.busy.set(true);
-    this.refreshStep.execute(active.identity).pipe(
-      takeUntil(this.session.changed), takeUntilDestroyed(this.destroyRef),
-      finalize(() => { if (this.active === active) this.busy.set(false); }),
-    ).subscribe({
-      next: snapshot => {
-        if (this.active !== active) return;
-        this.acceptSnapshot(snapshot); this.derivePhase(snapshot);
-        this.durableSales.open(active.identity.operationId);
-        this.message.set(`Estado comprobado: ${snapshot.status.label}. ${snapshot.coverage.label}.`);
-        this.announcement.set(this.message() ?? 'Estado actualizado.');
-      },
-      error: error => this.enterRecovery(active, error),
-    });
+    const operationId=this.active?.identity.operationId??this.requestedOperationId();
+    if(!operationId||this.busy()||this.durableSales.busy())return;
+    this.busy.set(true);this.requestedOperationId.set(operationId);this.durableSales.open(operationId);
   }
 
   commit(): void { this.finish(SaleAction.Commit); }
