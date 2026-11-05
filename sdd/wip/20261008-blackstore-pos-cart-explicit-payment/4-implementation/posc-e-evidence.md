@@ -9,7 +9,13 @@ Implementación revisada: `939a1f3cdf768f040732dad782526ca3682430ea` sobre `68ad
 - Astra bug/product/UX: **APPROVE**, cero P0–P3. El primer pase detectó la falta de restart A08; el segundo verificó PID nuevo, reload multiline, hechos intactos y un solo POST.
 - Astra seguridad: **APPROVE**, cero P0–P3. Validó fencing, identidad/caja/generación, recuperación GET-only, cardinalidad, artefactos y el restart corregido.
 - Sol arquitectura/SDD: **APPROVE**, cero P0–P3. Confirmó trazabilidad POSC-001…008, tipos cerrados, honestidad de evidencia y cierre del P2 A08.
-- El commit documental que contiene estos veredictos aún debe recibir comprobación final, PR y CI hospedado; no se anticipan aquí.
+- El commit documental `24c3904b6897b70ddccaec46ff959ceea4e3a787` recibió comprobación final coordinada: Astra bug/product/UX, Astra seguridad y Sol arquitectura/SDD aprobaron el SHA exacto, cero P0–P3.
+
+## PR y CI hospedado
+
+- PR: `#56`, base exacta `68ad3df60c39b53ba9cddc76cf234b5a06e26134`, head verificado `24c3904b6897b70ddccaec46ff959ceea4e3a787`, estado mergeable/CLEAN y sin threads activos al cierre del run.
+- GitHub Actions run `42071074900`: frontend **PASS 44s**, backend **PASS 4m49s**, dct-browser **PASS 16m20s**.
+- El presente commit sólo cierra la trazabilidad SDD de esos resultados. Debe repetir CI hospedado antes del merge porque cambia el SHA del PR; no se atribuye verde hasta que GitHub lo confirme.
 
 ## Aceptación real combinada
 
@@ -53,4 +59,4 @@ La admisión CommitV2 puede aceptarse mientras la proyección durable sigue en `
 
 - La fixture usa catálogo y datos controlados; no acredita catálogo, stock, Mercado Libre, fiscal ni Correo Argentino live.
 - No acredita homologación externa ni publicación productiva.
-- POSC-E sólo se marcará terminado tras revisión exacta del SHA, CI del PR y merge a `master`.
+- POSC-E está terminado y listo para merge por implementación, pruebas, revisión y CI. El merge a `master`, la homologación externa y la publicación se registran como gates separados.
