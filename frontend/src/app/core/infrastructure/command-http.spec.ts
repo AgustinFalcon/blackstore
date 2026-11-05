@@ -25,6 +25,12 @@ describe('v2 command HTTP infrastructure',()=>{
       api.receipt(command).subscribe();const get=http.expectOne(`${ACCOUNTING_API_BASE}/sales/commands/${command.commandId}`);expect(get.request.method).toBe('GET');get.flush(null);http.expectNone(r=>r.url.startsWith('/api/v1')&&r.method==='POST');
     });
   }
+  it('dispatches AdmissionV2 only through v3 POST and v3 receipt GET',()=>{
+    const command=SaleCommand.createMultilineReserve({...identity,saleId:'opaque-sale'},2,[{variantId:'a',quantity:1,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',originalUnitPrice:'1.00',discountAmount:'0.00'}]);
+    api.post(command).subscribe();const post=http.expectOne('/api/v3/sales/reservations');expect(post.request.method).toBe('POST');expect(post.request.body.lines.length).toBe(1);post.flush(null);
+    api.receipt(command).subscribe();const get=http.expectOne(`/api/v3/sales/commands/${command.commandId}`);expect(get.request.method).toBe('GET');get.flush(null);
+    http.expectNone(r=>r.url.startsWith('/api/v2/sales')&&r.method==='POST');
+  });
   for(const [kind,path,aggregate] of [[AccountingCommandKind.Open,'/cash-sessions',undefined],[AccountingCommandKind.Close,'/cash-sessions/2/close',2],[AccountingCommandKind.Expense,'/expenses',undefined],[AccountingCommandKind.Capture,'/payments',undefined],[AccountingCommandKind.Reverse,'/payments/2/reversals',2]] as const){
     it('routes accounting '+kind.wire+' through v2',()=>{
       const command=AccountingCommand.create(kind,{...identity,amount:'10'},aggregate);api.post(command).subscribe();
@@ -80,7 +86,7 @@ describe('v2 command HTTP infrastructure',()=>{
     const command=AccountingCommand.create(AccountingCommandKind.Reverse,{...identity,originalPaymentId:41,reason:'refund',evidenceRef:'ref'},41);
     const result=firstValueFrom(api.references(command,10));
     http.expectOne(`${API_BASE}/sales/operations/${identity.operationId}`).flush({code:200,traceId:'test',data:{...identity,cashSessionId:2,cashierId:7,createdBy:7,status:DurableSaleState.PaymentCaptured.wire,totalAmount:'18',pendingAmount:'10',paymentCoverage:PaymentCoverage.Partial.wire,hasPaymentHistory:true,evidenceValid:true,blocked:false,retired:false,receipt:'receipt',reservationRef:'reservation',pendingCommand:null,allowedActions:[AllowedAction.ReversePayment.wire],
-      lines:[{sku:'SKU',productName:'Product',quantity:1,totalAmount:'18'}],payments:[
+      lines:[{variantId:'variant',sku:'SKU',productName:'Product',quantity:1,originalUnitPrice:'18',priceVersion:'P1',totalAmount:'18'}],payments:[
         {paymentId:41,status:PaymentStatus.Captured.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'},
         {paymentId:42,status:PaymentStatus.Captured.wire,method:PaymentMethod.Card.wire,amount:'8',feeAmount:'0'},
         {paymentId:43,status:PaymentStatus.Refunded.wire,method:PaymentMethod.Cash.wire,amount:'10',feeAmount:'0'}]}});

@@ -48,9 +48,12 @@ export interface DurableSaleSummary {
   readonly total: TicketMoney | null;
 }
 export interface DurableSaleLine {
+  readonly variantId:string|null;
   readonly sku: string;
   readonly productName: string;
   readonly quantity: number;
+  readonly originalUnitPrice:TicketMoney|null;
+  readonly priceVersion:string|null;
   readonly total: TicketMoney | null;
 }
 export interface DurableSalePayment {

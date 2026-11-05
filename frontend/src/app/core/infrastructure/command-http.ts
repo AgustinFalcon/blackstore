@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, of } from 'rxjs';
 import { API_BASE, ACCOUNTING_API_BASE } from '../api';
 import { AccountingCommand, AccountingCommandKind, CommandReceipt } from '../domain/accounting-command';
-import { SaleCommand, SaleCommandKind } from '../domain/sale-command';
+import { SaleAdmissionRoute, SaleCommand, SaleCommandKind } from '../domain/sale-command';
 import { PosWireMapper } from './pos-wire-mapper';
 import { PaymentStatus } from '../domain/pos-types';
 import { DurableSaleState } from '../domain/durable-sale';
@@ -17,12 +17,13 @@ export class CommandHttp {
   context(): Observable<unknown> { return this.safe(this.http.get(`${ACCOUNTING_API_BASE}/pos/context`)); }
   lifecycle(): Observable<unknown> { return this.safe(this.http.get(`${ACCOUNTING_API_BASE}/accounting/runtime`)); }
   post(command: AccountingCommand | SaleCommand): Observable<unknown> {
-    const path = command instanceof AccountingCommand ? PosWireMapper.commandPath(command) : command.kind === SaleCommandKind.Reserve ? '/sales/reservations' :
-      `/sales/${encodeURIComponent(command.identity.operationId)}/${command.kind === SaleCommandKind.Commit ? 'commit' : 'release'}`;
-    return this.safe(this.http.post(`${ACCOUNTING_API_BASE}${path}`, command.body));
+    const path = command instanceof AccountingCommand ? `${ACCOUNTING_API_BASE}${PosWireMapper.commandPath(command)}` : command.route.path(command.identity.operationId);
+    return this.safe(this.http.post(path, command.body));
   }
   receipt(command: AccountingCommand | SaleCommand): Observable<unknown> {
-    return this.safe(this.http.get(`${ACCOUNTING_API_BASE}/${command instanceof SaleCommand ? 'sales' : 'accounting'}/commands/${command.commandId}`));
+    const path=command instanceof SaleCommand&&command.route===SaleAdmissionRoute.ReserveV3?`/api/v3/sales/commands/${command.commandId}`:
+      `${ACCOUNTING_API_BASE}/${command instanceof SaleCommand?'sales':'accounting'}/commands/${command.commandId}`;
+    return this.safe(this.http.get(path));
   }
   ticket(identity: import('../domain/ticket-transition').TicketIdentity): Observable<unknown> { return this.http.get(`${API_BASE}/sales/${encodeURIComponent(identity.operationId)}`); }
   references(command: AccountingCommand | SaleCommand, terminalId: number): Observable<number | null | false> {

@@ -26,7 +26,7 @@ const detail = (status = DurableSaleState.Reserved, coverage = PaymentCoverage.P
   pendingAmount: coverage === PaymentCoverage.Paid ? '0' : coverage === PaymentCoverage.Unpaid ? '18' : '8',
   paymentCoverage: coverage.wire, hasPaymentHistory: coverage !== PaymentCoverage.Unpaid,
   evidenceValid: true, receipt: 'receipt', reservationRef: 'reservation', blocked: false, retired: false,
-  lines: [{ sku: 'SKU', productName: 'Producto persistido', quantity: 1, totalAmount: '18' }],
+  lines: [{variantId:'variant-1',sku: 'SKU', productName: 'Producto persistido', quantity: 1,originalUnitPrice:'18',priceVersion:'P1',totalAmount: '18' }],
   payments: coverage === PaymentCoverage.Unpaid ? [] : [{ paymentId: 41, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount: coverage === PaymentCoverage.Paid ? '18' : '10', feeAmount: '0' }],
   pendingCommand: null, allowedActions: AllowedAction.values.map(action => action.wire), ...overrides });
 
@@ -48,6 +48,11 @@ describe('DurableSale closed types and DTO boundary', () => {
     for (const action of AllowedAction.values) expect(AllowedAction.fromWire(action.wire)).toBe(action);
     expect(DurableSaleState.fromWire('NEW_BACKEND_STATE')).toBe(DurableSaleState.Unknown);
     expect(AllowedAction.fromWire('UNRECOGNIZED_ACTION')).toBe(AllowedAction.Unknown);
+  });
+  it('preserves V3 opaque sale identity and complete line metadata',()=>{
+    const sale=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{saleId:'opaque-sale'})),identity.operationId)!;
+    expect(sale.identity.saleId).toBe('opaque-sale');expect(sale.lines[0].variantId).toBe('variant-1');
+    expect(sale.lines[0].originalUnitPrice?.decimal).toBe('18.00');expect(sale.lines[0].priceVersion).toBe('P1');expect(sale.valid).toBeTrue();
   });
   it('invalidates malformed lines, unknown actions, mismatched identity and evidence', () => {
     for (const overrides of [{ lines: [{ quantity: 0, totalAmount: '18' }] }, { lines: [{ quantity: 1, totalAmount: null }] },

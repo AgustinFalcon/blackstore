@@ -1,5 +1,5 @@
 import { AccountingCommand } from './accounting-command';
-import { SaleCommand,SaleFingerprintVersion } from './sale-command';
+import { SaleAdmissionRoute, SaleCommand,SaleFingerprintVersion } from './sale-command';
 export class JournalFamily {
   static readonly Accounting = new JournalFamily('Accounting');
   static readonly Sale = new JournalFamily('Sale');
@@ -33,10 +33,11 @@ export class JournalPhase {
 }
 export interface JournalScope { readonly origin: string; readonly clientInstanceId: string; readonly deviceId: string; readonly terminalId: number; }
 export interface JournalEntry {
-  readonly version: 1; readonly scope: JournalScope; readonly family: JournalFamily; readonly command: AccountingCommand | SaleCommand;
+  readonly version: 1|2; readonly scope: JournalScope; readonly family: JournalFamily; readonly command: AccountingCommand | SaleCommand;
   readonly actorId: number; readonly cashSessionId: number | null; readonly phase: JournalPhase; readonly tabId: string;
   readonly expectedPayloadHash?:string;
   readonly fingerprintVersion?:SaleFingerprintVersion;
+  readonly admissionRoute?:SaleAdmissionRoute;
 }
 export interface JournalSnapshot { readonly entries: readonly JournalEntry[]; readonly quarantined: boolean; }
 export abstract class CommandJournal {

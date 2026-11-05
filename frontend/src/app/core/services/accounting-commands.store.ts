@@ -15,12 +15,12 @@ export class AccountingCommandsStore {
   constructor() { this.session.changed.subscribe(() => {++this.deliveryEpoch;this.receipt.set(null);}); }
   execute(command: AccountingCommand): Observable<CommandReceipt> {
     const current=this.deliveryGuard();
-    return defer(() => current()?from(this.runtime.execute(command)):EMPTY).pipe(map(result => 'failure' in result ? result : PosWireMapper.commandReceipt(null,command.commandId)),
+    return defer(() => current()?from(this.runtime.execute(command)):EMPTY).pipe(map(result => 'commandId' in result ? result : PosWireMapper.commandReceipt(null,command.commandId)),
       tap(receipt => {if(current())this.receipt.set(receipt);}), takeUntil(this.session.changed), shareReplay({ bufferSize:1, refCount:false }),filter(()=>current()));
   }
   consult(): Observable<CommandReceipt> {
     const current=this.deliveryGuard();
-    return defer(() => current()?from(this.runtime.consult()):EMPTY).pipe(map(result => result && 'failure' in result ? result : PosWireMapper.commandReceipt(null,'')),
+    return defer(() => current()?from(this.runtime.consult()):EMPTY).pipe(map(result => result && 'commandId' in result ? result : PosWireMapper.commandReceipt(null,'')),
       tap(receipt => {if(current())this.receipt.set(receipt);}), takeUntil(this.session.changed), shareReplay({ bufferSize:1, refCount:false }),filter(()=>current()));
   }
   private deliveryGuard():()=>boolean {

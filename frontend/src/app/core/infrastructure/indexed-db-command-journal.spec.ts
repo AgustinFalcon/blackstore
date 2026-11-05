@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { AccountingCommand,AccountingCommandKind } from '../domain/accounting-command';
 import { JournalEntry,JournalFamily,JournalPhase } from '../domain/command-journal';
 import { IndexedDbCommandJournal,JOURNAL_DATABASE,JournalDecoder } from './indexed-db-command-journal';
-import {SaleCommand,SaleCommandKind} from '../domain/sale-command';
-import {SaleAdmissionFingerprint} from './sale-admission-fingerprint';
+import {SaleAdmissionRoute,SaleCommand,SaleCommandKind,SaleFingerprintVersion} from '../domain/sale-command';
+import {SaleAdmissionFingerprint,SaleAdmissionV2Fingerprint} from './sale-admission-fingerprint';
 describe('untrusted journal decoder and transactional IndexedDB claim',()=>{
   const entry=():JournalEntry=>({version:1,scope:{origin:location.origin,clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',terminalId:10},
     family:JournalFamily.Accounting,command:AccountingCommand.create(AccountingCommandKind.Open,{terminalId:10,cashierId:7,openingCash:'0'}),actorId:7,cashSessionId:null,phase:JournalPhase.Prepared,tabId:crypto.randomUUID()});
@@ -73,5 +73,42 @@ describe('untrusted journal decoder and transactional IndexedDB claim',()=>{
     const command=SaleCommand.create(SaleCommandKind.Release,identity,2,{});
     await expectAsync(journal.prepare({...entry(),command,family:JournalFamily.Sale,cashSessionId:2,expectedPayloadHash:'f'.repeat(64),fingerprintVersion:SaleAdmissionFingerprint.version})).toBeRejected();
     expect((await journal.list()).entries).toEqual([]);
+  });
+  for(const kind of [SaleCommandKind.Reserve,SaleCommandKind.Commit,SaleCommandKind.Release])for(const phase of [JournalPhase.Prepared,JournalPhase.AwaitingReceipt,JournalPhase.ReceiptVerifiedAwaitingRefresh]){
+    it(`rehydrates historical V1 ${kind.wire} in ${phase.wire} without route rewrite`,async()=>{
+      const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'22222222-2222-2222-2222-222222222222',operationId:'33333333-3333-3333-3333-333333333333'};
+      const fields=kind===SaleCommandKind.Reserve?{cashSessionId:2,variantId:'a',quantity:1,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',originalUnitPrice:'1.00',discountAmount:'0.00'}:{};
+      const command=SaleCommand.create(kind,identity,2,fields),saved:JournalEntry={version:1,scope:{origin:location.origin,clientInstanceId:identity.clientInstanceId,deviceId:identity.deviceId,terminalId:10},
+        family:JournalFamily.Sale,command,actorId:7,cashSessionId:2,phase,tabId:crypto.randomUUID(),expectedPayloadHash:await SaleAdmissionFingerprint.hash(command,7),fingerprintVersion:SaleFingerprintVersion.AdmissionV1};
+      const raw=JournalDecoder.encode(saved) as Record<string,unknown>;expect('admissionRoute' in raw).toBeFalse();
+      const decoded=JournalDecoder.decode(raw)!;expect(decoded.command.commandId).toBe(command.commandId);expect(decoded.phase).toBe(phase);
+      expect(decoded.expectedPayloadHash).toBe(saved.expectedPayloadHash);expect(decoded.admissionRoute).toBe(command.route);
+    });
+  }
+  it('round trips a maximum multiline V2 envelope with opaque saleId and deep frozen lines',async()=>{
+    const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'opaque-sale',operationId:'33333333-3333-3333-3333-333333333333'};
+    const lines=Array.from({length:100},(_,index)=>({variantId:`v${index}`.padEnd(80,'x'),quantity:1,expectedPriceVersion:`P${index}`,
+      sku:`SKU${index}`,productName:`Artículo ${index}\u0001`.padEnd(250,'n'),originalUnitPrice:'0.01',discountAmount:'0.00'}));
+    const command=SaleCommand.createMultilineReserve(identity,2,lines,'r'.repeat(500)),codec=new SaleAdmissionV2Fingerprint();
+    const saved:JournalEntry={version:2,scope:{origin:location.origin,clientInstanceId:identity.clientInstanceId,deviceId:identity.deviceId,terminalId:10},
+      family:JournalFamily.Sale,command,actorId:7,cashSessionId:2,phase:JournalPhase.Prepared,tabId:crypto.randomUUID(),
+      expectedPayloadHash:await codec.hash(command,7),fingerprintVersion:SaleFingerprintVersion.AdmissionV2,admissionRoute:SaleAdmissionRoute.ReserveV3};
+    const encoded=JournalDecoder.encode(saved),decoded=JournalDecoder.decode(encoded)!;
+    expect(new TextEncoder().encode(JSON.stringify(encoded)).length).toBeLessThanOrEqual(524288);
+    expect(decoded.version).toBe(2);expect(decoded.admissionRoute).toBe(SaleAdmissionRoute.ReserveV3);expect(decoded.command.body).toEqual(command.body);
+    expect(Object.isFrozen(decoded.command.body['lines'])).toBeTrue();expect(Object.isFrozen((decoded.command.body['lines'] as readonly object[])[0])).toBeTrue();
+    await journal.prepare(saved);expect((await journal.list()).entries[0].command.body).toEqual(command.body);
+  });
+  it('quarantines V2 nested extras, incompatible routes and malformed Unicode without weakening V1',async()=>{
+    const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'sale',operationId:'33333333-3333-3333-3333-333333333333'};
+    const command=SaleCommand.createMultilineReserve(identity,2,[{variantId:'a',quantity:1,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',originalUnitPrice:'1.00',discountAmount:'0.00'}]);
+    const codec=new SaleAdmissionV2Fingerprint(),saved:JournalEntry={version:2,scope:{origin:location.origin,clientInstanceId:identity.clientInstanceId,deviceId:identity.deviceId,terminalId:10},
+      family:JournalFamily.Sale,command,actorId:7,cashSessionId:2,phase:JournalPhase.Prepared,tabId:crypto.randomUUID(),expectedPayloadHash:await codec.hash(command,7),
+      fingerprintVersion:SaleFingerprintVersion.AdmissionV2,admissionRoute:SaleAdmissionRoute.ReserveV3};
+    const encoded=JournalDecoder.encode(saved) as any;
+    expect(JournalDecoder.decode({...encoded,admissionRoute:SaleAdmissionRoute.ReserveV2.wire})).toBeNull();
+    expect(JournalDecoder.decode({...encoded,command:{...encoded.command,body:{...encoded.command.body,secret:'x'}}})).toBeNull();
+    const line={...encoded.command.body.lines[0],productName:'bad\ud800'};
+    expect(JournalDecoder.decode({...encoded,command:{...encoded.command,body:{...encoded.command.body,lines:[line]}}})).toBeNull();
   });
 });
