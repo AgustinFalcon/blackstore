@@ -1,11 +1,11 @@
 {
   "feature": "blackstore-pos-cart-explicit-payment",
-  "status": "posc_b_review_approved_ci_pending",
-  "base_commit": "3a6a520555d499fceda835cf573f25921c922e5f",
+  "status": "posc_t_review_pending",
+  "base_commit": "51f109f2c824bcfcf6f3016c90c41f4a8d123b09",
   "reviewed_design_parent_commit": "1fec3d46c21f9c87e09ccfc437dc452719bc6142",
   "document_origin_commit": "79c612c78160135df0e9011d5bcd93533d14d4e8",
   "stats": {"total": 5, "done": 2},
-  "gates": {"design": "APPROVED", "implementation": "APPROVED", "integration": "NOT_RUN", "homologation": "BLOCKED", "publication": "NOT_RUN"},
+  "gates": {"design": "APPROVED", "implementation": "IN_REVIEW", "integration": "POSC_B_MERGED", "homologation": "BLOCKED", "publication": "NOT_RUN"},
   "tasks": [
     {"id": "POSC-D", "title": "SDD y revisión de contrato multiline compatible", "status": "done", "depends_on": [], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-005", "POSC-006", "POSC-007", "POSC-008"]},
     {"id": "POSC-B", "title": "Backend multiline versionado y persistencia compatible", "status": "done", "depends_on": ["POSC-D"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-005", "POSC-006", "POSC-007", "POSC-008"]},

@@ -51,10 +51,25 @@ describe('v2 context lifecycle and sale admission boundary',()=>{
     for(const fingerprintVersion of [undefined,SaleFingerprintVersion.AdmissionV1.wire,'future'])
       expect(PosWireMapper.saleAdmission(envelope({outcome:'Accepted',receipt:{...receipt,fingerprintVersion},failure:null,lineFailures:[]},202),command,7,hash).outcome).toBe(SaleAdmissionOutcome.Unknown);
   });
+  it('preserves V2 reference whitespace and rejects explicit incompatible receipt versions on V1 routes',async()=>{
+    const v3Identity={...identity,deviceId:'\u00a0device\u00a0',saleId:'\u00a0sale\u00a0'};
+    const reserve=SaleCommand.createMultilineReserve(v3Identity,2,[{variantId:'a',quantity:1,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',originalUnitPrice:'1',discountAmount:'0'}]);
+    const reserveHash=await new SaleAdmissionV2Fingerprint().hash(reserve,7);
+    const reserveReceipt={...v3Identity,commandId:reserve.commandId,kind:'Reserve',actorId:7,cashSessionId:2,payloadHash:reserveHash,intentId:1,outboxId:2,
+      acceptedAt:'2026-10-08T00:00:00Z',fingerprintVersion:SaleFingerprintVersion.AdmissionV2.wire};
+    expect(PosWireMapper.saleAdmission(envelope({outcome:'Accepted',receipt:reserveReceipt,failure:null,lineFailures:[]},202),reserve,7,reserveHash).outcome).toBe(SaleAdmissionOutcome.Accepted);
+
+    const commit=SaleCommand.create(SaleCommandKind.Commit,v3Identity,2,{}),commitHash=await SaleAdmissionFingerprint.hash(commit,7);
+    const baseReceipt={...v3Identity,commandId:commit.commandId,kind:'Commit',actorId:7,cashSessionId:2,payloadHash:commitHash,intentId:3,outboxId:4,acceptedAt:'2026-10-08T00:00:00Z'};
+    expect(PosWireMapper.saleAdmission(envelope({outcome:'Accepted',receipt:baseReceipt,failure:null},202),commit,7,commitHash).outcome).toBe(SaleAdmissionOutcome.Accepted);
+    for(const fingerprintVersion of [SaleFingerprintVersion.AdmissionV2.wire,'future'])
+      expect(PosWireMapper.saleAdmission(envelope({outcome:'Accepted',receipt:{...baseReceipt,fingerprintVersion},failure:null},202),commit,7,commitHash).outcome).toBe(SaleAdmissionOutcome.Unknown);
+  });
   it('translates closed v3 line failures without echoing future codes',()=>{
     const command=SaleCommand.createMultilineReserve({...identity,saleId:'sale'},2,[{variantId:'a',quantity:1,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',originalUnitPrice:'1',discountAmount:'0'}]);
     const rejected=PosWireMapper.saleAdmission(envelope({outcome:'Rejected',receipt:null,failure:'VALIDATION',lineFailures:[{variantId:'a',code:'VariantMissing'}]},400),command,7);
     expect(rejected.failure).toBe(SaleCommandFailure.Validation);expect(rejected.lineFailures?.[0].code).toBe(SaleLineFailureCode.VariantMissing);
+    expect(PosWireMapper.saleAdmission(envelope({outcome:'Rejected',receipt:null,failure:'FORBIDDEN',lineFailures:[]},400),command,7).outcome).toBe(SaleAdmissionOutcome.Unknown);
     expect(PosWireMapper.saleAdmission(envelope({outcome:'Rejected',receipt:null,failure:'VALIDATION',lineFailures:[{variantId:'a',code:'future'}]},400),command,7).outcome).toBe(SaleAdmissionOutcome.Unknown);
   });
 });

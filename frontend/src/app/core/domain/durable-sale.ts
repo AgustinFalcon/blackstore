@@ -48,6 +48,7 @@ export interface DurableSaleSummary {
   readonly total: TicketMoney | null;
 }
 export interface DurableSaleLine {
+  readonly metadata:DurableLineMetadata;
   readonly variantId:string|null;
   readonly sku: string;
   readonly productName: string;
@@ -55,6 +56,17 @@ export interface DurableSaleLine {
   readonly originalUnitPrice:TicketMoney|null;
   readonly priceVersion:string|null;
   readonly total: TicketMoney | null;
+}
+export class DurableLineMetadata {
+  static readonly Complete=new DurableLineMetadata('Metadatos completos');
+  static readonly LegacyAbsent=new DurableLineMetadata('Histórico sin metadatos de variante');
+  static readonly Unknown=new DurableLineMetadata('Metadatos inconsistentes');
+  private constructor(readonly label:string){}
+  static fromFields(variantId:string|null,originalUnitPrice:TicketMoney|null,priceVersion:string|null):DurableLineMetadata {
+    if(variantId&&originalUnitPrice&&priceVersion)return this.Complete;
+    if(variantId===null&&originalUnitPrice===null&&priceVersion===null)return this.LegacyAbsent;
+    return this.Unknown;
+  }
 }
 export interface DurableSalePayment {
   readonly originalPaymentId: number | null;

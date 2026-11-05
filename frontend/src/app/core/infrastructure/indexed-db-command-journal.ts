@@ -20,7 +20,7 @@ export class JournalDecoder {
       const serialized=JSON.stringify(raw);
       if ((r['version']===1&&serialized.length>32768)||(r['version']===2&&new TextEncoder().encode(serialized).length>524288)||![1,2].includes(r['version'] as number))return null;
       if (!scope || typeof scope['origin'] !== 'string' || !/^https?:\/\//.test(scope['origin']) ||
-        new URL(scope['origin']).origin !== scope['origin'] || !PosWireMapper.uuid(scope['clientInstanceId']) || typeof scope['deviceId'] !== 'string' || !scope['deviceId'].trim() || scope['deviceId'] !== scope['deviceId'].trim() || scope['deviceId'].length > 80 || !id(scope['terminalId']) ||
+        new URL(scope['origin']).origin !== scope['origin'] || !PosWireMapper.uuid(scope['clientInstanceId']) || typeof scope['deviceId'] !== 'string' || !scope['deviceId'] || scope['deviceId'].length > 80 || !id(scope['terminalId']) ||
         !id(r['actorId']) || (r['cashSessionId'] !== null && !id(r['cashSessionId'])) || !PosWireMapper.uuid(r['tabId']) ||
         family === JournalFamily.Unknown || phase === JournalPhase.Unknown || phase === JournalPhase.Quarantined && !allowQuarantined ||
         !command || !PosWireMapper.uuid(command['commandId']) || !body || Array.isArray(body) || body['commandId'] !== command['commandId']) return null;
@@ -28,12 +28,14 @@ export class JournalDecoder {
       // Historical V1 remains scalar and keeps its original character budget.
       const allowed = ['commandId','clientInstanceId','deviceId','saleId','operationId','cashSessionId','terminalId','cashierId','openingCash','declaredCash','amount','paymentMethod','reason','originalPaymentId','evidenceRef','operation','expenseId','category','variantId','quantity','expectedPriceVersion','sku','productName','originalUnitPrice','discountAmount'];
       if (Object.entries(body).some(([key,value]) => !allowed.includes(key) || (value !== null && !['string','number','boolean'].includes(typeof value)))) return null;
-      const identityValid = () => PosWireMapper.uuid(body['clientInstanceId']) && typeof body['saleId']==='string' && !!body['saleId'] && body['saleId']===(body['saleId'] as string).trim() && (body['saleId'] as string).length<=80 && PosWireMapper.uuid(body['operationId']) &&
+      const identityValid = (v2=false) => PosWireMapper.uuid(body['clientInstanceId']) && typeof body['saleId']==='string' && !!body['saleId'] && (body['saleId'] as string).length<=80 &&
+        (v2?SaleTextV2.ref(body['saleId'] as string)===body['saleId']:body['saleId']===(body['saleId'] as string).trim()) && PosWireMapper.uuid(body['operationId']) &&
         body['clientInstanceId'] === scope['clientInstanceId'] && body['deviceId'] === scope['deviceId'];
       const money = (key:string,positive=false) => { const amount=TicketMoney.fromDecimal(body[key]);return !!amount && (positive ? amount.cents>0n : amount.cents>=0n); };
       const text = (key:string) => typeof body[key] === 'string' && !!(body[key] as string).trim();
       const frozen = Object.freeze({ ...body }); let decoded: AccountingCommand | SaleCommand;
       if (family === JournalFamily.Accounting) {
+        if(scope['deviceId']!==scope['deviceId'].trim())return null;
         const kind = AccountingCommandKind.fromWire(command['kind']);
         if (kind === AccountingCommandKind.Unknown || (command['aggregateId'] != null && !id(command['aggregateId']))) return null;
         if (kind === AccountingCommandKind.Open && (body['terminalId'] !== scope['terminalId'] || !id(body['cashierId']) || !money('openingCash') || r['cashSessionId'] !== null)) return null;
@@ -47,8 +49,10 @@ export class JournalDecoder {
         if(SaleFingerprintVersion.fromWire(r['fingerprintVersion'])!==SaleFingerprintVersion.AdmissionV1 || typeof r['expectedPayloadHash']!=='string' || !/^[0-9a-f]{64}$/.test(r['expectedPayloadHash']))return null;
         const kind = SaleCommandKind.fromWire(command['kind']);
         const identity = { clientInstanceId: body['clientInstanceId'], deviceId: body['deviceId'], saleId: body['saleId'], operationId: body['operationId'] };
-        if (kind === SaleCommandKind.Unknown || !id(r['cashSessionId']) || !PosWireMapper.uuid(identity.clientInstanceId) || !PosWireMapper.uuid(identity.saleId) || !PosWireMapper.uuid(identity.operationId) ||
-          typeof identity.deviceId !== 'string' || !identity.deviceId.trim() || identity.deviceId.length > 80 || !identityValid() || command['cashSessionId'] !== r['cashSessionId']) return null;
+        const terminalIdentity=kind===SaleCommandKind.Commit||kind===SaleCommandKind.Release;
+        const ref=(value:unknown)=>typeof value==='string'&&!!value&&value.length<=80&&(terminalIdentity?SaleTextV2.ref(value)===value:value.trim()===value);
+        if (kind === SaleCommandKind.Unknown || !id(r['cashSessionId']) || !PosWireMapper.uuid(identity.clientInstanceId) || !ref(identity.saleId) || !PosWireMapper.uuid(identity.operationId) ||
+          !ref(identity.deviceId) || !identityValid(terminalIdentity) || command['cashSessionId'] !== r['cashSessionId']) return null;
         if (kind === SaleCommandKind.Reserve && (body['cashSessionId'] !== r['cashSessionId'] || !text('variantId') || !text('expectedPriceVersion') || !text('sku') || !text('productName') ||
           !id(body['quantity']) || !money('originalUnitPrice',true) || !money('discountAmount'))) return null;
         decoded = SaleCommand.fromJournal(kind, command['commandId'], identity as import('../domain/ticket-transition').TicketIdentity, r['cashSessionId'], frozen);

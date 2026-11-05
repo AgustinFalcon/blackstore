@@ -30,13 +30,13 @@ export class SaleAdmissionVerification {
   private constructor(){}
 }
 export class SaleCommandFailure {
-  static readonly Validation=new SaleCommandFailure('VALIDATION'); static readonly Forbidden=new SaleCommandFailure('FORBIDDEN');
-  static readonly NotVisible=new SaleCommandFailure('NOT_VISIBLE'); static readonly PayloadMismatch=new SaleCommandFailure('PAYLOAD_MISMATCH');
-  static readonly ExistingOperationCommand=new SaleCommandFailure('EXISTING_OPERATION_COMMAND'); static readonly Closed=new SaleCommandFailure('CLOSED');
-  static readonly TransitionConflict=new SaleCommandFailure('TRANSITION_CONFLICT'); static readonly NotActivated=new SaleCommandFailure('NOT_ACTIVATED');
-  static readonly Paused=new SaleCommandFailure('PAUSED'); static readonly LegacyContractDisabled=new SaleCommandFailure('LEGACY_CONTRACT_DISABLED');
-  static readonly Unavailable=new SaleCommandFailure('UNAVAILABLE'); static readonly Unknown=new SaleCommandFailure('UNKNOWN');
-  private constructor(readonly wire:string){}
+  static readonly Validation=new SaleCommandFailure('VALIDATION',400); static readonly Forbidden=new SaleCommandFailure('FORBIDDEN',403);
+  static readonly NotVisible=new SaleCommandFailure('NOT_VISIBLE',404); static readonly PayloadMismatch=new SaleCommandFailure('PAYLOAD_MISMATCH',409);
+  static readonly ExistingOperationCommand=new SaleCommandFailure('EXISTING_OPERATION_COMMAND',409); static readonly Closed=new SaleCommandFailure('CLOSED',409);
+  static readonly TransitionConflict=new SaleCommandFailure('TRANSITION_CONFLICT',409); static readonly NotActivated=new SaleCommandFailure('NOT_ACTIVATED',409);
+  static readonly Paused=new SaleCommandFailure('PAUSED',409); static readonly LegacyContractDisabled=new SaleCommandFailure('LEGACY_CONTRACT_DISABLED',409);
+  static readonly Unavailable=new SaleCommandFailure('UNAVAILABLE',503); static readonly Unknown=new SaleCommandFailure('UNKNOWN',0);
+  private constructor(readonly wire:string,readonly httpStatus:number){}
   static fromWire(raw:unknown):SaleCommandFailure{return [this.Validation,this.Forbidden,this.NotVisible,this.PayloadMismatch,this.ExistingOperationCommand,
     this.Closed,this.TransitionConflict,this.NotActivated,this.Paused,this.LegacyContractDisabled,this.Unavailable].find(value=>value.wire===raw)??this.Unknown;}
 }

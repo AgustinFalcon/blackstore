@@ -9,7 +9,7 @@ import { TestBed } from '@angular/core/testing';
 import { AccountingCoverage, CommandFailure, CommandOutcome, ExpenseOperation } from '../domain/accounting-command';
 import { ReconciliationOutcome } from '../domain/accounting-report';
 import { ACCOUNTING_API_BASE, API_BASE } from '../api';
-import { AllowedAction, DurableSaleState,PaymentReversibility } from '../domain/durable-sale';
+import { AllowedAction, DurableLineMetadata, DurableSaleState,PaymentReversibility } from '../domain/durable-sale';
 import { PaymentMethod, PaymentStatus, StaffRole } from '../domain/pos-types';
 import { PaymentCoverage } from '../domain/ticket-transition';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
@@ -53,6 +53,15 @@ describe('DurableSale closed types and DTO boundary', () => {
     const sale=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{saleId:'opaque-sale'})),identity.operationId)!;
     expect(sale.identity.saleId).toBe('opaque-sale');expect(sale.lines[0].variantId).toBe('variant-1');
     expect(sale.lines[0].originalUnitPrice?.decimal).toBe('18.00');expect(sale.lines[0].priceVersion).toBe('P1');expect(sale.valid).toBeTrue();
+  });
+  it('keeps fully absent V1 line metadata readable but rejects partially populated metadata',()=>{
+    const legacyLine={variantId:null,sku:'SKU',productName:'Producto persistido',quantity:1,originalUnitPrice:null,priceVersion:null,totalAmount:'18'};
+    const legacy=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{lines:[legacyLine]})),identity.operationId)!;
+    expect(legacy.valid).toBeTrue();expect(legacy.lines[0].metadata).toBe(DurableLineMetadata.LegacyAbsent);
+    for(const line of [{...legacyLine,variantId:'variant-1'},{...legacyLine,originalUnitPrice:'18'},{...legacyLine,priceVersion:'P1'}]){
+      const corrupt=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{lines:[line]})),identity.operationId)!;
+      expect(corrupt.valid).toBeFalse();expect(corrupt.lines[0].metadata).toBe(DurableLineMetadata.Unknown);
+    }
   });
   it('invalidates malformed lines, unknown actions, mismatched identity and evidence', () => {
     for (const overrides of [{ lines: [{ quantity: 0, totalAmount: '18' }] }, { lines: [{ quantity: 1, totalAmount: null }] },

@@ -85,6 +85,16 @@ describe('untrusted journal decoder and transactional IndexedDB claim',()=>{
       expect(decoded.expectedPayloadHash).toBe(saved.expectedPayloadHash);expect(decoded.admissionRoute).toBe(command.route);
     });
   }
+  for(const kind of [SaleCommandKind.Commit,SaleCommandKind.Release]){
+    it(`rehydrates V1 ${kind.wire} for an opaque V3 sale reference without trimming it`,async()=>{
+      const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'\u00a0verified-device\u00a0',saleId:'\u00a0opaque-sale\u00a0',operationId:'33333333-3333-3333-3333-333333333333'};
+      const command=SaleCommand.create(kind,identity,2,{}),saved:JournalEntry={version:1,scope:{origin:location.origin,clientInstanceId:identity.clientInstanceId,deviceId:identity.deviceId,terminalId:10},
+        family:JournalFamily.Sale,command,actorId:7,cashSessionId:2,phase:JournalPhase.Prepared,tabId:crypto.randomUUID(),expectedPayloadHash:await SaleAdmissionFingerprint.hash(command,7),fingerprintVersion:SaleFingerprintVersion.AdmissionV1};
+      const decoded=JournalDecoder.decode(JournalDecoder.encode(saved))!;
+      expect(decoded).not.toBeNull();expect(decoded.command instanceof SaleCommand).toBeTrue();
+      const restored=decoded.command as SaleCommand;expect(restored.identity.saleId).toBe(identity.saleId);expect(restored.identity.deviceId).toBe(identity.deviceId);
+    });
+  }
   it('round trips a maximum multiline V2 envelope with opaque saleId and deep frozen lines',async()=>{
     const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'opaque-sale',operationId:'33333333-3333-3333-3333-333333333333'};
     const lines=Array.from({length:100},(_,index)=>({variantId:`v${index}`.padEnd(80,'x'),quantity:1,expectedPriceVersion:`P${index}`,

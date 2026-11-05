@@ -17,7 +17,7 @@ import { ReportFormula, ReportPeriod } from '../domain/pos-types';
 import { BaseResponse } from '../models/base-response';
 import { CapturedPayment, PaymentAttempt, PaymentCoverage, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, sameTicketIdentity } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
-import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary, PaymentReversibility } from '../domain/durable-sale';
+import { AllowedAction, DurableCommandKind, DurableLineMetadata, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary, PaymentReversibility } from '../domain/durable-sale';
 import { AccountingFormula, AccountingMetric, AccountingReport, AccountingReportRequest, CompletenessCause, CoveredValue, DataCompleteness, FormulaVersion, MetricCoverage, Reconciliation, ReconciliationOutcome, ReportFailure } from '../domain/accounting-report';
 
 import { AccountingCommand, AccountingCommandKind, AccountingCoverage, CommandFailure, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
@@ -110,7 +110,7 @@ export class PosWireMapper {
       if(expected === envelope['code'] && data['receipt'] === null)return { outcome, receipt: null };
       if(outcome===SaleAdmissionOutcome.Rejected&&command.route===SaleAdmissionRoute.ReserveV3&&data['receipt']===null&&[400,403,404,409,503].includes(envelope['code'] as number)){
         const failure=SaleCommandFailure.fromWire(data['failure']);
-        if(failure===SaleCommandFailure.Unknown||!Array.isArray(data['lineFailures']))return unknown;
+        if(failure===SaleCommandFailure.Unknown||failure.httpStatus!==envelope['code']||!Array.isArray(data['lineFailures']))return unknown;
         const lineFailures=[];
         for(const value of data['lineFailures']){
           const line=this.record(value),code=SaleLineFailureCode.fromWire(line?.['code']);
@@ -121,11 +121,13 @@ export class PosWireMapper {
       }
       return unknown;
     }
-    const raw = this.record(data['receipt']); const identity = this.identity(raw,command.route===SaleAdmissionRoute.ReserveV3); const kind = SaleCommandKind.fromWire(raw?.['kind']);
-    const version=command.route===SaleAdmissionRoute.ReserveV3?SaleFingerprintVersion.fromWire(raw?.['fingerprintVersion']):SaleFingerprintVersion.AdmissionV1;
+    const raw = this.record(data['receipt']); const identity = this.identity(raw,true); const kind = SaleCommandKind.fromWire(raw?.['kind']);
+    const version=command.route===SaleAdmissionRoute.ReserveV3?SaleFingerprintVersion.fromWire(raw?.['fingerprintVersion']):
+      raw?.['fingerprintVersion']===undefined?SaleFingerprintVersion.AdmissionV1:SaleFingerprintVersion.fromWire(raw?.['fingerprintVersion']);
     if (!raw || !identity || kind === SaleCommandKind.Unknown || ![200, 202].includes(envelope['code'] as number) || data['failure'] !== null ||
       !this.uuid(raw['commandId']) || !this.positiveId(raw['actorId']) || !this.positiveId(raw['cashSessionId']) || !this.positiveId(raw['intentId']) || !this.positiveId(raw['outboxId']) ||
-      version!==command.route.fingerprintVersion||!/^[0-9a-f]{64}$/.test(String(raw['payloadHash'])) || typeof raw['acceptedAt'] !== 'string' || !/(?:Z|[+-]\d{2}:\d{2})$/.test(raw['acceptedAt']) || !Number.isFinite(Date.parse(raw['acceptedAt']))) return unknown;
+      version!==command.route.fingerprintVersion||(command.route===SaleAdmissionRoute.ReserveV3&&(!Array.isArray(data['lineFailures'])||data['lineFailures'].length!==0))||
+      !/^[0-9a-f]{64}$/.test(String(raw['payloadHash'])) || typeof raw['acceptedAt'] !== 'string' || !/(?:Z|[+-]\d{2}:\d{2})$/.test(raw['acceptedAt']) || !Number.isFinite(Date.parse(raw['acceptedAt']))) return unknown;
     const receipt = Object.freeze({ ...identity, kind, commandId: raw['commandId'] as string, actorId: raw['actorId'] as number,
       cashSessionId: raw['cashSessionId'] as number, payloadHash: raw['payloadHash'] as string, intentId: raw['intentId'] as number,
       outboxId: raw['outboxId'] as number, acceptedAt: raw['acceptedAt'],fingerprintVersion:version });
@@ -412,9 +414,10 @@ export class PosWireMapper {
       (coverage === PaymentCoverage.Paid && pending!.cents === 0n && history === true));
     const lines = Array.isArray(raw['lines']) ? raw['lines'].map(value => {
       const line = PosWireMapper.record(value);
-      return Object.freeze({variantId:PosWireMapper.nonempty(line?.['variantId']),sku: PosWireMapper.nonempty(line?.['sku']) ?? '—', productName: PosWireMapper.nonempty(line?.['productName']) ?? 'Sin descripción',
-        quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0,originalUnitPrice:TicketMoney.fromDecimal(line?.['originalUnitPrice']),
-        priceVersion:PosWireMapper.nonempty(line?.['priceVersion']),total: TicketMoney.fromDecimal(line?.['totalAmount']) });
+      const variantId=PosWireMapper.nonempty(line?.['variantId']),originalUnitPrice=TicketMoney.fromDecimal(line?.['originalUnitPrice']),priceVersion=PosWireMapper.nonempty(line?.['priceVersion']);
+      return Object.freeze({variantId,sku: PosWireMapper.nonempty(line?.['sku']) ?? '—', productName: PosWireMapper.nonempty(line?.['productName']) ?? 'Sin descripción',
+        quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0,originalUnitPrice,priceVersion,
+        metadata:DurableLineMetadata.fromFields(variantId,originalUnitPrice,priceVersion),total: TicketMoney.fromDecimal(line?.['totalAmount']) });
     }) : [];
     const paymentRows = Array.isArray(raw['payments']) ? raw['payments'].map(value => {
       const payment = PosWireMapper.record(value);
@@ -434,8 +437,8 @@ export class PosWireMapper {
     const valid = summary.createdBy !== null && !!validCoverage && ledgerValid && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
       !allowedActions.includes(AllowedAction.Unknown) && Array.isArray(raw['lines']) && Array.isArray(raw['payments']) &&
       raw['lines'].every(value => { const line = PosWireMapper.record(value); return !!PosWireMapper.nonempty(line?.['sku']) && !!PosWireMapper.nonempty(line?.['productName']); }) &&
-      lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents > 0n &&
-        !!line.variantId&&!!line.priceVersion&&!!line.originalUnitPrice&&line.originalUnitPrice.cents>0n&&line.total.cents<=line.originalUnitPrice.cents*BigInt(line.quantity)) &&
+      lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents > 0n && line.metadata!==DurableLineMetadata.Unknown &&
+        (line.metadata===DurableLineMetadata.LegacyAbsent||!!line.originalUnitPrice&&line.originalUnitPrice.cents>0n&&line.total.cents<=line.originalUnitPrice.cents*BigInt(line.quantity))) &&
       !!summary.total&&lineTotal===summary.total.cents&&
       payments.every(payment => payment.paymentId > 0 && (payment.status === PaymentStatus.Captured || payment.status === PaymentStatus.Refunded) && payment.method !== PaymentMethod.Unknown &&
         !!payment.amount && payment.amount.cents > 0n && !!payment.fee && payment.fee.cents >= 0n) &&
@@ -469,8 +472,10 @@ export class PosWireMapper {
     const saleId = PosWireMapper.nonempty(raw?.['saleId']);
     const operationId = PosWireMapper.nonempty(raw?.['operationId']);
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let opaqueValid=false;
+    if(opaqueSaleId)try{opaqueValid=SaleTextV2.ref(saleId??'')===saleId&&SaleTextV2.ref(deviceId??'')===deviceId;}catch{opaqueValid=false;}
     return clientInstanceId && deviceId && saleId && operationId && uuid.test(clientInstanceId) &&
-      (opaqueSaleId ? saleId.length<=80&&saleId===saleId.trim() : uuid.test(saleId)) && uuid.test(operationId)
+      (opaqueSaleId ? opaqueValid : uuid.test(saleId)) && uuid.test(operationId)
       ? Object.freeze({ clientInstanceId, deviceId, saleId, operationId }) : null;
   }
 }
