@@ -1,5 +1,16 @@
 # Libro de caja, arqueo y reportes por período
 
+## Candidato local CLR-T09 — 2026-11-05
+
+Base `master c7ce4bd`, rama `codex/blackstore-clr-acceptance`. Los residuales
+response-loss, mismo SID cross-tab y RELEASE_PENDING pasaron 11/11 en browser
+real contra PostgreSQL 16/JAR/Angular, con teardown por recurso. La continuidad
+de versiones de precio aceptadas se obtiene desde evidencia durable y evita
+degradar la terminalidad a `UNKNOWN` tras reiniciar el fixture. Backend 294/294,
+typecheck/discovery/diff-check PASS; bugs/producto y seguridad/arquitectura
+Astra aprobaron `e3b342f` sin P0–P3. Comprobación documental final y CI
+pendientes. [Evidencia](evidence/CLR-T09-browser-residuals-local-20261105.md).
+
 ## Antecedente combinado externo — 2026-10-20
 
 Snapshot `115fad53006b55d27b021883bf49153a3de050fa` del working tree sobre

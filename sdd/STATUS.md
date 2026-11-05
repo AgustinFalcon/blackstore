@@ -1,5 +1,16 @@
 # Estado canónico del SDD — BlackStore
 
+## Candidato CLR-T09 local — 2026-11-05
+
+Base `master c7ce4bd`, rama `codex/blackstore-clr-acceptance`: backend final
+294/294 PASS y browser PostgreSQL 16/JAR/Angular 11/11 PASS en 5,6 min. Quedaron
+cubiertos response-loss sin replay, cross-tab con mismo SID y RELEASE_PENDING
+con reinicio/worker/cierre bloqueado y recuperación GET-only. La evidencia de
+precio aceptada ahora atraviesa el reinicio del fixture sin fallback inventado.
+Dos re-reviews Astra aprobaron `e3b342f` sin P0–P3. Falta comprobar el registro
+documental final y cerrar CI del PR #51; homologación,
+publicación y StoreCore live continúan bloqueados.
+
 ## Diseño POSC aprobado — 2026-10-20
 
 [Carrito de mostrador y cobro explícito](wip/20261008-blackstore-pos-cart-explicit-payment/meta.md), origen PR #45 `79c612c78160135df0e9011d5bcd93533d14d4e8`: POSC-D aprobado por revisión coordinada técnica, seguridad y producto/UX, sin P0–P3 pendientes. Secuencia D/B/T/U/E: backend multiline versionado antes de tipos/journal y UX. Preserva fingerprints/journal v1; B/T/U/E, aceptación, CI y live permanecen pendientes en este head documental. Los estados históricos siguientes conservan sus fuentes y no sustituyen gates POSC.

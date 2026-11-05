@@ -57,7 +57,7 @@ export class DctRuntime {
   private jar = '';
   readonly clientInstanceId = randomUUID();
   terminalId = 0;
-  constructor(private readonly accountingState = AccountingLifecycleState.Active, private readonly salesWorkerEnabled = true) {}
+  constructor(private readonly accountingState = AccountingLifecycleState.Active, private salesWorkerEnabled = true) {}
   async start() {
     await requireFreePort(8081); await requireFreePort(4201);
     const jars = readdirSync(resolve(this.backendRoot, 'build/libs')).filter(name => name.endsWith('.jar') && !name.endsWith('-plain.jar'));
@@ -105,9 +105,11 @@ export class DctRuntime {
       catch { return 0; }
     }).toBe(1);
   }
-  async restartBackend() {
+  async restartBackend(salesWorkerEnabled = this.salesWorkerEnabled) {
     const oldPid = this.backend.pid;
-    await this.backend.stop(); await requireFreePort(8081); await this.startBackend();
+    await this.backend.stop(); await requireFreePort(8081);
+    this.salesWorkerEnabled = salesWorkerEnabled;
+    await this.startBackend();
     expect(this.backend.pid).toBeTruthy(); expect(this.backend.pid).not.toBe(oldPid);
   }
   async stop() {

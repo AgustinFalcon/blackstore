@@ -13,6 +13,7 @@ import com.blackstore.domain.model.StoreCoreOperationState
 import com.blackstore.domain.model.StoreCoreRecoveryAction
 import com.blackstore.domain.port.out.storecore.CatalogSnapshot
 import com.blackstore.domain.port.out.storecore.ReconcileQuery
+import com.blackstore.domain.port.out.storecore.ReleaseInventoryCommand
 import com.blackstore.domain.port.out.storecore.ReserveInventoryCommand
 import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import com.blackstore.infrastructure.storecore.BlockedStoreCoreInventoryAdapter
@@ -105,6 +106,14 @@ class StoreCoreRecoveryPolicyTest {
         assertEquals(1, projection.present.size)
         assertEquals(listOf("unknown-rcpt"), projection.unknownReceipts)
         assertFalse(projection.unknownAuthorizesRepost())
+    }
+
+    @Test
+    fun coldFixtureTerminalCommandPreservesPersistedAcceptedPriceEvidence() {
+        val restarted = FixtureStoreCoreInventoryAdapter(StoreCoreEnvelopeValidator(), contract.canonicalPath, contract.contractVersion)
+        val released = restarted.release(ReleaseInventoryCommand(quadruple, "res-${quadruple.operationId}", listOf("price-demo-1")))
+        assertEquals(StoreCoreOperationState.RELEASED, released.state)
+        assertEquals(listOf("price-demo-1"), released.acceptedPriceVersions)
     }
 
     @Test
