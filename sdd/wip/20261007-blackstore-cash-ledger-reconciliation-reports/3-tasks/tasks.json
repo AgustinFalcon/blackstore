@@ -182,7 +182,7 @@
     {
       "id": "CLR-T08",
       "title": "UI tipos mapper recibos arqueo períodos y estados incompletos",
-      "status": "partial_v2_clients_journal_pending_acceptance",
+      "status": "implemented_local_acceptance_pass_ci_exact_head_review_pending",
       "pr_cut": "UI_ACCEPTANCE",
       "depends_on": [
         "CLR-T07"
@@ -321,7 +321,7 @@
     {
       "id": "CLR-T08-C",
       "title": "Clientes saga v2 lifecycle preventivo y journal durable UI",
-      "status": "implemented_pending_pg16_browser_ci_review",
+      "status": "implemented_local_pg16_browser_11_pass_ci_exact_head_review_pending",
       "pr_cut": "DURABLE_COMMAND_UI",
       "depends_on": [
         "CLR-T08-B-POS",
@@ -355,7 +355,7 @@
     {
       "id": "CLR-T09",
       "title": "Browser PG16 reinicio CI reviews exact-head y handoff",
-      "status": "partial_pr45_local_backend293_frontend242_browser8_pending_response_loss_cross_tab_release_pending_ci_exact_head_review",
+      "status": "implemented_local_backend294_dct11_pending_ci_exact_head_review",
       "pr_cut": "UI_ACCEPTANCE",
       "depends_on": [
         "CLR-T08",
@@ -390,9 +390,9 @@
   "gates": {
     "design": "PASS",
     "contract_extension_design": "T08_A_DESIGN_GO_PASS",
-    "implementation": "PARTIAL_PR45_LOCAL_BACKEND293_FRONTEND242_TYPECHECK_BUILD_PASS_CI_EXACT_HEAD_REVIEW_PENDING",
-    "integration": "PR45_LOCAL_PG16_BROWSER_8_OF_8_PASS_CASH_SALES_REPORTS_PAUSED_RESTART_DENIALS_SID_ROTATION_LEGACY_PREACTIVATION_MIXED_DAY_RESPONSE_LOSS_SAME_SID_CROSS_TAB_RELEASE_PENDING_NOT_RUN",
-    "review": "PR45_EXACT_HEAD_PENDING_NO_COMBINED_OVERLAY_APPROVAL_TRANSFER",
+    "implementation": "LOCAL_BACKEND294_DCT11_TYPECHECK_DISCOVERY_DIFF_CHECK_PASS_CI_EXACT_HEAD_REVIEW_PENDING",
+    "integration": "LOCAL_PG16_BROWSER_11_OF_11_PASS_WITH_RESPONSE_LOSS_SAME_SID_CROSS_TAB_RELEASE_PENDING_AND_TEARDOWN",
+    "review": "EXACT_HEAD_PENDING_NO_HISTORICAL_APPROVAL_TRANSFER",
     "homologation": "BLOCKED",
     "publication": "NOT_RUN",
     "pos_context": "PR45_BACKEND_FRONTEND_INTEGRATED_LOCAL_BROWSER_8_OF_8_SCOPE_ONLY_CI_EXACT_HEAD_REVIEW_PENDING",
@@ -400,16 +400,16 @@
   },
   "evidence": {
     "current_cut": {
-      "pull_request": 45,
-      "source": "evidence/CLR-T09-pr45-local-20261020.md",
-      "validation_scope": "LOCAL_PRE_COMMIT_CANDIDATE_NOT_FINAL_CORRECTION_HEAD",
-      "backend": "293_OF_293_PASS",
+      "pull_request": null,
+      "source": "evidence/CLR-T09-browser-residuals-local-20261105.md",
+      "validation_scope": "LOCAL_WORKTREE_PRE_COMMIT_REVIEWS_AND_CI_PENDING",
+      "backend": "294_OF_294_PASS",
       "frontend": "242_OF_242_PASS",
       "typecheck_build": "PASS",
-      "browser_restart": "PG16_BROWSER_8_OF_8_PASS_TEARDOWN_PASS",
-      "response_loss": "NOT_RUN",
-      "same_sid_cross_tab": "NOT_RUN",
-      "release_pending": "NOT_RUN",
+      "browser_restart": "PG16_BROWSER_11_OF_11_PASS_TEARDOWN_PASS",
+      "response_loss": "PASS_GET_ONLY_SINGLE_POST",
+      "same_sid_cross_tab": "PASS_SINGLE_SID_MONOTONIC_JOURNAL",
+      "release_pending": "PASS_WORKER_OFF_ON_RESTART_GET_ONLY_CLOSE_FENCE",
       "ci": "PENDING",
       "exact_head_reviews": "PENDING"
     },

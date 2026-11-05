@@ -23,9 +23,9 @@ class DurableSaleCommandFlowTest {
             org.mockito.Mockito.`when`(store.claimNext(Duration.ofSeconds(30))).thenReturn(first,second,null)
             org.mockito.Mockito.`when`(store.findDurable(identity.operationId)).thenReturn(StoredSale(current,1,DurableSaleState.valueOf(status.name),1))
             org.mockito.Mockito.`when`(inventory.getOperation(identity)).thenReturn(receipt(StoreCoreOperationState.RESERVED))
-            if(kind==StoreCoreOperationKind.COMMIT) org.mockito.Mockito.`when`(inventory.commit(CommitInventoryCommand(identity,"reference")))
+            if(kind==StoreCoreOperationKind.COMMIT) org.mockito.Mockito.`when`(inventory.commit(CommitInventoryCommand(identity,"reference",listOf("price-v1"))))
                 .thenReturn(receipt(StoreCoreOperationState.RESERVED,kind),receipt(StoreCoreOperationState.COMMITTED,kind))
-            else org.mockito.Mockito.`when`(inventory.release(ReleaseInventoryCommand(identity,"reference")))
+            else org.mockito.Mockito.`when`(inventory.release(ReleaseInventoryCommand(identity,"reference",listOf("price-v1"))))
                 .thenReturn(receipt(StoreCoreOperationState.RESERVED,kind),receipt(StoreCoreOperationState.RELEASED,kind))
             val flow=DurableSaleCommandFlow(store,inventory)
             assertTrue(flow.runNext())
@@ -33,11 +33,11 @@ class DurableSaleCommandFlowTest {
             org.mockito.Mockito.verify(inventory,org.mockito.Mockito.never()).getOperation(identity)
             assertTrue(flow.runNext());assertFalse(flow.runNext())
             val ordered=org.mockito.Mockito.inOrder(inventory)
-            if(kind==StoreCoreOperationKind.COMMIT) ordered.verify(inventory).commit(CommitInventoryCommand(identity,"reference"))
-            else ordered.verify(inventory).release(ReleaseInventoryCommand(identity,"reference"))
+            if(kind==StoreCoreOperationKind.COMMIT) ordered.verify(inventory).commit(CommitInventoryCommand(identity,"reference",listOf("price-v1")))
+            else ordered.verify(inventory).release(ReleaseInventoryCommand(identity,"reference",listOf("price-v1")))
             ordered.verify(inventory).getOperation(identity)
-            if(kind==StoreCoreOperationKind.COMMIT) ordered.verify(inventory).commit(CommitInventoryCommand(identity,"reference"))
-            else ordered.verify(inventory).release(ReleaseInventoryCommand(identity,"reference"))
+            if(kind==StoreCoreOperationKind.COMMIT) ordered.verify(inventory).commit(CommitInventoryCommand(identity,"reference",listOf("price-v1")))
+            else ordered.verify(inventory).release(ReleaseInventoryCommand(identity,"reference",listOf("price-v1")))
             ordered.verifyNoMoreInteractions()
         }
     }
@@ -169,9 +169,9 @@ class DurableSaleCommandFlowTest {
             org.mockito.Mockito.`when`(store.findDurable(identity.operationId)).thenReturn(StoredSale(current, 1,
                 if (kind == StoreCoreOperationKind.COMMIT) DurableSaleState.COMMIT_PENDING else DurableSaleState.RELEASE_PENDING, 1))
             org.mockito.Mockito.`when`(inventory.getOperation(identity)).thenReturn(receipt(StoreCoreOperationState.RESERVED))
-            if (kind == StoreCoreOperationKind.COMMIT) org.mockito.Mockito.`when`(inventory.commit(CommitInventoryCommand(identity, "reference")))
+            if (kind == StoreCoreOperationKind.COMMIT) org.mockito.Mockito.`when`(inventory.commit(CommitInventoryCommand(identity, "reference", listOf("price-v1"))))
                 .thenReturn(receipt(StoreCoreOperationState.COMMITTED, kind))
-            else org.mockito.Mockito.`when`(inventory.release(ReleaseInventoryCommand(identity, "reference")))
+            else org.mockito.Mockito.`when`(inventory.release(ReleaseInventoryCommand(identity, "reference", listOf("price-v1"))))
                 .thenReturn(receipt(StoreCoreOperationState.RELEASED, kind))
             DurableSaleCommandFlow(store, inventory).runNext()
             val applied = org.mockito.Mockito.mockingDetails(store).invocations.single { it.method.name == "applyClaimEvidence" }
@@ -179,8 +179,8 @@ class DurableSaleCommandFlowTest {
             assertEquals(claim.claimToken, (applied.arguments[0] as ClaimedSaleCommand).claimToken)
             assertEquals(claim.claimEpoch, (applied.arguments[0] as ClaimedSaleCommand).claimEpoch)
             org.mockito.Mockito.verify(inventory).getOperation(identity)
-            if (kind == StoreCoreOperationKind.COMMIT) org.mockito.Mockito.verify(inventory).commit(CommitInventoryCommand(identity, "reference"))
-            else org.mockito.Mockito.verify(inventory).release(ReleaseInventoryCommand(identity, "reference"))
+            if (kind == StoreCoreOperationKind.COMMIT) org.mockito.Mockito.verify(inventory).commit(CommitInventoryCommand(identity, "reference", listOf("price-v1")))
+            else org.mockito.Mockito.verify(inventory).release(ReleaseInventoryCommand(identity, "reference", listOf("price-v1")))
             org.mockito.Mockito.verifyNoMoreInteractions(inventory)
         }
     }

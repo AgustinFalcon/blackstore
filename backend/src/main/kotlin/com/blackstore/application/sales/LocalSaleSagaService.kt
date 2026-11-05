@@ -309,6 +309,7 @@ class LocalSaleSagaService(
                     CommitInventoryCommand(
                         quadruple = pending.quadruple,
                         reservationRef = pending.outbox.single { it.kind == StoreCoreOperationKind.COMMIT }.reservationRef ?: error("original command body is missing"),
+                        expectedAcceptedPriceVersions = pending.evidence?.acceptedPriceVersions ?: error("reservation price evidence is missing"),
                     ),
                 ),
                 expected = StoreCoreOperationState.COMMITTED,
@@ -334,6 +335,7 @@ class LocalSaleSagaService(
                     ReleaseInventoryCommand(
                         quadruple = pending.quadruple,
                         reservationRef = pending.outbox.single { it.kind == StoreCoreOperationKind.RELEASE }.reservationRef ?: error("original command body is missing"),
+                        expectedAcceptedPriceVersions = pending.evidence?.acceptedPriceVersions ?: error("reservation price evidence is missing"),
                     ),
                 ),
                 expected = StoreCoreOperationState.RELEASED,

@@ -32,7 +32,7 @@ class ClaimPendingCommand(private val store: DurableSaleStore, private val lease
     fun operation(id: String, kind: CommandKind) = store.claimCommand(id, kind, lease)
 }
 
-class DispatchStoredCommand(private val inventory: StoreCoreInventoryPort) {
+class DispatchStoredCommand(private val store: DurableSaleStore, private val inventory: StoreCoreInventoryPort) {
     fun execute(claim: ClaimedSaleCommand): StoreCoreOperationReceipt {
         val command = claim.command
         return when (command.kind) {
@@ -43,14 +43,18 @@ class DispatchStoredCommand(private val inventory: StoreCoreInventoryPort) {
             }
             StoreCoreOperationKind.COMMIT -> {
                 val payload = command.payload as? CanonicalCommandPayload.Terminal ?: error("incomplete commit command")
-                inventory.commit(CommitInventoryCommand(command.quadruple, payload.reservationRef))
+                inventory.commit(CommitInventoryCommand(command.quadruple, payload.reservationRef, acceptedPriceVersions(command)))
             }
             StoreCoreOperationKind.RELEASE -> {
                 val payload = command.payload as? CanonicalCommandPayload.Terminal ?: error("incomplete release command")
-                inventory.release(ReleaseInventoryCommand(command.quadruple, payload.reservationRef))
+                inventory.release(ReleaseInventoryCommand(command.quadruple, payload.reservationRef, acceptedPriceVersions(command)))
             }
         }
     }
+
+    private fun acceptedPriceVersions(command: OutboxCommand): List<String> =
+        store.findDurable(command.quadruple.operationId)?.saga?.evidence?.acceptedPriceVersions
+            ?.takeIf { it.isNotEmpty() } ?: error("reservation price evidence missing")
 }
 
 class ResolveUncertainDelivery(private val inventory: StoreCoreInventoryPort, private val policy: DurableDeliveryPolicy) {
@@ -91,7 +95,7 @@ class DurableSaleCommandFlow(private val store: DurableSaleStore, inventory: Sto
     private val claim = ClaimPendingCommand(store, lease)
     private val policy = DurableDeliveryPolicy()
     private val resolve = ResolveUncertainDelivery(inventory, policy)
-    private val dispatch = DispatchStoredCommand(inventory)
+    private val dispatch = DispatchStoredCommand(store, inventory)
     private val apply = ApplyRemoteEvidence(store)
     init { require(lease.seconds in 1..300 && backoff.seconds in 1..3600 && maxAttempts in 1..100) }
     fun runNext(): Boolean { val pending = claim.next() ?: return false; execute(pending); return true }

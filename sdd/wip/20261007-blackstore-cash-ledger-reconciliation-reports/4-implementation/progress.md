@@ -1,5 +1,14 @@
 # Progreso inicial
 
+## 2026-11-05 — residuales CLR-T09 locales
+
+Los tres residuales browser ya están implementados y ejecutados: matriz final
+11/11 PASS con PG16/JAR/Angular y teardown total; backend final 294/294,
+typecheck DCT, discovery 11/5 y diff-check PASS. Se corrigió la continuidad de
+`acceptedPriceVersions` del comando terminal después de reiniciar el fixture y
+se agregó su prueba focal. Pendientes: commit, dos reviews
+Astra exact-head, CI hospedado y PR. No se habilita integración live.
+
 ## 2026-10-20 — corte PR #45 en validación
 
 Se separaron del snapshot `115fad53006b55d27b021883bf49153a3de050fa`

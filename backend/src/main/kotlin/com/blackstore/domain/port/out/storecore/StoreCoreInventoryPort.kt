@@ -34,9 +34,11 @@ data class ReserveLineCommand(
 data class CommitInventoryCommand(
     val quadruple: OperationQuadruple,
     val reservationRef: String,
+    val expectedAcceptedPriceVersions: List<String>,
 )
 
 data class ReleaseInventoryCommand(
     val quadruple: OperationQuadruple,
     val reservationRef: String,
+    val expectedAcceptedPriceVersions: List<String>,
 )

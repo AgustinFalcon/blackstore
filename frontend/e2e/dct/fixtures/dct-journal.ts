@@ -1,5 +1,7 @@
 import { Page } from '@playwright/test';
 import { JournalPhase, JournalFamily } from '../../../src/app/core/domain/command-journal';
+import { AccountingCommandKind } from '../../../src/app/core/domain/accounting-command';
+import { SaleCommandKind } from '../../../src/app/core/domain/sale-command';
 
 /** Read real browser storage; closed vocabulary translation at this storage boundary. */
 export async function journal(page: Page) {
@@ -17,8 +19,11 @@ export async function journal(page: Page) {
     };
   }));
   return rows.map(raw => {
-    const row = raw as { phase: unknown; family: unknown; actorId: number;
-      scope: { terminalId: number; clientInstanceId: string }; command: { commandId: string } };
-    return { ...row, phase: JournalPhase.fromWire(row.phase), family: JournalFamily.fromWire(row.family) };
+    const row = raw as { phase: unknown; family: unknown; actorId: number; tabId: string;
+      scope: { terminalId: number; clientInstanceId: string; deviceId: string; origin: string };
+      command: { commandId: string; kind: unknown; body: Record<string, unknown> } };
+    const family = JournalFamily.fromWire(row.family);
+    return { ...row, phase: JournalPhase.fromWire(row.phase), family,
+      command: { ...row.command, kind: family === JournalFamily.Sale ? SaleCommandKind.fromWire(row.command.kind) : AccountingCommandKind.fromWire(row.command.kind) } };
   });
 }

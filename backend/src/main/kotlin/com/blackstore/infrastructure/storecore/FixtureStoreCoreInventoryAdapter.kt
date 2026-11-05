@@ -80,13 +80,13 @@ class FixtureStoreCoreInventoryAdapter(
     override fun commit(command: CommitInventoryCommand): StoreCoreOperationReceipt {
         rejectRetired(command.quadruple.operationId)
         commitAttempts += command.quadruple.operationId
-        return accept(command.quadruple, StoreCoreOperationKind.COMMIT, StoreCoreOperationState.COMMITTED)
+        return accept(command.quadruple, StoreCoreOperationKind.COMMIT, StoreCoreOperationState.COMMITTED, command.expectedAcceptedPriceVersions)
     }
 
     override fun release(command: ReleaseInventoryCommand): StoreCoreOperationReceipt {
         rejectRetired(command.quadruple.operationId)
         releaseAttempts += command.quadruple.operationId
-        return accept(command.quadruple, StoreCoreOperationKind.RELEASE, StoreCoreOperationState.RELEASED)
+        return accept(command.quadruple, StoreCoreOperationKind.RELEASE, StoreCoreOperationState.RELEASED, command.expectedAcceptedPriceVersions)
     }
 
     override fun getOperation(quadruple: OperationQuadruple): StoreCoreOperationReceipt? = receipts[quadruple.operationId]
@@ -125,7 +125,9 @@ class FixtureStoreCoreInventoryAdapter(
         quadruple: OperationQuadruple,
         kind: StoreCoreOperationKind,
         state: StoreCoreOperationState,
+        expectedAcceptedPriceVersions: List<String>,
     ): StoreCoreOperationReceipt {
+        require(expectedAcceptedPriceVersions.isNotEmpty()) { "terminal command requires accepted price evidence" }
         val key = "${kind.name}:${quadruple.operationId}"
         receipts[key]?.let { return it }
         val validated =
@@ -137,7 +139,7 @@ class FixtureStoreCoreInventoryAdapter(
                             quadruple,
                             kind,
                             state,
-                            receipts[quadruple.operationId]?.acceptedPriceVersions ?: listOf("price-v1"),
+                            receipts[quadruple.operationId]?.acceptedPriceVersions ?: expectedAcceptedPriceVersions,
                         ),
                     errorCode = null,
                     retryable = null,
