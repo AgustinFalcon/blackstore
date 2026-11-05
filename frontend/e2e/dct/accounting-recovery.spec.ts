@@ -6,7 +6,7 @@ import { CashSessionPage } from './pages/cash-session-page';
 import { StaffSessionPage } from './pages/staff-session-page';
 import { AccountingCommandKind, CommandFailure, CommandOutcome } from '../../src/app/core/domain/accounting-command';
 import { JournalFamily, JournalPhase } from '../../src/app/core/domain/command-journal';
-import { CashMutationOutcome, CashSessionStatus, StaffRole } from '../../src/app/core/domain/pos-types';
+import { CashMutationOutcome, CashSessionStatus, PaymentMethod, SaleStatus, StaffRole } from '../../src/app/core/domain/pos-types';
 import { DurableCommandKind, DurableSaleState } from '../../src/app/core/domain/durable-sale';
 import { SaleCommandKind } from '../../src/app/core/domain/sale-command';
 import { PaymentCoverage } from '../../src/app/core/domain/ticket-transition';
@@ -148,21 +148,29 @@ test('RELEASE_PENDING: lost response survives reload and stopped worker, blocks 
   await cash.visit(runtime.terminalId);
   const cashId = await cash.open('0');
   await page.goto('/ticket');
-  await expect.poll(async () => Number(await page.getByLabel('Precio', { exact: true }).inputValue())).toBeGreaterThan(100);
-  await page.getByLabel('Descuento', { exact: true }).fill('0');
-  await page.getByLabel('Importe efectivo', { exact: true }).fill('1');
-  const reserveRequest = page.waitForRequest(request => request.method() === 'POST' && request.url().endsWith('/api/v2/sales/reservations'));
-  await page.getByRole('button', { name: 'Reservar y cobrar', exact: true }).click();
-  const reservation = (await reserveRequest).postDataJSON();
+  await expect(page.getByLabel('Producto', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Agregar al carrito', exact: true }).click();
+  const reserveRequest = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/v3/sales/reservations'));
+  await page.getByRole('button', { name: 'Reservar productos', exact: true }).click();
+  const reserveResponse = await reserveRequest;
+  expect(reserveResponse.status()).toBe(202);
+  const reservation = reserveResponse.request().postDataJSON();
   const operationId = String(reservation['operationId']);
-  await expect(page.getByText(new RegExp(PaymentCoverage.Partial.label), { exact: false })).toBeVisible();
+  await page.getByLabel('Medio de pago', { exact: true }).selectOption({ label: PaymentMethod.Cash.label });
+  await expect.poll(async () => Number(await page.getByLabel('Importe', { exact: true }).inputValue())).toBeGreaterThan(100);
+  await page.getByLabel('Importe', { exact: true }).fill('1');
+  const captureResponse = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/v2/payments'));
+  await page.getByRole('button', { name: 'Registrar cobro', exact: true }).click();
+  expect((await captureResponse).status()).toBe(200);
+  await expect(page.getByText('Pago registrado.', { exact: false })).toBeVisible();
   await expect.poll(async () => (await journal(page)).every(entry => entry.phase === JournalPhase.Resolved)).toBe(true);
   await page.goto('/ventas');
-  await page.locator('article').filter({ hasText: operationId }).getByRole('button', { name: 'Reabrir', exact: true }).click();
-  await page.getByLabel('Motivo de operación', { exact: true }).fill('reversa antes de liberar');
-  await page.getByRole('button', { name: /^Reversar pago \d+$/ }).click();
+  await page.locator('article').filter({ hasText: operationId }).getByRole('link', { name: 'Continuar en punto de venta', exact: true }).click();
+  await page.getByLabel('Motivo de reversa', { exact: true }).fill('reversa antes de liberar');
+  await page.getByRole('button', { name: 'Reversar último pago', exact: true }).click();
   await page.getByRole('dialog', { name: 'Confirmar reversa' }).getByRole('button', { name: 'Confirmar reversa', exact: true }).click();
-  await expect(page.getByText(new RegExp(PaymentCoverage.Unpaid.label), { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Consultar operación', exact: true }).click();
+  await expect(page.locator('[data-operation-notice]')).toContainText(PaymentCoverage.Unpaid.label);
   await expect.poll(async () => (await journal(page)).every(entry => entry.phase === JournalPhase.Resolved)).toBe(true);
   // Stop the owned JAR and restart with the production worker switch disabled.
   // The database remains intact; no projection or delivery row is edited.
@@ -180,7 +188,7 @@ test('RELEASE_PENDING: lost response survives reload and stopped worker, blocks 
     intents: await runtime.database.query('SELECT * FROM sale_intents WHERE operation_id=$1', [operationId]),
   });
   try {
-    await page.getByLabel('Motivo de operación', { exact: true }).fill('liberar con worker detenido');
+    await page.getByLabel('Motivo operativo', { exact: false }).fill('liberar con worker detenido');
     await page.getByRole('button', { name: 'Liberar reserva', exact: true }).click();
     await page.getByRole('dialog', { name: 'Liberar reserva' }).getByRole('button', { name: 'Liberar reserva', exact: true }).click();
     const body = await loss.admitted;
@@ -208,8 +216,7 @@ test('RELEASE_PENDING: lost response survives reload and stopped worker, blocks 
     await page.reload();
     expect((await read).status()).toBe(200);
     await expect.poll(async () => (await journal(page)).find(entry => entry.command.commandId === commandId)?.phase).toBe(JournalPhase.ReceiptVerifiedAwaitingRefresh);
-    await page.locator('article').filter({ hasText: operationId }).getByRole('button', { name: 'Reabrir', exact: true }).click();
-    await expect(page.getByRole('heading', { name: DurableSaleState.ReleasePending.label, exact: true })).toBeVisible();
+    await expect(page.locator('[data-operation-notice]')).toContainText(`Venta reabierta y comprobada: ${SaleStatus.ReleasePending.label}.`);
     await expect(page.getByRole('button', { name: 'Liberar reserva', exact: true })).toHaveCount(0);
     await cash.visit(runtime.terminalId);
     await page.getByLabel('Declarado', { exact: true }).fill('0');
@@ -250,8 +257,8 @@ test('RELEASE_PENDING: lost response survives reload and stopped worker, blocks 
     expect(await runtime.database.query('SELECT id FROM outbox_delivery_attempts WHERE command_id=$1', [release.outbox_id])).toHaveLength(1);
     expect(await runtime.database.query('SELECT inbox_id FROM storecore_inbox_applications WHERE command_id=$1', [release.outbox_id])).toHaveLength(1);
     await page.goto('/ventas');
-    await page.locator('article').filter({ hasText: operationId }).getByRole('button', { name: 'Reabrir', exact: true }).click();
-    await expect(page.getByRole('heading', { name: DurableSaleState.Released.label, exact: true })).toBeVisible();
+    await page.locator('article').filter({ hasText: operationId }).getByRole('link', { name: 'Continuar en punto de venta', exact: true }).click();
+    await expect(page.locator('[data-operation-notice]')).toContainText(`Venta reabierta y comprobada: ${SaleStatus.Released.label}.`);
     await expect(page.getByRole('button', { name: 'Liberar reserva', exact: true })).toHaveCount(0);
     await cash.visit(runtime.terminalId);
     await page.getByLabel('Declarado', { exact: true }).fill('0');

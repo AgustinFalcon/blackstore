@@ -10,14 +10,15 @@ import { ConfirmationPhase } from '../core/domain/confirmation-phase';
       <p>{{ description() }}</p>
       <p>{{ detail() }}</p>
       <div class="actions">
-        <button type="button" class="primary" autofocus (click)="confirmed.emit()">{{ confirmLabel() }}</button>
-        <button type="button" class="ghost" (click)="cancelled.emit()">{{ cancelLabel() }}</button>
+        <button type="button" class="primary" (click)="confirmed.emit()">{{ confirmLabel() }}</button>
+        <button type="button" class="ghost" autofocus (click)="cancelled.emit()">{{ cancelLabel() }}</button>
       </div>
     </dialog>
   `,
   styles: [`
     dialog {
       width: min(32rem, calc(100vw - 2rem));
+      box-sizing: border-box;
       border: 1px solid var(--bs-warning);
       border-radius: 12px;
       padding: 1.25rem;

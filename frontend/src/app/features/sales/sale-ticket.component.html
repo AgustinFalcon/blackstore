@@ -1,0 +1,168 @@
+<section class="page pos" [attr.aria-busy]="busy()">
+  <header class="pos-header">
+    <div>
+      <p class="eyebrow">Punto de venta</p>
+      <h2>Nueva venta</h2>
+      <p class="lede">Armá el carrito, reservá el stock y registrá cada cobro de forma explícita.</p>
+    </div>
+    <div class="counter-context" aria-label="Contexto de caja">
+      <span class="context-label">Caja activa</span>
+      <strong>{{ counter.openSession()?.id ?? 'Sin abrir' }}</strong>
+      <span>{{ phase().label }}</span>
+    </div>
+  </header>
+
+  <ol class="progress" aria-label="Progreso de la venta">
+    @for (step of cartPhases; track step.wire; let index = $index) {
+      <li [class.active]="phaseReached(step)" [attr.aria-current]="phase() === step ? 'step' : null">
+        <span>{{ index + 1 }}</span><b>{{ step.label }}</b>
+      </li>
+    }
+  </ol>
+
+  <p class="sr-only" aria-live="polite">{{ announcement() }}</p>
+  @if (blockReason(); as reason) { <p class="banner warn" role="status">{{ reason }}</p> }
+  @if (message()) { <p class="operation-notice" data-operation-notice role="status" tabindex="-1">{{ message() }}</p> }
+
+  @if (isEditing()) {
+    <div class="workspace">
+      <section class="card catalog-panel" aria-labelledby="catalog-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">1 · Catálogo</p><h3 id="catalog-title">Agregar productos</h3></div>
+          <span class="status-dot">Stock a confirmar</span>
+        </div>
+        @if (counter.loading()) {
+          <div class="empty-state" role="status"><span class="loader"></span><b>Cargando catálogo…</b><p>Estamos comprobando precios y versiones autorizadas.</p></div>
+        } @else if ((counter.catalog()?.items?.length ?? 0) === 0) {
+          <div class="empty-state"><b>No hay productos disponibles</b><p>Actualizá el catálogo antes de iniciar una venta.</p></div>
+        } @else {
+          <form class="add-product" (ngSubmit)="addSelected()">
+            <label for="catalog-product">Producto</label>
+            <select id="catalog-product" name="catalogProduct" [(ngModel)]="selectedSku">
+              @for (item of counter.catalog()?.items ?? []; track item.variantId) {
+                <option [value]="item.sku">{{ item.name }} · {{ item.sku }}</option>
+              }
+            </select>
+            @if (selectedItem(); as item) {
+              <article class="product-preview">
+                <div class="product-icon" aria-hidden="true">{{ item.name.slice(0, 1) }}</div>
+                <div><b>{{ item.name }}</b><span class="sku">{{ item.sku }}</span></div>
+                <strong class="money">{{ formatMoney(item.unitPrice) }}</strong>
+              </article>
+            }
+            <button type="submit" class="primary wide" [disabled]="!selectedItem() || selectedItem()?.unitPrice == null">Agregar al carrito</button>
+          </form>
+        }
+        <p class="catalog-note">El precio proviene del catálogo autorizado. La disponibilidad final se valida al reservar.</p>
+      </section>
+
+      <section class="card cart-panel" aria-labelledby="cart-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">2 · Carrito</p><h3 id="cart-title" data-cart-heading tabindex="-1">Resumen de venta</h3></div>
+          <span class="item-count">{{ cart.unitCount() }} unidades</span>
+        </div>
+        @if (cart.lineCount() === 0) {
+          <div class="empty-state cart-empty"><div class="cart-glyph" aria-hidden="true">+</div><b>El carrito está vacío</b><p>Elegí un producto del catálogo para comenzar.</p></div>
+        } @else {
+          <div class="cart-lines">
+            @for (line of cart.draft().lines; track line.variantId) {
+              <article class="cart-line">
+                <div class="line-product"><b>{{ line.productName }}</b><span class="sku">{{ line.sku }}</span><span>{{ formatMoney(line.originalUnitPrice.decimal) }} c/u</span></div>
+                <label class="quantity">Cantidad
+                  <input type="number" min="1" max="2147483647" [value]="line.quantity"
+                    (change)="changeQuantity(line.variantId, $any($event.target))" [attr.aria-label]="'Cantidad de ' + line.productName" />
+                </label>
+                <strong class="money subtotal">{{ formatMoney(line.subtotal.decimal) }}</strong>
+                <button type="button" class="icon-button" (click)="removeLine(line.variantId, line.productName)" [attr.aria-label]="'Quitar ' + line.productName">Quitar</button>
+              </article>
+            }
+          </div>
+          <div class="cart-total"><span><b>Total estimado</b><small>{{ cart.lineCount() }} variantes · {{ cart.unitCount() }} unidades</small></span><strong>{{ formatMoney(cart.draft().total?.decimal) }}</strong></div>
+          <label for="operation-reason">Motivo operativo <span class="optional">Opcional</span></label>
+          <input id="operation-reason" name="operationReason" [(ngModel)]="operationReason" placeholder="Ej. venta asistida en otra caja" />
+          <button type="button" class="primary wide reserve-button" (click)="reserve()" [disabled]="!canReserve()">Reservar productos</button>
+          <p class="action-help">Reservar no registra pagos ni confirma la venta.</p>
+        }
+      </section>
+    </div>
+  } @else {
+    <div class="workspace operation-workspace">
+      <section class="card operation-summary" aria-labelledby="operation-title">
+        <div class="section-heading"><div><p class="eyebrow">Venta actual</p><h3 id="operation-title">Resumen inmóvil</h3></div><span class="phase-badge">{{ phase().label }}</span></div>
+        <div class="frozen-lines">
+          @for (line of cart.draft().lines; track line.variantId) {
+            <div><span><b>{{ line.productName }}</b><small>{{ line.quantity }} × {{ formatMoney(line.originalUnitPrice.decimal) }}</small></span><strong>{{ formatMoney(line.subtotal.decimal) }}</strong></div>
+          }
+        </div>
+        <dl class="totals">
+          <div><dt>Total estimado</dt><dd>{{ formatMoney(cart.draft().total?.decimal) }}</dd></div>
+          <div><dt>Total comprobado</dt><dd>{{ formatMoney(snapshot()?.total?.decimal) }}</dd></div>
+          <div class="pending"><dt>Saldo pendiente</dt><dd>{{ formatMoney(snapshot()?.pending?.decimal) }}</dd></div>
+        </dl>
+        @if (paymentHistory().length) {
+          <section class="payment-history" aria-labelledby="payment-history-title">
+            <h4 id="payment-history-title">Historial de cobros</h4>
+            @for (payment of paymentHistory(); track payment.paymentId) {
+              <p><span>{{ payment.method.label }} · {{ payment.status.label }}</span><strong>{{ formatMoney(payment.amount.decimal) }}</strong></p>
+            }
+          </section>
+        } @else { <p class="action-help">Todavía no hay cobros registrados.</p> }
+        <details><summary>Detalle técnico de la operación</summary><p class="sku">{{ operationRef() ?? 'Identidad pendiente de comprobación' }}</p></details>
+      </section>
+
+      <aside class="card checkout-panel">
+        @if (phase() !== cartPhases[4]) {
+          <label for="operation-reason">Motivo operativo <span class="optional">Requerido para operar una caja ajena</span></label>
+          <input id="operation-reason" name="operationReason" [(ngModel)]="operationReason" placeholder="Ej. asistencia autorizada por supervisor" />
+        }
+        @if (phase() === cartPhases[1]) {
+          <div class="empty-state"><span class="loader"></span><b>Comprobando reserva</b><p>No cierres la pantalla ni registres un cobro todavía.</p></div>
+        } @else if (isPaymentPhase() && hasPendingBalance()) {
+          <p class="eyebrow">3 · Cobro presencial</p><h3>Registrar un cobro</h3>
+          <p class="payment-balance">Saldo autoritativo <strong>{{ formatMoney(snapshot()?.pending?.decimal) }}</strong></p>
+          <form class="payment-form" (ngSubmit)="capture()">
+            <label for="payment-method">Medio de pago</label>
+            <select id="payment-method" name="paymentMethod" [(ngModel)]="paymentMethod">
+              @for (method of paymentMethods; track method.wire) { <option [ngValue]="method">{{ method.label }}</option> }
+            </select>
+            <label for="payment-amount">Importe</label>
+            <div class="amount-field"><span>$</span><input id="payment-amount" name="paymentAmount" inputmode="decimal" autocomplete="off"
+              [(ngModel)]="paymentAmount" (ngModelChange)="announcePaymentValidation()" [attr.aria-invalid]="paymentValidationMessage() ? 'true' : null"
+              [attr.aria-describedby]="paymentValidationMessage() ? 'payment-help payment-error' : 'payment-help'" /></div>
+            <p id="payment-help" class="action-help">Podés registrar pagos parciales. Cada cobro se comprueba antes de habilitar el siguiente.</p>
+            @if (paymentValidationMessage(); as error) { <p id="payment-error" class="field-error" role="alert">{{ error }}</p> }
+            <button type="submit" class="primary wide" [disabled]="!canCapture()">Registrar cobro</button>
+          </form>
+        } @else if (phase() === cartPhases[3]) {
+          <div class="empty-state"><span class="loader"></span><b>Confirmando venta</b><p>Esperando el estado final comprobado.</p></div>
+        } @else if (phase() === cartPhases[4]) {
+          <div class="success-state"><span aria-hidden="true">✓</span><h3>{{ completedTitle() }}</h3><p>{{ completedDescription() }}</p><button type="button" class="primary" (click)="startNewSale()">Iniciar nueva venta</button></div>
+        } @else if (isRecovery()) {
+          <div class="recovery-state"><h3>Resultado pendiente de comprobación</h3><p>No generes otra operación. Consultá la evidencia existente.</p><button type="button" class="ghost" (click)="refresh()" [disabled]="busy()">Consultar operación</button></div>
+        } @else {
+          <p class="eyebrow">4 · Confirmación</p><h3>Venta lista para confirmar</h3><p>El total está cubierto y comprobado. Confirmá para cerrar la venta.</p>
+          <button type="button" class="primary wide" (click)="commit()" [disabled]="!canFinish(commitAction)">Confirmar venta</button>
+        }
+        @if (canFinish(releaseAction)) { <button type="button" class="danger-link" (click)="requestRelease()">Liberar reserva</button> }
+        <button type="button" class="ghost wide" (click)="refresh()" [disabled]="busy() || (!operationRef() && !requestedOperationId())">Actualizar estado</button>
+      </aside>
+    </div>
+  }
+
+  @if (commands.unresolved()) { <div class="pending-command"><p>Hay un cobro pendiente de comprobación.</p><button type="button" class="ghost" (click)="consultReceipt()" [disabled]="busy()">Consultar recibo</button></div> }
+  @if (sales.unresolved()) { <div class="pending-command"><p>Hay una operación de venta pendiente.</p><button type="button" class="ghost" (click)="consultSaleReceipt()" [disabled]="busy()">Consultar admisión</button></div> }
+
+  @if (paymentId(); as id) {
+    <form class="card reversal" (ngSubmit)="requestReverse(id)">
+      <label for="reversal-reason">Motivo de reversa</label><input id="reversal-reason" name="reversalReason" [(ngModel)]="reversalReason" [attr.aria-describedby]="'reversal-guidance'" />
+      <p id="reversal-guidance">{{ reversalReasonGuidance }}</p><button type="submit" class="ghost" [disabled]="!validReversalReason() || !canFinish(reverseAction)">Reversar último pago</button>
+    </form>
+  }
+
+  <bs-confirmation-dialog [phase]="reversalPhase()" title="Confirmar reversa" titleId="ticket-reversal-title" [description]="reversalDescription()"
+    [detail]="reversalReview() ? 'Motivo: ' + reversalReview()!.reason.wire : ''" confirmLabel="Confirmar reversa" cancelLabel="Cancelar"
+    (confirmed)="confirmReverse()" (cancelled)="cancelReverse()" />
+  <bs-confirmation-dialog [phase]="releasePhase()" title="Liberar reserva" titleId="ticket-release-title"
+    description="La reserva volverá a quedar disponible. El historial de pagos no se elimina." [detail]="operationRef() ? 'Operación: ' + operationRef() : ''"
+    confirmLabel="Liberar reserva" cancelLabel="Mantener reserva" (confirmed)="confirmRelease()" (cancelled)="cancelRelease()" />
+</section>

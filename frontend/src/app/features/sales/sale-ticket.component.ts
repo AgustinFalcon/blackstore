@@ -1,214 +1,83 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, OnInit, effect, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, ElementRef, OnInit, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
 import { AccountingCommand, AccountingCommandKind, CommandOutcome } from '../../core/domain/accounting-command';
-import { AccountingCommandsStore } from '../../core/services/accounting-commands.store';
-import { SaleCommandsStore } from '../../core/services/sale-commands.store';
-import { SaleCommand, SaleCommandKind, SaleAdmissionOutcome } from '../../core/domain/sale-command';
+import { CartLine, CartPhase } from '../../core/domain/cart';
+import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
+import { DurableLineMetadata, DurableSaleDetail } from '../../core/domain/durable-sale';
+import { PaymentMethod, PaymentStatus, SaleAction, SaleStatus } from '../../core/domain/pos-types';
+import { ReversalReason } from '../../core/domain/reversal-reason';
+import { SaleAdmissionOutcome, SaleCommand } from '../../core/domain/sale-command';
+import { PaymentAttempt, PaymentCoverage, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
 import { CommandHttp } from '../../core/infrastructure/command-http';
-import { API_BASE } from '../../core/api';
-import { PaymentMethod, PaymentStatus, SaleAction } from '../../core/domain/pos-types';
+import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
+import { AccountingCommandsStore } from '../../core/services/accounting-commands.store';
+import { CounterContextService } from '../../core/services/counter-context.service';
+import { DurableSalesStore } from '../../core/services/durable-sales.store';
+import { SaleCommandsStore } from '../../core/services/sale-commands.store';
 import { SessionStore } from '../../core/services/session.store';
 import { StaffPermission } from '../../core/domain/session-types';
-import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
-import { BaseResponse } from '../../core/models/base-response';
-import { CounterContextService } from '../../core/services/counter-context.service';
-import { concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
-import { PaymentAttempt, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, TicketTransitionPolicy } from '../../core/domain/ticket-transition';
-import { CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketFlowResult, StartNewSale } from './ticket-steps';
-import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
-import { ReversalReason } from '../../core/domain/reversal-reason';
 import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
+import { SaleCartStore } from './sale-cart.store';
+import { AwaitReservationStep, AwaitTerminalSaleStep, CapturePaymentStep, CommitSaleStep, PrepareReservationStep,
+  RefreshCoverageStep, RefreshTicketStep, TicketFlowPort, ValidateCartStep } from './ticket-steps';
 
-interface TicketReversalReview {
-  readonly operationId: string;
-  readonly paymentId: number;
-  readonly reason: ReversalReason;
-}
-
-interface TicketReleaseReview {
-  readonly operationId: string;
-}
+interface ActiveTicket { readonly identity: TicketIdentity; readonly cashSessionId:number; }
+interface TicketReversalReview { readonly operationId: string; readonly paymentId: number; readonly reason: ReversalReason; }
+interface TicketPaymentRecord { readonly paymentId:number; readonly originalPaymentId:number|null; readonly status:PaymentStatus;
+  readonly method:PaymentMethod; readonly amount:TicketMoney; readonly fee:TicketMoney|null; }
 
 @Component({
-  selector: 'bs-sale-ticket',
-  standalone: true,
-  imports: [FormsModule, ConfirmationDialogComponent],
-  template: `
-    <section class="page">
-      <h2>Ticket</h2>
-      <p class="lede">La reserva usa el simulador local y el catálogo proyectado. No hay llamada HTTP a StoreCore.</p>
-      @if (blockReason(); as reason) {
-        <p class="banner warn" role="status">{{ reason }}</p>
-      }
-      <div class="card">
-        <h3>Línea</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Nombre</th>
-              <th>Original</th>
-              <th>Descuento</th>
-              <th>Effective</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td class="sku">{{ sku }}</td>
-              <td>{{ productName }}</td>
-              <td class="money">{{ originalUnitPrice }}</td>
-              <td class="money">{{ discountAmount }}</td>
-              <td class="money">{{ effectiveUnitPrice() }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p>Cobrado <span class="money">{{ amount }}</span></p>
-      </div>
-      <div class="card">
-        <form (ngSubmit)="reserve()">
-          <p>
-            Sesión
-            @if (counter.openSession(); as session) {
-              <span class="sku">{{ session.id }}</span>
-            } @else {
-              sin abrir
-            }
-          </p>
-          <label>
-            SKU del catálogo
-            <select name="sku" [(ngModel)]="sku" (ngModelChange)="applySku($event)">
-              @for (item of counter.catalog()?.items ?? []; track item.sku) {
-                <option [value]="item.sku">{{ item.sku }} · {{ item.name }}</option>
-              }
-            </select>
-          </label>
-          <p>
-            Variante <span class="sku">{{ variantId }}</span>
-            · versión de precio <span class="sku">{{ priceVersion }}</span>.
-            @if (priceVersion === 'price-v1') {
-              La proyección fixture no trae effective: el precio lo carga el cajero.
-            }
-          </p>
-          <label>Producto <input name="productName" [ngModel]="productName" readonly /></label>
-          <label>Precio <input name="price" type="number" class="money" [(ngModel)]="originalUnitPrice" min="0" required /></label>
-          <label>Descuento <input name="discount" type="number" class="money" [(ngModel)]="discountAmount" min="0" required /></label>
-          <label>Importe efectivo
-            <input name="amount" type="number" class="money" [(ngModel)]="amount" min="0.01" required />
-          </label>
-          <p>Las comisiones pagadas se registran por el circuito operativo del titular.</p>
-          <label>Motivo de operación sobre caja ajena <input name="operationReason" [(ngModel)]="operationReason" /></label>
-          <label>
-            Segundo medio
-            <select name="secondMethod" [(ngModel)]="secondMethod">
-              @for (method of paymentMethods; track method.wire) {
-                <option [ngValue]="method">{{ method.label }}</option>
-              }
-            </select>
-          </label>
-          <label>Segundo importe <input name="secondAmount" type="number" class="money" [(ngModel)]="secondAmount" min="0" /></label>
-          <button type="submit" [disabled]="saleBlocked()">Reservar y cobrar</button>
-        </form>
-        <div class="keypad" aria-label="Teclado numérico para importe">
-          @for (key of keys; track key) {
-            <button type="button" (click)="appendAmount(key)">{{ key }}</button>
-          }
-          <button type="button" (click)="clearAmount()">C</button>
-        </div>
-      </div>
-      @if (commands.unresolved(); as command) {
-        <p>Comando {{ command.commandId }} pendiente de comprobación.</p>
-        <button type="button" (click)="consultReceipt()" [disabled]="busy()">Consultar recibo</button>
-      }
-      <p role="status">{{ commands.runtime.notice() }}</p>
-      <button type="button" (click)="commands.runtime.refresh()" [disabled]="busy()">Comprobar contexto y evidencia</button>
-      @if (sales.unresolved()) {
-        <button type="button" (click)="consultSaleReceipt()" [disabled]="busy()">Consultar admisión pendiente</button>
-      }
-      @if (message()) {
-        <div class="card">
-          <p>{{ message() }}</p>
-          @if (operationRef()) {
-            <p>Cuádruple operationId <span class="sku">{{ operationRef() }}</span> · GET local (no StoreCore)</p>
-          }
-          <p class="actions">
-            <button type="button" class="ghost" (click)="refresh()" [disabled]="busy()">Consultar estado</button>
-            <button type="button" class="primary" (click)="commit()" [disabled]="!canFinish(commitAction)">Confirmar venta</button>
-            <button type="button" class="ghost" (click)="requestRelease()" [disabled]="!canFinish(releaseAction)">Liberar reserva</button>
-          </p>
-        </div>
-      }
-      @if (paymentId(); as id) {
-        <div class="card">
-          <form (ngSubmit)="requestReverse(id)">
-            <label>Motivo <input name="reversalReason" [(ngModel)]="reversalReason" aria-describedby="ticket-reversal-reason-guidance" required /></label>
-            <p id="ticket-reversal-reason-guidance">{{ reversalReasonGuidance }}</p>
-            <button type="submit" [disabled]="!canFinish(reverseAction) || !validReversalReason()">Reversar pago {{ id }}</button>
-          </form>
-        </div>
-      }
-      <bs-confirmation-dialog [phase]="reversalPhase()" title="Confirmar reversa" titleId="ticket-reversal-title"
-        [description]="reversalDescription()" [detail]="reversalReview() ? 'Motivo: ' + reversalReview()!.reason.wire : ''"
-        confirmLabel="Confirmar reversa" cancelLabel="Cancelar"
-        (confirmed)="confirmReverse()" (cancelled)="cancelReverse()" />
-      <bs-confirmation-dialog [phase]="releasePhase()" title="Liberar reserva" titleId="ticket-release-title"
-        description="La reserva volverá a quedar disponible. Los pagos y su historial no se eliminan."
-        [detail]="operationRef() ? 'Operación: ' + operationRef() : ''" confirmLabel="Liberar reserva" cancelLabel="Mantener reserva"
-        (confirmed)="confirmRelease()" (cancelled)="cancelRelease()" />
-    </section>
-  `,
-  styles: [
-    `
-      .actions {
-        display: flex;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-      }
-    `,
-  ],
+  selector: 'bs-sale-ticket', standalone: true,
+  imports: [FormsModule, ConfirmationDialogComponent], providers: [SaleCartStore],
+  templateUrl: './sale-ticket.component.html', styleUrl: './sale-ticket.component.css',
 })
 export class SaleTicketComponent implements OnInit {
-  private readonly http = inject(HttpClient);
+  readonly cart = inject(SaleCartStore);
   readonly commands = inject(AccountingCommandsStore);
   readonly sales = inject(SaleCommandsStore);
-  private readonly commandHttp = inject(CommandHttp);
-  private readonly identity = inject(SessionStore);
-  private readonly destroyRef = inject(DestroyRef);
   readonly counter = inject(CounterContextService);
-  sku = '';
-  productName = '';
-  variantId = '';
-  priceVersion = 'price-v1';
-  originalUnitPrice = 20;
-  discountAmount = 2;
-  amount = 18;
+  private readonly commandHttp = inject(CommandHttp);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly durableSales = inject(DurableSalesStore);
+  private readonly session = inject(SessionStore);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject(ElementRef<HTMLElement>);
+
   readonly paymentMethods = PaymentMethod.selectable;
-  secondMethod: PaymentMethod = PaymentMethod.Card;
-  secondAmount = 0;
-  reversalReason = '';
+  readonly busy = signal(false);
+  readonly snapshot = signal<TicketSnapshot | null>(null);
+  readonly operationRef = signal<string | null>(null);
+  readonly paymentId = signal<number | null>(null);
+  readonly paymentHistory = signal<readonly TicketPaymentRecord[]>([]);
+  readonly message = signal<string | null>(null);
+  readonly announcement = signal('Carrito vacío.');
   readonly reversalPhase = signal(ConfirmationPhase.Idle);
   readonly releasePhase = signal(ConfirmationPhase.Idle);
   readonly reversalReview = signal<TicketReversalReview | null>(null);
-  readonly releaseReview = signal<TicketReleaseReview | null>(null);
-  operationReason = '';
-  readonly keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
-  readonly busy = signal(false);
+  readonly cartPhases = [CartPhase.Editing, CartPhase.AwaitingReservation, CartPhase.AwaitingPayment, CartPhase.AwaitingCommit, CartPhase.Completed] as const;
   readonly commitAction = SaleAction.Commit;
   readonly releaseAction = SaleAction.Release;
   readonly reverseAction = SaleAction.Reverse;
-  private attempt: TicketAttemptContext | null = null;
-  private readonly snapshot = signal<TicketSnapshot | null>(null);
+  readonly reversalReasonGuidance = ReversalReason.guidance;
+
+  selectedSku = '';
+  operationReason = '';
+  paymentMethod = PaymentMethod.Cash;
+  paymentAmount = '';
+  reversalReason = '';
+  private active: ActiveTicket | null = null;
+  readonly requestedOperationId = signal<string | null>(null);
+
   private readonly port: TicketFlowPort = {
-    reserve: (body) => {
-      const identity: TicketIdentity = { clientInstanceId: body['clientInstanceId'] as string, deviceId: body['deviceId'] as string, saleId: body['saleId'] as string, operationId: body['operationId'] as string };
-      const command = SaleCommand.create(SaleCommandKind.Reserve, identity, Number(body['cashSessionId']), { ...body, reason: this.operationReason });
-      return this.sales.execute(command).pipe(concatMap(result => result.outcome === SaleAdmissionOutcome.Accepted
-        ? this.commandHttp.ticket(command.identity) : throwError(() => new Error(result.outcome.label))));
-    },
+    reserve: () => throwError(() => new Error('La reserva se prepara mediante el comando multiline.')),
     capture: () => throwError(() => new Error('El contrato de captura anterior está deshabilitado.')),
-    capturePayment: (attempt) => {
-      if (!this.identity.can(StaffPermission.PaymentCapture) || attempt.fee.cents !== 0n) return throwError(() => new Error('Captura no autorizada o comisión no admitida.'));
+    capturePayment: attempt => {
+      if (!this.session.can(StaffPermission.PaymentCapture) || attempt.fee.cents !== 0n) return throwError(() => new Error('Captura no autorizada o comisión no admitida.'));
       const command = AccountingCommand.create(AccountingCommandKind.Capture, {
         ...attempt.identity, paymentMethod: attempt.method.wire, amount: attempt.amount.decimal, reason: this.operationReason,
       });
@@ -217,285 +86,407 @@ export class SaleTicketComponent implements OnInit {
         return Object.freeze({ paymentId: receipt.paymentId, status: PaymentStatus.Captured, amount: attempt.amount, fee: attempt.fee });
       }));
     },
-    refresh: (identity) => this.commandHttp.ticket(identity),
+    refresh: identity => this.commandHttp.ticket(identity),
   };
-  private readonly refreshStep = new RefreshTicketStep(this.port,PaymentLedgerSemantics.Net);
-  readonly operationRef = signal<string | null>(null);
-  readonly message = signal<string | null>(null);
-  readonly paymentId = signal<number | null>(null);
-  private readonly journey = new StartNewSale(
-    new ReserveTicketStep(this.port),
-    new CapturePaymentStep(this.port),
-    this.refreshStep,
-    (result) => this.recordJourneyProgress(result),
-    (payment) => {
-      this.paymentId.set(this.paymentId() ?? payment.paymentId);
-      this.snapshot.set(null);
-    },
-  );
-  private readonly syncCatalogLine = effect(() => {
+  private readonly refreshStep = new RefreshTicketStep(this.port, PaymentLedgerSemantics.Net);
+  private readonly captureStep = new CapturePaymentStep(this.port);
+  private readonly awaitReservation = new AwaitReservationStep(this.port, 20, 100, PaymentLedgerSemantics.Net);
+  private readonly awaitTerminal = new AwaitTerminalSaleStep(this.port, 20, 100, PaymentLedgerSemantics.Net);
+  private readonly validateCart = new ValidateCartStep();
+  private readonly prepareReservation = new PrepareReservationStep();
+  private readonly refreshCoverage = new RefreshCoverageStep(this.captureStep,this.refreshStep,(payment,attempt)=>{
+    this.paymentId.set(payment.paymentId);
+    this.paymentHistory.update(history=>Object.freeze([...history,Object.freeze({paymentId:payment.paymentId,originalPaymentId:null,
+      status:payment.status,method:attempt.method,amount:payment.amount,fee:payment.fee})]));
+  });
+  private readonly completeSale = new CommitSaleStep(this.refreshStep,command=>this.sales.execute(command),this.awaitTerminal);
+
+  private readonly selectFirstCatalogItem = effect(() => {
     const items = this.counter.catalog()?.items ?? [];
-    const current = items.find((item) => item.sku === this.sku) ?? items[0];
-    if (!current) return;
-    this.applySku(current.sku);
+    if (!items.some(item => item.sku === this.selectedSku)) this.selectedSku = items[0]?.sku ?? '';
   });
 
+  private readonly adoptDurableSale = effect(() => {
+    const requested = this.requestedOperationId(), detail = this.durableSales.detail();
+    if (requested && detail?.identity.operationId === requested) untracked(()=>this.openDurable(detail));
+    if (requested && this.durableSales.notice() && !this.durableSales.busy()) {
+      this.cart.moveTo(CartPhase.RecoveryRequired);
+      this.message.set(this.durableSales.notice());
+    }
+    if(requested&&!this.durableSales.busy()&&(detail?.identity.operationId===requested||this.durableSales.notice()))this.busy.set(false);
+  });
+
+  constructor() { this.session.changed.pipe(takeUntilDestroyed()).subscribe(() => this.clearForActorChange()); }
   ngOnInit(): void {
     this.counter.load();
+    this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
+      const operationId = params.get('operationId');
+      if (!operationId) { this.requestedOperationId.set(null); return; }
+      this.requestedOperationId.set(operationId);
+      if(this.active?.identity.operationId===operationId)return;
+      this.cart.moveTo(CartPhase.AwaitingReservation);
+      this.message.set('Comprobando la venta existente…');
+      this.durableSales.open(operationId);
+    });
   }
 
-  constructor() {
-    this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
-      this.attempt = null; this.snapshot.set(null); this.operationRef.set(null); this.paymentId.set(null);
-      this.message.set(null); this.busy.set(false); this.sku = ''; this.productName = ''; this.variantId = '';
-      this.cancelReverse(); this.cancelRelease();
+  phase(): CartPhase { return this.cart.phase(); }
+  isEditing(): boolean { return this.phase() === CartPhase.Editing; }
+  isPaymentPhase(): boolean { return this.phase() === CartPhase.Reserved || this.phase() === CartPhase.AwaitingPayment; }
+  isRecovery(): boolean { return this.phase() === CartPhase.RecoveryRequired || this.phase() === CartPhase.Unknown; }
+  selectedItem() { return this.counter.catalog()?.items.find(item => item.sku === this.selectedSku) ?? null; }
+  phaseReached(phase: CartPhase): boolean { return this.cartPhases.indexOf(phase) <= this.cartPhases.indexOf(this.normalizedProgressPhase()); }
+
+  addSelected(): void {
+    if (!this.isEditing()) return;
+    const item = this.selectedItem();
+    if (!item || item.unitPrice == null || !item.priceVersion) { this.failDraft('El artículo no tiene precio o versión autorizados. Actualizá el catálogo.'); return; }
+    try {
+      this.cart.add(CartLine.create({ variantId: item.variantId, sku: item.sku, productName: item.name, quantity: 1,
+        expectedPriceVersion: item.priceVersion, originalUnitPrice: String(item.unitPrice), discountAmount: '0.00' }));
+      this.message.set(null);
+      this.announcement.set(`${item.name} agregado. ${this.cart.unitCount()} unidades en el carrito.`);
+      this.focusSoon('[data-cart-heading]');
+    } catch (error) { this.failDraft(this.failureMessage(error)); }
+  }
+
+  changeQuantity(variantId: string, input: HTMLInputElement): void {
+    try {
+      this.cart.change(variantId, Number(input.value));
+      input.removeAttribute('aria-invalid');
+      this.announcement.set(`Cantidad actualizada. ${this.cart.unitCount()} unidades en el carrito.`);
+    } catch (error) {
+      const current=this.cart.draft().lines.find(line=>line.variantId===variantId);
+      if(current)input.value=String(current.quantity);
+      input.setAttribute('aria-invalid','true');input.focus();
+      this.failDraft(this.failureMessage(error));
+    }
+  }
+
+  removeLine(variantId: string, name: string): void {
+    try {
+      this.cart.remove(variantId);
+      this.announcement.set(`${name} eliminado. ${this.cart.unitCount()} unidades en el carrito.`);
+      this.focusSoon('#catalog-product');
+    } catch (error) { this.failDraft(this.failureMessage(error)); }
+  }
+
+  reserve(): void {
+    if (!TicketTransitionPolicy.beginReserve(this.busy(), this.blockReason() === null).permitsWrite || !this.isEditing()) return;
+    let lines;
+    try { lines = this.validateCart.execute(this.cart.draft()); }
+    catch (error) { this.failDraft(this.failureMessage(error)); return; }
+    const context = this.commands.runtime.context();
+    const cashSession = this.counter.openSession();
+    if (!context || !cashSession || cashSession.terminalId !== context.terminalId) { this.failDraft('Caja y contexto POS no coinciden.'); return; }
+    this.busy.set(true);
+    let command: SaleCommand;
+    try { command = this.prepareReservation.execute(lines,{...context,cashSessionId:Number(cashSession.id),cashTerminalId:cashSession.terminalId},this.operationReason); }
+    catch (error) { this.busy.set(false); this.failDraft(this.failureMessage(error)); return; }
+    const active = Object.freeze({ identity: command.identity,cashSessionId:command.cashSessionId });
+    this.active = active;
+    this.operationRef.set(command.identity.operationId);
+    this.requestedOperationId.set(command.identity.operationId);
+    void this.router.navigate([], {relativeTo:this.route,queryParams:{operationId:command.identity.operationId},replaceUrl:true});
+    this.snapshot.set(null);
+    this.paymentId.set(null);
+    this.paymentHistory.set([]);
+    this.cart.moveTo(CartPhase.AwaitingReservation);
+    this.announcement.set('Reserva enviada. Esperando comprobación autoritativa.');
+    this.sales.execute(command).pipe(
+      concatMap(result => result.outcome === SaleAdmissionOutcome.Accepted ? this.commandHttp.ticket(command.identity)
+        : throwError(() => new Error(result.outcome.label))),
+      map(response => PosWireMapper.ticket(response, command.identity, PaymentLedgerSemantics.Net)),
+      concatMap(initial => this.awaitReservation.execute(command.identity, initial)),
+      takeUntil(this.session.changed), takeUntilDestroyed(this.destroyRef),
+      finalize(() => { if (this.active === active) this.busy.set(false); }),
+    ).subscribe({
+      next: snapshot => {
+        if (this.active !== active) return;
+        this.acceptSnapshot(snapshot);
+        this.cart.moveTo(CartPhase.AwaitingPayment);
+        this.paymentAmount = snapshot.pending?.decimal ?? '';
+        this.message.set('Reserva comprobada. Elegí medio e importe para registrar el cobro.');
+        this.announcement.set('Reserva comprobada. El cobro está habilitado.');
+        this.focusSoon('#payment-amount');
+      },
+      error: error => this.enterRecovery(active, error),
+    });
+  }
+
+  capture(): void {
+    const active = this.active, snapshot = this.snapshot();
+    if (!active || !snapshot || this.busy() || !this.isPaymentPhase()) return;
+    const amount = TicketMoney.fromDecimal(this.paymentAmount), fee = TicketMoney.fromDecimal('0.00');
+    if (!amount || !fee) { this.message.set('Ingresá un importe válido con hasta dos decimales.'); return; }
+    const attempt: PaymentAttempt = Object.freeze({ identity: active.identity, method: this.paymentMethod, amount, fee });
+    const decision = TicketTransitionPolicy.decide(snapshot, SaleAction.Capture, attempt);
+    if (!decision.permitsWrite) { this.message.set(decision.label); return; }
+    this.busy.set(true);
+    this.refreshCoverage.execute(snapshot, attempt).pipe(
+      map(result=>{this.snapshot.set(null);return result;}),
+      takeUntil(this.session.changed), takeUntilDestroyed(this.destroyRef),
+      finalize(() => { if (this.active === active) this.busy.set(false); }),
+    ).subscribe({
+      next: ({ payment, next }) => {
+        if (this.active !== active) return;
+        if(!next.pending){this.enterRecovery(active,new Error('El saldo consultado no es válido.'));return;}
+        this.acceptSnapshot(next);
+        if (next.coverage === PaymentCoverage.Paid && next.pending.cents === 0n) {
+          this.cart.moveTo(CartPhase.Reserved); this.paymentAmount = '';
+          this.message.set('Cobertura completa. Confirmá la venta para finalizar.');
+          this.announcement.set('Pago completo comprobado. La venta está lista para confirmar.');
+        } else {
+          this.cart.moveTo(CartPhase.AwaitingPayment); this.paymentAmount = next.pending.decimal;
+          this.message.set(`Pago registrado. Saldo pendiente ${this.formatMoney(next.pending.decimal)}.`);
+          this.announcement.set('Pago parcial comprobado. Ingresá el siguiente cobro.');
+          this.focusSoon('#payment-amount');
+        }
+      },
+      error: error => this.enterRecovery(active, error),
+    });
+  }
+
+  refresh(): void {
+    const operationId=this.active?.identity.operationId??this.requestedOperationId();
+    if(!operationId||this.busy()||this.durableSales.busy())return;
+    this.busy.set(true);this.requestedOperationId.set(operationId);this.durableSales.open(operationId);
+  }
+
+  commit(): void { this.finish(SaleAction.Commit); }
+  requestRelease(): void { if (this.canFinish(SaleAction.Release)) this.releasePhase.set(ConfirmationPhase.Reviewing); }
+  cancelRelease(): void { this.releasePhase.set(ConfirmationPhase.Idle); }
+  confirmRelease(): void {
+    if (!this.releasePhase().isReviewing || !this.canFinish(SaleAction.Release)) { this.cancelRelease(); return; }
+    this.cancelRelease(); this.finish(SaleAction.Release);
+  }
+
+  canFinish(action: SaleAction): boolean {
+    if (!this.commands.runtime.canWrite() || this.busy() || this.commands.unresolved() || this.commands.blocked().blocksWrites) return false;
+    const permission = action === SaleAction.Commit ? StaffPermission.SaleCommit : action === SaleAction.Release
+      ? StaffPermission.SaleRelease : action === SaleAction.Reverse ? StaffPermission.PaymentReverse : StaffPermission.Unknown;
+    return this.session.can(permission) && TicketTransitionPolicy.decide(this.snapshot(), action).permitsWrite;
+  }
+
+  canCapture(): boolean {
+    const active = this.active, snapshot = this.snapshot(), amount = TicketMoney.fromDecimal(this.paymentAmount), fee = TicketMoney.fromDecimal('0.00');
+    if (!active || !snapshot || !amount || !fee || this.busy() || !this.isPaymentPhase() || !this.session.can(StaffPermission.PaymentCapture)) return false;
+    return TicketTransitionPolicy.decide(snapshot, SaleAction.Capture,
+      Object.freeze({ identity: active.identity, method: this.paymentMethod, amount, fee })).permitsWrite;
+  }
+
+  canReserve(): boolean {
+    return this.isEditing() && this.cart.lineCount() > 0 && TicketTransitionPolicy.beginReserve(this.busy(), this.blockReason() === null).permitsWrite;
+  }
+  hasPendingBalance(): boolean { return (this.snapshot()?.pending?.cents ?? 0n) > 0n; }
+  paymentValidationMessage():string|null {
+    if(!this.isPaymentPhase()||!this.hasPendingBalance())return null;
+    const amount=TicketMoney.fromDecimal(this.paymentAmount),pending=this.snapshot()?.pending;
+    if(!amount)return 'Ingresá un importe válido con hasta dos decimales.';
+    if(amount.cents<=0n)return 'El importe debe ser mayor que cero.';
+    if(pending&&amount.cents>pending.cents)return `El importe no puede superar el saldo ${this.formatMoney(pending.decimal)}.`;
+    return null;
+  }
+  announcePaymentValidation():void {const error=this.paymentValidationMessage();if(error)this.announcement.set(error);}
+  completedTitle():string{return this.snapshot()?.status===SaleStatus.Released?'Reserva liberada':'Venta confirmada';}
+  completedDescription():string{return this.snapshot()?.status===SaleStatus.Released?
+    'El stock reservado volvió a quedar disponible.':'La operación quedó comprobada.';}
+
+  startNewSale(): void {
+    if (this.busy() || (this.active && this.phase() !== CartPhase.Completed)) return;
+    this.active = null; this.snapshot.set(null); this.operationRef.set(null); this.paymentId.set(null); this.paymentHistory.set([]); this.requestedOperationId.set(null);
+    this.message.set(null); this.paymentAmount = ''; this.cart.reset();
+    void this.router.navigate(['/ticket']);
+    this.announcement.set('Nueva venta lista.'); this.focusSoon('#catalog-product');
+  }
+
+  consultReceipt(): void {
+    const active = this.active;
+    const unresolved = this.commands.unresolved();
+    if (!unresolved || this.busy()) return;
+    this.busy.set(true);
+    this.commands.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.session.changed),
+      takeUntilDestroyed(this.destroyRef)).subscribe(receipt => {
+      this.snapshot.set(null);
+      if (active && this.active === active && receipt.outcome === CommandOutcome.Committed && receipt.paymentId) {
+        if (unresolved.kind === AccountingCommandKind.Capture) this.paymentId.set(receipt.paymentId);
+        else if (unresolved.kind === AccountingCommandKind.Reverse) this.paymentId.set(null);
+      }
+      this.message.set(`${receipt.failure.label || receipt.outcome.label}. Consultá la venta antes de continuar.`);
+      this.cart.moveTo(CartPhase.RecoveryRequired);
+    });
+  }
+
+  consultSaleReceipt(): void {
+    if (!this.sales.unresolved() || this.busy()) return;
+    this.busy.set(true);
+    this.sales.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.session.changed),
+      takeUntilDestroyed(this.destroyRef)).subscribe(result => {
+      this.snapshot.set(null); this.message.set(`${result.outcome.label}. Consultá la venta antes de continuar.`);
+      this.cart.moveTo(CartPhase.RecoveryRequired);
+    });
+  }
+
+  validReversalReason(): boolean { return ReversalReason.fromInput(this.reversalReason) !== null; }
+  requestReverse(paymentId: number): void {
+    const reason = ReversalReason.fromInput(this.reversalReason);
+    if (!this.active || !reason || paymentId !== this.paymentId() || !this.canFinish(SaleAction.Reverse)) return;
+    this.reversalReview.set(Object.freeze({ operationId: this.active.identity.operationId, paymentId, reason }));
+    this.reversalPhase.set(ConfirmationPhase.Reviewing);
+  }
+  cancelReverse(): void { this.reversalReview.set(null); this.reversalPhase.set(ConfirmationPhase.Idle); }
+  reversalDescription(): string {
+    const review = this.reversalReview();
+    return review ? `Vas a reversar el pago ${review.paymentId}. La acción queda auditada.` : '';
+  }
+  confirmReverse(): void {
+    const review = this.reversalReview(), active = this.active;
+    if (!active || !review || !this.reversalPhase().isReviewing || review.operationId !== active.identity.operationId || !this.canFinish(SaleAction.Reverse)) {
+      this.cancelReverse(); return;
+    }
+    this.cancelReverse(); this.busy.set(true);
+    this.commands.execute(AccountingCommand.create(AccountingCommandKind.Reverse, {
+      ...active.identity, originalPaymentId: review.paymentId, reason: review.reason.wire, evidenceRef: `rev-${review.paymentId}`,
+    }, review.paymentId)).pipe(takeUntil(this.session.changed), takeUntilDestroyed(this.destroyRef),
+      finalize(() => { if (this.active === active) this.busy.set(false); })).subscribe(receipt => {
+      if (this.active !== active) return;
+      if (receipt.outcome === CommandOutcome.Committed) {
+        const captured=this.paymentHistory().find(payment=>payment.paymentId===review.paymentId && payment.status===PaymentStatus.Captured);
+        if(captured&&receipt.paymentId)this.paymentHistory.update(history=>Object.freeze([...history,Object.freeze({paymentId:receipt.paymentId!,
+          originalPaymentId:review.paymentId,status:PaymentStatus.Refunded,method:captured.method,amount:captured.amount,fee:null})]));
+        this.paymentId.set(null);
+      }
+      this.snapshot.set(null); this.cart.moveTo(CartPhase.RecoveryRequired);
+      this.message.set(`${receipt.failure.label || receipt.outcome.label}. Consultá la venta para comprobar el saldo.`);
     });
   }
 
   blockReason(): string | null {
     if (!this.commands.runtime.canWrite()) return this.commands.runtime.notice();
-    if (this.commands.unresolved()) return 'Hay un comando pendiente. Consultá su recibo antes de operar.';
+    if (this.commands.unresolved() || this.sales.unresolved()) return 'Hay un comando pendiente. Consultá su recibo antes de operar.';
     if (this.commands.blocked().blocksWrites) return this.commands.blocked().label;
-    if (!this.identity.can(StaffPermission.PaymentCapture)) return 'Permiso insuficiente para cobrar.';
-    if (!this.identity.can(StaffPermission.SaleReserve)) return 'Permiso insuficiente para operar ventas.';
+    if (!this.session.can(StaffPermission.SaleReserve)) return 'Permiso insuficiente para reservar ventas.';
     return this.counter.blockReason();
   }
 
-  saleBlocked(): boolean {
-    return this.busy() || this.blockReason() !== null;
-  }
-
-  applySku(sku: string): void {
-    const item = this.counter.catalog()?.items.find((row) => row.sku === sku);
-    if (!item) return;
-    this.sku = item.sku;
-    this.productName = item.name;
-    this.variantId = item.variantId;
-    this.priceVersion = item.priceVersion?.trim() || 'price-v1';
-    if (item.unitPrice != null) {
-      this.originalUnitPrice = Number(item.unitPrice);
-      this.amount = Math.max(0, this.originalUnitPrice - Number(this.discountAmount));
-    }
-  }
-
-  effectiveUnitPrice(): number {
-    return Math.max(0, Number(this.originalUnitPrice) - Number(this.discountAmount));
-  }
-
-  appendAmount(key: string): void {
-    const current = String(this.amount ?? '');
-    this.amount = Number((current === '0' ? key : current + key));
-  }
-
-  clearAmount(): void {
-    this.amount = 0;
-  }
-
-  reserve(): void {
-    if (!TicketTransitionPolicy.beginReserve(this.busy(), this.blockReason() === null).permitsWrite) return;
-    // Acquire before UUID creation: synchronous double submit cannot create another identity.
-    this.busy.set(true);
-    const amount = TicketMoney.fromDecimal(this.amount);
-    const fee = TicketMoney.fromDecimal(0);
-    const extra = TicketMoney.fromDecimal(this.secondAmount);
-    const price = TicketMoney.fromDecimal(this.originalUnitPrice);
-    const discount = TicketMoney.fromDecimal(this.discountAmount);
-    const decision = TicketTransitionPolicy.reservationAmounts({ price, discount, amount, fee, extra, secondMethod: this.secondMethod });
-    if (fee?.cents !== 0n || !decision.permitsWrite || !price || !discount || !amount || !fee || !extra) {
-      this.message.set(decision.label);
-      this.busy.set(false);
-      return;
-    }
-    const pos = this.commands.runtime.context();
-    if (!pos || this.counter.openSession()?.terminalId !== pos.terminalId) { this.busy.set(false); this.message.set('Caja y contexto POS no coinciden.'); return; }
-    const identity: TicketIdentity = Object.freeze({
-      clientInstanceId: pos.clientInstanceId, deviceId: pos.deviceId, saleId: crypto.randomUUID(), operationId: crypto.randomUUID(),
-    });
-    const payments: PaymentAttempt[] = [Object.freeze({ identity, method: PaymentMethod.Cash, amount, fee })];
-    if (extra.cents > 0n) payments.push(Object.freeze({ identity, method: this.secondMethod, amount: extra, fee: TicketMoney.fromDecimal(0)! }));
-    const context: TicketAttemptContext = Object.freeze({
-      identity,
-      reservation: Object.freeze({
-        ...identity, cashSessionId: Number(this.counter.openSession()?.id), variantId: this.variantId,
-        quantity: 1, expectedPriceVersion: this.priceVersion, sku: this.sku, productName: this.productName,
-        originalUnitPrice: price.decimal, discountAmount: discount.decimal,
-      }),
-      payments: Object.freeze(payments),
-    });
-    this.attempt = context;
-    this.operationRef.set(identity.operationId);
-    this.snapshot.set(null);
-    this.paymentId.set(null);
-    this.journey.execute(context).pipe(
-      takeUntil(this.identity.changed),
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => { if (this.attempt === context) this.busy.set(false); }),
-    ).subscribe({
-      next: (result) => {
-        if (this.attempt !== context) return;
-        this.recordJourneyProgress(result);
-      },
-      error: (err: unknown) => { if (this.attempt === context) this.message.set(this.failureMessage(err)); },
-    });
-  }
-
-  refresh(): void {
-    const context = this.attempt;
-    if (!context || this.busy()) return;
-    this.busy.set(true);
-    this.snapshot.set(null);
-    this.refreshStep.execute(context.identity).pipe(
-      takeUntil(this.identity.changed),
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => { if (this.attempt === context) this.busy.set(false); }),
-    ).subscribe({
-      next: (snapshot) => {
-        if (this.attempt !== context) return;
-        this.snapshot.set(snapshot);
-        this.message.set(`GET ${snapshot.status.label}. ${snapshot.coverage.label}.`);
-      },
-      error: (err: unknown) => { if (this.attempt === context) { this.snapshot.set(null); this.message.set(this.failureMessage(err)); } },
-    });
-  }
-
-  commit(): void {
-    this.finish(SaleAction.Commit);
-  }
-
-  release(): void {
-    this.requestRelease();
-  }
-
-  requestRelease(): void {
-    const operationId = this.attempt?.identity.operationId;
-    if (!operationId || !this.canFinish(SaleAction.Release)) return;
-    this.releaseReview.set(Object.freeze({ operationId }));
-    this.releasePhase.set(ConfirmationPhase.Reviewing);
-  }
-  cancelRelease(): void { this.releaseReview.set(null); this.releasePhase.set(ConfirmationPhase.Idle); }
-  confirmRelease(): void {
-    const review = this.releaseReview();
-    if (!this.releasePhase().isReviewing || !review || this.attempt?.identity.operationId !== review.operationId ||
-        !this.canFinish(SaleAction.Release)) { this.cancelRelease(); return; }
-    this.cancelRelease();
-    this.finish(SaleAction.Release);
+  formatMoney(raw: string | number | null | undefined): string {
+    const amount = Number(raw);
+    return Number.isFinite(amount) ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(amount) : 'No disponible';
   }
 
   private finish(action: SaleAction): void {
-    const context = this.attempt;
-    if (!context || !this.canFinish(action)) return;
-    this.busy.set(true);
-    this.snapshot.set(null);
-    this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
-      if (this.attempt !== context) return throwError(() => new Error('El intento ya no está activo.'));
-      const decision = TicketTransitionPolicy.decide(snapshot, action);
-      if (!decision.permitsWrite) return throwError(() => new Error(decision.label));
-      const kind = action === SaleAction.Commit ? SaleCommandKind.Commit : SaleCommandKind.Release;
-      return this.sales.execute(SaleCommand.create(kind, context.identity, Number(this.counter.openSession()?.id), { reason: this.operationReason })).pipe(
-        concatMap(result => result.outcome === SaleAdmissionOutcome.Accepted ? this.commandHttp.ticket(context.identity) : throwError(() => new Error(result.outcome.label))));
-    }), concatMap((response) => {
-      const snapshot = PosWireMapper.ticket(response, context.identity);
-      if (!snapshot.evidenceValid) return throwError(() => new Error('Respuesta de venta no válida. Consultá el estado.'));
-      this.snapshot.set(snapshot);
-      this.message.set(`${action.resultSubject} ${snapshot.status.label}`);
-      return this.refreshStep.execute(context.identity);
-    }), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef),
-    finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
-      next: (snapshot) => { if (this.attempt === context) this.snapshot.set(snapshot); },
-      error: (err: unknown) => { if (this.attempt === context) { this.snapshot.set(null); this.message.set(this.failureMessage(err)); } },
+    const active = this.active;
+    if (!active || !this.canFinish(action)) return;
+    this.busy.set(true); this.cart.moveTo(CartPhase.AwaitingCommit);
+    this.completeSale.execute(active.identity,active.cashSessionId,this.operationReason,action).pipe(
+      takeUntil(this.session.changed), takeUntilDestroyed(this.destroyRef),
+      finalize(() => { if (this.active === active) this.busy.set(false); }),
+    ).subscribe({
+      next: snapshot => {
+        if (this.active !== active) return;
+        this.acceptSnapshot(snapshot);
+        if (snapshot.status === SaleStatus.Committed || snapshot.status === SaleStatus.Released) {
+          this.cart.moveTo(CartPhase.Completed); this.message.set(`${action.resultSubject} ${snapshot.status.label}.`);
+          this.announcement.set('Operación finalizada y comprobada.');
+        } else {
+          this.cart.moveTo(CartPhase.RecoveryRequired);
+          this.message.set('La operación fue admitida pero aún no está finalizada. Consultá nuevamente.');
+        }
+      },
+      error: error => this.enterRecovery(active, error),
     });
   }
 
-  canFinish(action: SaleAction): boolean {
-    if (!this.commands.runtime.canWrite()) return false;
-    const permission = action === SaleAction.Commit ? StaffPermission.SaleCommit : action === SaleAction.Release ? StaffPermission.SaleRelease : action === SaleAction.Reverse ? StaffPermission.PaymentReverse : StaffPermission.Unknown;
-    if (!this.identity.can(permission) || this.commands.unresolved() || this.commands.blocked().blocksWrites) return false;
-    const decision = TicketTransitionPolicy.decide(this.snapshot(), action);
-    return !this.busy() && decision.permitsWrite;
+  private acceptSnapshot(snapshot: TicketSnapshot): void {
+    if (!snapshot.evidenceValid) throw new Error('No se pudo comprobar la identidad o evidencia de la venta.');
+    this.snapshot.set(snapshot);
   }
 
-  private recordJourneyProgress(result: TicketFlowResult): void {
-    this.snapshot.set(result.snapshot);
-    this.paymentId.set(result.payments[0]?.paymentId ?? this.paymentId());
-    this.message.set(`Reserva ${result.snapshot.status.label}. ${result.snapshot.coverage.label}.`);
+  private derivePhase(snapshot: TicketSnapshot): void {
+    if (!snapshot.evidenceValid || snapshot.status === SaleStatus.Unknown || snapshot.coverage === PaymentCoverage.InvalidUnknown) {
+      this.cart.moveTo(CartPhase.Unknown); return;
+    }
+    if (snapshot.status === SaleStatus.Committed || snapshot.status === SaleStatus.Released) this.cart.moveTo(CartPhase.Completed);
+    else if (snapshot.status === SaleStatus.CommitPending || snapshot.status === SaleStatus.ReleasePending) this.cart.moveTo(CartPhase.AwaitingCommit);
+    else if (snapshot.pending?.cents === 0n && snapshot.coverage === PaymentCoverage.Paid) this.cart.moveTo(CartPhase.Reserved);
+    else if (snapshot.status === SaleStatus.Reserved || snapshot.status === SaleStatus.PaymentCaptured) this.cart.moveTo(CartPhase.AwaitingPayment);
+    else this.cart.moveTo(CartPhase.RecoveryRequired);
   }
 
+  private openDurable(detail: DurableSaleDetail): void {
+    const completeLines = detail.lines.every(line => line.metadata === DurableLineMetadata.Complete && line.variantId !== null &&
+      line.originalUnitPrice !== null && line.priceVersion !== null);
+    this.cart.reset();
+    if (completeLines) {
+      try {
+        for (const line of detail.lines) this.cart.add(CartLine.create({
+          variantId: line.variantId!, sku: line.sku, productName: line.productName, quantity: line.quantity,
+          expectedPriceVersion: line.priceVersion!, originalUnitPrice: line.originalUnitPrice!.decimal, discountAmount: '0.00',
+        }));
+      } catch {
+        this.cart.reset();
+        this.cart.moveTo(CartPhase.RecoveryRequired);
+        this.message.set('La venta contiene líneas que no se pueden comprobar. Sólo está disponible para consulta.');
+        return;
+      }
+    }
+    const snapshot: TicketSnapshot = Object.freeze({
+      ledgerSemantics: PaymentLedgerSemantics.Net,
+      identity: detail.identity,
+      status: SaleStatus.fromWire(detail.status.wire),
+      evidenceValid: detail.valid && completeLines,
+      receipt: detail.receipt,
+      reservationRef: detail.reservationRef,
+      total: detail.total,
+      pending: detail.pending,
+      coverage: detail.coverage,
+      hasPaymentHistory: detail.hasPaymentHistory,
+      blocked: !detail.valid || !completeLines,
+      retired: false,
+    });
+    this.active = Object.freeze({ identity: detail.identity,cashSessionId:detail.cashSessionId });
+    this.operationRef.set(detail.identity.operationId);
+    this.snapshot.set(snapshot);
+    this.syncPaymentHistory(detail);
+    this.paymentAmount = detail.pending && detail.pending.cents > 0n ? detail.pending.decimal : '';
+    this.derivePhase(snapshot);
+    this.message.set(snapshot.evidenceValid
+      ? `Venta reabierta y comprobada: ${snapshot.status.label}. ${snapshot.coverage.label}.`
+      : 'La venta histórica no tiene metadatos completos. Sólo está disponible para consulta.');
+    this.announcement.set(this.message() ?? 'Venta reabierta.');
+  }
+
+  private syncPaymentHistory(detail:DurableSaleDetail):void {
+    const reversible=detail.payments.filter(payment=>payment.status===PaymentStatus.Captured&&payment.reversibility.permitsReverse);
+    this.paymentId.set(reversible.length?reversible[reversible.length-1].paymentId:null);
+    this.paymentHistory.set(Object.freeze(detail.payments.filter(payment=>payment.amount!==null).map(payment=>Object.freeze({
+      paymentId:payment.paymentId,originalPaymentId:payment.originalPaymentId,status:payment.status,method:payment.method,
+      amount:payment.amount!,fee:payment.fee,
+    }))));
+  }
+
+  private normalizedProgressPhase(): CartPhase {
+    const phase = this.phase();
+    if (phase === CartPhase.Reserved) return CartPhase.AwaitingCommit;
+    if (phase === CartPhase.RecoveryRequired || phase === CartPhase.Unknown) return CartPhase.AwaitingReservation;
+    return phase;
+  }
+
+  private enterRecovery(active: ActiveTicket, error: unknown): void {
+    if (this.active !== active) return;
+    this.snapshot.set(null); this.cart.moveTo(CartPhase.RecoveryRequired);
+    this.message.set(this.failureMessage(error));
+    this.announcement.set('No se pudo comprobar la operación. Se requiere recuperación.');
+    this.focusSoon('[data-operation-notice]');
+  }
+
+  private failDraft(message: string): void { this.message.set(message); this.announcement.set(message); this.focusSoon('[data-operation-notice]'); }
   private failureMessage(error: unknown): string {
     return error instanceof Error && !(error instanceof HttpErrorResponse) ? error.message : 'No se pudo comprobar la operación. Consultá su estado.';
   }
-
-  consultReceipt(): void {
-    const context = this.attempt;
-    const command = this.commands.unresolved();
-    if (!command || this.busy()) return;
-    this.busy.set(true);
-    this.commands.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.identity.changed),
-      takeUntilDestroyed(this.destroyRef)).subscribe(receipt => {
-      this.snapshot.set(null);
-      if (context && this.attempt === context && receipt.outcome === CommandOutcome.Committed) {
-        if (command?.kind === AccountingCommandKind.Capture && receipt.paymentId) this.paymentId.set(receipt.paymentId);
-        if (command?.kind === AccountingCommandKind.Reverse) this.paymentId.set(null);
-      }
-      this.message.set(`${receipt.failure.label || receipt.outcome.label}. Consultá la venta antes de continuar.`);
-    });
+  private clearForActorChange(): void {
+    this.active = null; this.snapshot.set(null); this.operationRef.set(null); this.paymentId.set(null); this.paymentHistory.set([]); this.requestedOperationId.set(null);
+    this.message.set(null); this.busy.set(false); this.cart.reset(); this.cancelReverse(); this.cancelRelease();
   }
-  consultSaleReceipt(): void {
-    if (this.busy()) return;
-    this.busy.set(true);
-    this.sales.consult().pipe(finalize(() => this.busy.set(false)), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef))
-      .subscribe(result => { this.snapshot.set(null); this.message.set(result.outcome.label); });
-  }
-
-  readonly reversalReasonGuidance = ReversalReason.guidance;
-
-  validReversalReason(): boolean { return ReversalReason.fromInput(this.reversalReason) !== null; }
-
-  requestReverse(paymentId: number): void {
-    const operationId = this.attempt?.identity.operationId;
-    const reason = ReversalReason.fromInput(this.reversalReason);
-    if (!operationId || !reason || !this.canFinish(SaleAction.Reverse) || paymentId !== this.paymentId()) return;
-    this.reversalReview.set(Object.freeze({ operationId, paymentId, reason }));
-    this.reversalPhase.set(ConfirmationPhase.Reviewing);
-  }
-
-  cancelReverse(): void {
-    this.reversalReview.set(null);
-    this.reversalPhase.set(ConfirmationPhase.Idle);
-  }
-
-  reversalDescription(): string {
-    const review = this.reversalReview();
-    return review == null ? '' : `Vas a reversar el pago ${review.paymentId}. Esta acción queda auditada y no se puede deshacer desde esta pantalla.`;
-  }
-
-  confirmReverse(): void {
-    const review = this.reversalReview();
-    if (!this.reversalPhase().isReviewing || !review || this.attempt?.identity.operationId !== review.operationId ||
-        review.paymentId !== this.paymentId() || !this.canFinish(SaleAction.Reverse)) { this.cancelReverse(); return; }
-    this.cancelReverse();
-    this.executeReverse(review);
-  }
-
-  private executeReverse(review: TicketReversalReview): void {
-    const context = this.attempt;
-    if (!context || context.identity.operationId !== review.operationId || !this.canFinish(SaleAction.Reverse) || review.paymentId !== this.paymentId()) return;
-    this.busy.set(true);
-    this.snapshot.set(null);
-    this.refreshStep.execute(context.identity).pipe(concatMap((snapshot) => {
-      const decision = TicketTransitionPolicy.decide(snapshot, SaleAction.Reverse);
-      if (this.attempt !== context || !decision.permitsWrite) return throwError(() => new Error(decision.label));
-      return this.commands.execute(AccountingCommand.create(AccountingCommandKind.Reverse, {
-        ...context.identity, originalPaymentId: review.paymentId,
-        reason: review.reason.wire, evidenceRef: `rev-${review.paymentId}`,
-      }, review.paymentId));
-    }), takeUntil(this.identity.changed), takeUntilDestroyed(this.destroyRef),
-    finalize(() => { if (this.attempt === context) this.busy.set(false); })).subscribe({
-        next: (response) => {
-          if (this.attempt !== context) return;
-          if (response.outcome === CommandOutcome.Committed) this.paymentId.set(null);
-          this.message.set(`${response.failure.label || response.outcome.label}. Consultá la venta antes de continuar.`);
-        },
-        error: (err: unknown) => { if (this.attempt === context) this.message.set(this.failureMessage(err)); },
-      });
-  }
+  private focusSoon(selector: string): void { setTimeout(() => (this.host.nativeElement.querySelector(selector) as HTMLElement | null)?.focus()); }
 }

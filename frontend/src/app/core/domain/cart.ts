@@ -1,5 +1,6 @@
 import { TicketMoney } from './ticket-transition';
 import { SaleReservationLineV2 } from './sale-command';
+import { SaleTextV2 } from './sale-text-v2';
 
 export class CartPhase {
   static readonly Editing=new CartPhase('Editing','Editando carrito',true);
@@ -20,13 +21,18 @@ export class CartLine {
     readonly expectedPriceVersion:string,readonly originalUnitPrice:TicketMoney,readonly discountAmount:TicketMoney){}
   static create(input:SaleReservationLineV2):CartLine {
     const price=TicketMoney.fromDecimal(input.originalUnitPrice),discount=TicketMoney.fromDecimal(input.discountAmount);
-    if(!input.variantId||!input.sku||!input.productName||!input.expectedPriceVersion||!Number.isSafeInteger(input.quantity)||input.quantity<1||
+    if(!Number.isSafeInteger(input.quantity)||input.quantity<1||input.quantity>2147483647||
       !price||price.cents<=0n||!discount||discount.cents!==0n)throw new Error('Línea de carrito inválida');
-    return new CartLine(input.variantId,input.sku,input.productName,input.quantity,input.expectedPriceVersion,price,discount);
+    const line=new CartLine(SaleTextV2.ref(input.variantId),SaleTextV2.ref(input.sku),SaleTextV2.name(input.productName),input.quantity,
+      SaleTextV2.ref(input.expectedPriceVersion),price,discount);
+    void line.subtotal;
+    return line;
   }
   withQuantity(quantity:number):CartLine {
     if(!Number.isSafeInteger(quantity)||quantity<1||quantity>2147483647)throw new Error('Cantidad inválida');
-    return new CartLine(this.variantId,this.sku,this.productName,quantity,this.expectedPriceVersion,this.originalUnitPrice,this.discountAmount);
+    const line=new CartLine(this.variantId,this.sku,this.productName,quantity,this.expectedPriceVersion,this.originalUnitPrice,this.discountAmount);
+    void line.subtotal;
+    return line;
   }
   get subtotal():TicketMoney {const value=moneyFromCents(this.originalUnitPrice.cents*BigInt(this.quantity));if(!value)throw new Error('Total fuera de rango');return value;}
   toReservationLine():SaleReservationLineV2{return Object.freeze({variantId:this.variantId,sku:this.sku,productName:this.productName,quantity:this.quantity,
@@ -41,17 +47,21 @@ export class CartDraft {
     if(current){const quantity=current.quantity+line.quantity;if(!Number.isSafeInteger(quantity)||quantity>2147483647)throw new Error('Cantidad fuera de rango');
       return this.replace(current.withQuantity(quantity));}
     if(this.lines.length>=100)throw new Error('Máximo de variantes alcanzado');
-    return new CartDraft(Object.freeze([...this.lines,line]));
+    return CartDraft.fromLines([...this.lines,line]);
   }
   change(variantId:string,quantity:number):CartDraft {const current=this.lines.find(item=>item.variantId===variantId);if(!current)throw new Error('Variante ausente');return this.replace(current.withQuantity(quantity));}
-  remove(variantId:string):CartDraft{return new CartDraft(Object.freeze(this.lines.filter(item=>item.variantId!==variantId)));}
+  remove(variantId:string):CartDraft{return CartDraft.fromLines(this.lines.filter(item=>item.variantId!==variantId));}
   get total():TicketMoney|null {
     if(!this.lines.length)return null;
     const cents=this.lines.reduce((sum,line)=>sum+line.subtotal.cents,0n);
     return moneyFromCents(cents);
   }
   freeze():readonly SaleReservationLineV2[] {if(!this.lines.length||!this.total)throw new Error('Carrito inválido');return Object.freeze(this.lines.map(line=>Object.freeze(line.toReservationLine())));}
-  private replace(line:CartLine):CartDraft{return new CartDraft(Object.freeze(this.lines.map(item=>item.variantId===line.variantId?line:item)));}
+  private replace(line:CartLine):CartDraft{return CartDraft.fromLines(this.lines.map(item=>item.variantId===line.variantId?line:item));}
+  private static fromLines(lines:readonly CartLine[]):CartDraft {
+    if(lines.length&& !moneyFromCents(lines.reduce((sum,line)=>sum+line.subtotal.cents,0n)))throw new Error('Total fuera de rango');
+    return new CartDraft(Object.freeze([...lines]));
+  }
 }
 
 export interface ReservedCartSnapshot {readonly lines:readonly SaleReservationLineV2[];readonly total:TicketMoney;}
