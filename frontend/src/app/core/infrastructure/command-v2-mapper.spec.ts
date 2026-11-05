@@ -52,7 +52,7 @@ describe('v2 context lifecycle and sale admission boundary',()=>{
       expect(PosWireMapper.saleAdmission(envelope({outcome:'Accepted',receipt:{...receipt,fingerprintVersion},failure:null,lineFailures:[]},202),command,7,hash).outcome).toBe(SaleAdmissionOutcome.Unknown);
   });
   it('preserves V2 reference whitespace and rejects explicit incompatible receipt versions on V1 routes',async()=>{
-    const v3Identity={...identity,deviceId:'\u00a0device\u00a0',saleId:'\u00a0sale\u00a0'};
+    const v3Identity={...identity,deviceId:'\u00a0device\u00a0',saleId:'\u00a0'};
     const reserve=SaleCommand.createMultilineReserve(v3Identity,2,[{variantId:'a',quantity:1,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',originalUnitPrice:'1',discountAmount:'0'}]);
     const reserveHash=await new SaleAdmissionV2Fingerprint().hash(reserve,7);
     const reserveReceipt={...v3Identity,commandId:reserve.commandId,kind:'Reserve',actorId:7,cashSessionId:2,payloadHash:reserveHash,intentId:1,outboxId:2,

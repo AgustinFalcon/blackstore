@@ -58,15 +58,24 @@ export interface DurableSaleLine {
   readonly total: TicketMoney | null;
 }
 export class DurableLineMetadata {
-  static readonly Complete=new DurableLineMetadata('Metadatos completos');
-  static readonly LegacyAbsent=new DurableLineMetadata('Histórico sin metadatos de variante');
-  static readonly Unknown=new DurableLineMetadata('Metadatos inconsistentes');
-  private constructor(readonly label:string){}
-  static fromFields(variantId:string|null,originalUnitPrice:TicketMoney|null,priceVersion:string|null):DurableLineMetadata {
-    if(variantId&&originalUnitPrice&&priceVersion)return this.Complete;
-    if(variantId===null&&originalUnitPrice===null&&priceVersion===null)return this.LegacyAbsent;
-    return this.Unknown;
+  static readonly Complete=new DurableLineMetadata('COMPLETE','Metadatos completos');
+  static readonly LegacyV1=new DurableLineMetadata('LEGACY_V1','Histórico sin metadatos de variante');
+  static readonly Unknown=new DurableLineMetadata('UNKNOWN','Metadatos inconsistentes');
+  private constructor(readonly wire:string,readonly label:string){}
+  static fromWire(rawVariantId:unknown,rawOriginalUnitPrice:unknown,rawPriceVersion:unknown):DurableLineMetadataValue {
+    const variantId=typeof rawVariantId==='string'&&rawVariantId.trim()?rawVariantId:null;
+    const originalUnitPrice=TicketMoney.fromDecimal(rawOriginalUnitPrice);
+    const priceVersion=typeof rawPriceVersion==='string'&&rawPriceVersion.trim()?rawPriceVersion:null;
+    const metadata=variantId&&originalUnitPrice&&priceVersion?this.Complete:
+      rawVariantId===null&&originalUnitPrice!==null&&rawPriceVersion===null?this.LegacyV1:this.Unknown;
+    return Object.freeze({metadata,variantId,originalUnitPrice,priceVersion});
   }
+}
+export interface DurableLineMetadataValue {
+  readonly metadata:DurableLineMetadata;
+  readonly variantId:string|null;
+  readonly originalUnitPrice:TicketMoney|null;
+  readonly priceVersion:string|null;
 }
 export interface DurableSalePayment {
   readonly originalPaymentId: number | null;

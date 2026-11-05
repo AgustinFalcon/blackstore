@@ -414,10 +414,9 @@ export class PosWireMapper {
       (coverage === PaymentCoverage.Paid && pending!.cents === 0n && history === true));
     const lines = Array.isArray(raw['lines']) ? raw['lines'].map(value => {
       const line = PosWireMapper.record(value);
-      const variantId=PosWireMapper.nonempty(line?.['variantId']),originalUnitPrice=TicketMoney.fromDecimal(line?.['originalUnitPrice']),priceVersion=PosWireMapper.nonempty(line?.['priceVersion']);
-      return Object.freeze({variantId,sku: PosWireMapper.nonempty(line?.['sku']) ?? '—', productName: PosWireMapper.nonempty(line?.['productName']) ?? 'Sin descripción',
-        quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0,originalUnitPrice,priceVersion,
-        metadata:DurableLineMetadata.fromFields(variantId,originalUnitPrice,priceVersion),total: TicketMoney.fromDecimal(line?.['totalAmount']) });
+      const metadata=DurableLineMetadata.fromWire(line?.['variantId'],line?.['originalUnitPrice'],line?.['priceVersion']);
+      return Object.freeze({...metadata,sku: PosWireMapper.nonempty(line?.['sku']) ?? '—', productName: PosWireMapper.nonempty(line?.['productName']) ?? 'Sin descripción',
+        quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0,total: TicketMoney.fromDecimal(line?.['totalAmount']) });
     }) : [];
     const paymentRows = Array.isArray(raw['payments']) ? raw['payments'].map(value => {
       const payment = PosWireMapper.record(value);
@@ -438,7 +437,7 @@ export class PosWireMapper {
       !allowedActions.includes(AllowedAction.Unknown) && Array.isArray(raw['lines']) && Array.isArray(raw['payments']) &&
       raw['lines'].every(value => { const line = PosWireMapper.record(value); return !!PosWireMapper.nonempty(line?.['sku']) && !!PosWireMapper.nonempty(line?.['productName']); }) &&
       lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents > 0n && line.metadata!==DurableLineMetadata.Unknown &&
-        (line.metadata===DurableLineMetadata.LegacyAbsent||!!line.originalUnitPrice&&line.originalUnitPrice.cents>0n&&line.total.cents<=line.originalUnitPrice.cents*BigInt(line.quantity))) &&
+        !!line.originalUnitPrice&&line.originalUnitPrice.cents>0n&&line.total.cents<=line.originalUnitPrice.cents*BigInt(line.quantity)) &&
       !!summary.total&&lineTotal===summary.total.cents&&
       payments.every(payment => payment.paymentId > 0 && (payment.status === PaymentStatus.Captured || payment.status === PaymentStatus.Refunded) && payment.method !== PaymentMethod.Unknown &&
         !!payment.amount && payment.amount.cents > 0n && !!payment.fee && payment.fee.cents >= 0n) &&
@@ -468,8 +467,8 @@ export class PosWireMapper {
 
   private static identity(raw: Record<string, unknown> | null,opaqueSaleId=false): TicketIdentity | null {
     const clientInstanceId = PosWireMapper.nonempty(raw?.['clientInstanceId']);
-    const deviceId = PosWireMapper.nonempty(raw?.['deviceId']);
-    const saleId = PosWireMapper.nonempty(raw?.['saleId']);
+    const deviceId = opaqueSaleId ? typeof raw?.['deviceId']==='string' ? raw['deviceId'] : null : PosWireMapper.nonempty(raw?.['deviceId']);
+    const saleId = opaqueSaleId ? typeof raw?.['saleId']==='string' ? raw['saleId'] : null : PosWireMapper.nonempty(raw?.['saleId']);
     const operationId = PosWireMapper.nonempty(raw?.['operationId']);
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let opaqueValid=false;
