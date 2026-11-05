@@ -1,6 +1,6 @@
 # Evidencia POSC-B — candidato local 2026-11-05
 
-Base: `3a6a520555d499fceda835cf573f25921c922e5f`. Branch: `codex/blackstore-posc-b`. Estado: implementación local PASS; review/CI/merge pendientes.
+Base: `3a6a520555d499fceda835cf573f25921c922e5f`. Branch: `codex/blackstore-posc-b`. Candidato aprobado: `bcdb31f4839dedf0324ba85ccf020a4607cfc019`. Estado: implementación local y reviews PASS; CI/merge pendientes.
 
 ## Entregado
 
@@ -26,5 +26,6 @@ Base: `3a6a520555d499fceda835cf573f25921c922e5f`. Branch: `codex/blackstore-posc
 - `AccountingMutationPostgresTest.workerRecognitionChildCrashIsAtomicBeforeAndAfterCommit`: venta multiline, efecto remoto ya disponible, commit local antes/después del crash, total/versiones/líneas y reconocimiento único PASS.
 - `gradlew test --no-daemon`: 74 suites, 321 tests, 0 failures, 0 errors, 0 skipped, 6m53s.
 - `git diff --check`: PASS.
+- Re-review coordinada Astra bug/producto + seguridad sobre `bcdb31f4839dedf0324ba85ccf020a4607cfc019`: APPROVE/APPROVE, sin P0–P3.
 
 Docker Desktop y contenedores Testcontainers fueron detenidos al cerrar los gates. Esta evidencia no prueba StoreCore live, homologación, frontend, browser ni CI; corresponden a POSC-T/U/E.
