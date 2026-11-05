@@ -1,6 +1,10 @@
 import { JournalPhase } from './command-journal';
 describe('closed monotonic journal phase policy',()=>{
-  const phases=[JournalPhase.Prepared,JournalPhase.AwaitingReceipt,JournalPhase.ReceiptVerifiedAwaitingRefresh,JournalPhase.Resolved,JournalPhase.Quarantined];
+  it('keeps rejected evidence terminal and requires its explicit rejection API',()=>{
+    expect(JournalPhase.fromWire(JournalPhase.Rejected.wire)).toBe(JournalPhase.Rejected);expect(JournalPhase.Rejected.isTerminal).toBeTrue();expect(JournalPhase.Rejected.nextPhase(JournalPhase.Prepared)).toBe(JournalPhase.Rejected);
+    expect(JournalPhase.AwaitingReceipt.nextPhase(JournalPhase.Rejected)).toBeNull();
+  });
+  const phases=[JournalPhase.Prepared,JournalPhase.AwaitingReceipt,JournalPhase.ReceiptVerifiedAwaitingRefresh,JournalPhase.Resolved,JournalPhase.Rejected,JournalPhase.Quarantined];
   it('keeps terminal and duplicate evidence idempotently',()=>{
     for(const phase of phases){expect(JournalPhase.Resolved.nextPhase(phase)).toBe(JournalPhase.Resolved);expect(phase.nextPhase(phase)).toBe(phase);}
   });

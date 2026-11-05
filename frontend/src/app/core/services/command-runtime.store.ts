@@ -4,7 +4,7 @@ import { AccountingCommand, AccountingCommandKind, CommandOutcome, CommandReceip
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
 import { JournalEntry, JournalFamily, JournalPhase, JournalScope, sameScope } from '../domain/command-journal';
 import { PosContextState, PosExecutionContext } from '../domain/pos-execution-context';
-import { SaleAdmission, SaleAdmissionOutcome, SaleCommand,SaleCommandKind,SaleAdmissionVerification,SaleFingerprintVersion } from '../domain/sale-command';
+import { SaleAdmission, SaleAdmissionOutcome, SaleCommand,SaleCommandKind,SaleAdmissionVerification,SaleFingerprintVersion, SaleAdmissionResolution } from '../domain/sale-command';
 import { IndexedDbCommandJournal } from '../infrastructure/indexed-db-command-journal';
 import { CommandHttp } from '../infrastructure/command-http';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
@@ -28,6 +28,7 @@ export class CommandRuntimeStore {
   readonly hydrated = signal(false);
   readonly notice = signal('Comprobando contexto, contabilidad y evidencia local…');
   readonly pending = signal<JournalEntry | null>(null);
+  readonly rejected = signal<readonly JournalEntry[]>([]);
   readonly neutralBlock = signal(true);
   readonly canWrite = computed(() => this.hydrated() && !this.neutralBlock() && !this.pending() && !!this.context() && this.lifecycle().admitsWrites);
   refresh(): void {
@@ -49,23 +50,24 @@ export class CommandRuntimeStore {
     });
   }
   private invalidate(notice:string):void{
-    ++this.epoch;this.context.set(null);this.contextState.set(PosContextState.Unknown);this.lifecycle.set(AccountingLifecycleState.Unknown);
+    ++this.epoch;this.rejected.set([]);this.context.set(null);this.contextState.set(PosContextState.Unknown);this.lifecycle.set(AccountingLifecycleState.Unknown);
     this.pending.set(null);this.hydrated.set(false);this.neutralBlock.set(true);this.notice.set(notice);
   }
   private current(epoch: number, generation: number, actor: number): boolean {
     return epoch === this.epoch && generation === this.session.generation() && actor === this.session.staff()?.id && this.session.state().isAuthenticated;
   }
   private async hydrate(generation: number, actor: number): Promise<void> {
-    const epoch = ++this.epoch; this.hydrated.set(false); this.neutralBlock.set(true); this.pending.set(null);
+    const epoch = ++this.epoch; this.rejected.set([]); this.hydrated.set(false); this.neutralBlock.set(true); this.pending.set(null);
     try {
       const [contextRaw,lifecycleRaw,snapshot] = await Promise.all([firstValueFrom(this.api.context()),firstValueFrom(this.api.lifecycle()),this.journal.list()]);
       if (!this.current(epoch,generation,actor)) return;
       const observation = PosWireMapper.posContext(contextRaw); this.contextState.set(observation.state); this.context.set(observation.context); this.lifecycle.set(PosWireMapper.lifecycle(lifecycleRaw));
       const scope = observation.context ? { origin: globalThis.location.origin, ...observation.context } : null;
-      const unresolved = snapshot.entries.filter(entry => entry.phase !== JournalPhase.Resolved);
+      const unresolved = snapshot.entries.filter(entry => !entry.phase.isTerminal);
       if (!scope || snapshot.quarantined || unresolved.some(entry => !sameScope(entry.scope,scope) || entry.actorId !== actor) || unresolved.length > 1) {
         this.notice.set(snapshot.quarantined ? 'Evidencia local en cuarentena. Requiere conciliación operativa.' : 'Contexto o evidencia pendiente no disponible para esta sesión. Requiere conciliación.'); return;
       }
+      this.rejected.set(Object.freeze(snapshot.entries.filter(entry=>entry.phase===JournalPhase.Rejected && entry.actorId===actor && sameScope(entry.scope,scope))));
       this.neutralBlock.set(false); this.hydrated.set(true); this.pending.set(unresolved[0] ?? null);
       this.notice.set(this.lifecycle().label);
       if (unresolved[0]) await this.recover(unresolved[0],epoch,generation,actor);
@@ -127,6 +129,13 @@ export class CommandRuntimeStore {
       await this.journal.transition(entry,JournalPhase.Quarantined);
       if(this.current(epoch,generation,actor)){this.pending.set({...entry,phase:JournalPhase.Quarantined});this.neutralBlock.set(true);this.notice.set('Fingerprint de recibo incompatible con intención congelada. Cuarentena; requiere conciliación.');}
       return unknown;
+    }
+    if (command instanceof SaleCommand && SaleAdmissionResolution.fromAdmission(command, result as SaleAdmission) === SaleAdmissionResolution.TerminalLineRejection) {
+      await this.journal.resolveRejected(entry, result as SaleAdmission);
+      if (!this.current(epoch,generation,actor) || this.pending()?.command.commandId !== command.commandId) return unknown;
+      this.rejected.update(entries=>Object.freeze([...entries.filter(saved=>saved.command.commandId!==command.commandId),Object.freeze({...entry,phase:JournalPhase.Rejected,rejection:result as SaleAdmission})]));
+      this.pending.set(null); this.neutralBlock.set(false); this.notice.set('Reserva rechazada. Revisá los artículos con el catálogo actualizado.');
+      return Object.freeze({ ...result as SaleAdmission, resolution: SaleAdmissionResolution.TerminalLineRejection });
     }
     const valid = command instanceof SaleCommand ? (result as SaleAdmission).outcome === SaleAdmissionOutcome.Accepted : (result as CommandReceipt).outcome === CommandOutcome.Committed && command.accepts(result as CommandReceipt);
     if (!valid) { this.notice.set(`${result.outcome.label}. Sin reenvío automático.`); return unknown; }

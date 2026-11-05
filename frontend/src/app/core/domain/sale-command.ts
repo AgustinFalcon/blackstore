@@ -41,17 +41,17 @@ export class SaleCommandFailure {
     this.Closed,this.TransitionConflict,this.NotActivated,this.Paused,this.LegacyContractDisabled,this.Unavailable].find(value=>value.wire===raw)??this.Unknown;}
 }
 export class SaleLineFailureCode {
-  static readonly VariantMissing=new SaleLineFailureCode('VariantMissing'); static readonly CatalogTextInvalid=new SaleLineFailureCode('CatalogTextInvalid');
-  static readonly SkuMismatch=new SaleLineFailureCode('SkuMismatch'); static readonly ProductNameMismatch=new SaleLineFailureCode('ProductNameMismatch');
-  static readonly PriceVersionMismatch=new SaleLineFailureCode('PriceVersionMismatch'); static readonly PriceMismatch=new SaleLineFailureCode('PriceMismatch');
-  static readonly DiscountNotAllowed=new SaleLineFailureCode('DiscountNotAllowed'); static readonly Unknown=new SaleLineFailureCode('Unknown');
-  private constructor(readonly wire:string){}
+  static readonly VariantMissing=new SaleLineFailureCode('VariantMissing', 'Artículo no disponible en el catálogo.'); static readonly CatalogTextInvalid=new SaleLineFailureCode('CatalogTextInvalid', 'Los datos del artículo no son válidos.');
+  static readonly SkuMismatch=new SaleLineFailureCode('SkuMismatch', 'El código del artículo cambió.'); static readonly ProductNameMismatch=new SaleLineFailureCode('ProductNameMismatch', 'El nombre del artículo cambió.');
+  static readonly PriceVersionMismatch=new SaleLineFailureCode('PriceVersionMismatch', 'La versión de precio cambió.'); static readonly PriceMismatch=new SaleLineFailureCode('PriceMismatch', 'El precio autorizado cambió.');
+  static readonly DiscountNotAllowed=new SaleLineFailureCode('DiscountNotAllowed', 'El descuento no está permitido.'); static readonly Unknown=new SaleLineFailureCode('Unknown', 'No se pudo comprobar el error del artículo.');
+  private constructor(readonly wire:string,readonly label:string){}
   static fromWire(raw:unknown):SaleLineFailureCode{return [this.VariantMissing,this.CatalogTextInvalid,this.SkuMismatch,this.ProductNameMismatch,
     this.PriceVersionMismatch,this.PriceMismatch,this.DiscountNotAllowed].find(value=>value.wire===raw)??this.Unknown;}
 }
 export interface SaleLineFailure {readonly variantId:string;readonly code:SaleLineFailureCode;}
 export interface SaleAdmission { readonly outcome: SaleAdmissionOutcome; readonly receipt: SaleAdmissionReceipt | null; readonly verification?:SaleAdmissionVerification;
-  readonly failure?:SaleCommandFailure;readonly lineFailures?:readonly SaleLineFailure[]; }
+  readonly failure?:SaleCommandFailure;readonly lineFailures?:readonly SaleLineFailure[];readonly resolution?:SaleAdmissionResolution; }
 export class SaleFingerprintVersion {
   static readonly AdmissionV1=new SaleFingerprintVersion('sale-admission-v1');
   static readonly AdmissionV2=new SaleFingerprintVersion('sale-admission-v2');
@@ -121,4 +121,27 @@ export class SaleCommand {
       receipt.cashSessionId === this.cashSessionId && sameTicketIdentity(this.identity, receipt) && !!expectedPayloadHash && receipt.payloadHash===expectedPayloadHash;
   }
   private static uuid(raw:string):string {if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(SaleTextV2.validate(raw)))throw new Error('UUID inválido');return raw;}
+}
+
+/** A terminal rejection applies only to the exact frozen reservation. */
+export class SaleAdmissionResolution {
+  static readonly Accepted = new SaleAdmissionResolution();
+  static readonly TerminalLineRejection = new SaleAdmissionResolution();
+  static readonly Unknown = new SaleAdmissionResolution();
+  private constructor() {}
+  static fromAdmission(command: SaleCommand, admission: SaleAdmission): SaleAdmissionResolution {
+    if (admission.outcome === SaleAdmissionOutcome.Accepted && admission.receipt && admission.verification === SaleAdmissionVerification.Verified) return this.Accepted;
+    if (command.route !== SaleAdmissionRoute.ReserveV3 || command.kind !== SaleCommandKind.Reserve ||
+      admission.outcome !== SaleAdmissionOutcome.Rejected || admission.failure !== SaleCommandFailure.Validation || admission.receipt !== null ||
+      !admission.lineFailures?.length) return this.Unknown;
+    const lines = command.body['lines'] as readonly SaleReservationLineV2[];
+    if (!Array.isArray(lines) || admission.lineFailures.length > lines.length) return this.Unknown;
+    const seen = new Set<string>();
+    for (const failure of admission.lineFailures) {
+      if (!failure || failure.code === SaleLineFailureCode.Unknown || SaleLineFailureCode.fromWire(failure.code?.wire) !== failure.code ||
+        !lines.some(line => line.variantId === failure.variantId) || seen.has(failure.variantId)) return this.Unknown;
+      seen.add(failure.variantId);
+    }
+    return this.TerminalLineRejection;
+  }
 }

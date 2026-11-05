@@ -26,7 +26,7 @@ describe('Explicit reserve and payment integration', () => {
   });
 
   it('reserve produces zero captures; capture happens only after an explicit gesture and refresh', () => {
-    const runtime = { canWrite: signal(true), context: signal(context), notice: signal('Comprobado'), refresh: () => undefined };
+    const runtime = { rejected: signal([]), canWrite: signal(true), context: signal(context), notice: signal('Comprobado'), refresh: () => undefined };
     const sales = { runtime, unresolved: signal(null), execute: jasmine.createSpy().and.returnValue(of({ outcome: SaleAdmissionOutcome.Accepted, receipt: {} })), consult: jasmine.createSpy() };
     const accounting = { runtime, unresolved: signal(null), blocked: signal({ blocksWrites: false, label: '' }),
       execute: jasmine.createSpy().and.returnValue(of({ outcome: CommandOutcome.Committed, paymentId: 41, failure: CommandFailure.None })), consult: jasmine.createSpy() };

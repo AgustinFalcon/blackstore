@@ -24,6 +24,16 @@
   @if (blockReason(); as reason) { <p class="banner warn" role="status">{{ reason }}</p> }
   @if (message()) { <p class="operation-notice" data-operation-notice role="status" tabindex="-1">{{ message() }}</p> }
 
+  @if (rejectedCommand() && !isEditing()) {
+    <section class="rejection-review" aria-labelledby="rejection-title" [attr.aria-busy]="refreshingDraft()">
+      <h3 id="rejection-title" data-rejection-heading tabindex="-1">No se pudo reservar el carrito</h3>
+      <p>Revisá los artículos señalados. El borrador original se conserva hasta comprobar el catálogo actualizado.</p>
+      <button type="button" class="primary" (click)="refreshDraft()" [disabled]="busy() || refreshingDraft()">
+        {{ refreshingDraft() ? 'Actualizando catálogo…' : 'Actualizar catálogo y revisar borrador' }}
+      </button>
+    </section>
+  }
+
   @if (isEditing()) {
     <div class="workspace">
       <section class="card catalog-panel" aria-labelledby="catalog-title">
@@ -65,15 +75,16 @@
           <div class="empty-state cart-empty"><div class="cart-glyph" aria-hidden="true">+</div><b>El carrito está vacío</b><p>Elegí un producto del catálogo para comenzar.</p></div>
         } @else {
           <div class="cart-lines">
-            @for (line of cart.draft().lines; track line.variantId) {
-              <article class="cart-line">
+            @for (line of cart.draft().lines; track line.variantId; let index = $index) {
+              <article class="cart-line" [attr.aria-describedby]="lineError(line.variantId) ? 'cart-line-error-' + index : null">
                 <div class="line-product"><b>{{ line.productName }}</b><span class="sku">{{ line.sku }}</span><span>{{ formatMoney(line.originalUnitPrice.decimal) }} c/u</span></div>
                 <label class="quantity">Cantidad
                   <input type="number" min="1" max="2147483647" [value]="line.quantity"
                     (change)="changeQuantity(line.variantId, $any($event.target))" [attr.aria-label]="'Cantidad de ' + line.productName" />
                 </label>
                 <strong class="money subtotal">{{ formatMoney(line.subtotal.decimal) }}</strong>
-                <button type="button" class="icon-button" (click)="removeLine(line.variantId, line.productName)" [attr.aria-label]="'Quitar ' + line.productName">Quitar</button>
+                @if (lineError(line.variantId); as error) { <p class="field-error line-error" [id]="'cart-line-error-' + index">{{ error }}</p> }
+                <button type="button" class="icon-button" (click)="removeLine(line.variantId, line.productName)" [attr.aria-label]="'Quitar ' + line.productName" [attr.aria-describedby]="lineError(line.variantId) ? 'cart-line-error-' + index : null">Quitar</button>
               </article>
             }
           </div>
@@ -90,8 +101,10 @@
       <section class="card operation-summary" aria-labelledby="operation-title">
         <div class="section-heading"><div><p class="eyebrow">Venta actual</p><h3 id="operation-title">Resumen inmóvil</h3></div><span class="phase-badge">{{ phase().label }}</span></div>
         <div class="frozen-lines">
-          @for (line of cart.draft().lines; track line.variantId) {
-            <div><span><b>{{ line.productName }}</b><small>{{ line.quantity }} × {{ formatMoney(line.originalUnitPrice.decimal) }}</small></span><strong>{{ formatMoney(line.subtotal.decimal) }}</strong></div>
+          @for (line of cart.draft().lines; track line.variantId; let index = $index) {
+            <div class="frozen-line" [attr.aria-describedby]="lineError(line.variantId) ? 'frozen-line-error-' + index : null"><span><b>{{ line.productName }}</b><small>{{ line.quantity }} × {{ formatMoney(line.originalUnitPrice.decimal) }}</small></span><strong>{{ formatMoney(line.subtotal.decimal) }}</strong>
+              @if (lineError(line.variantId); as error) { <p class="field-error line-error" [id]="'frozen-line-error-' + index">{{ error }}</p> }
+            </div>
           }
         </div>
         <dl class="totals">
@@ -137,14 +150,14 @@
           <div class="empty-state"><span class="loader"></span><b>Confirmando venta</b><p>Esperando el estado final comprobado.</p></div>
         } @else if (phase() === cartPhases[4]) {
           <div class="success-state"><span aria-hidden="true">✓</span><h3>{{ completedTitle() }}</h3><p>{{ completedDescription() }}</p><button type="button" class="primary" (click)="startNewSale()">Iniciar nueva venta</button></div>
-        } @else if (isRecovery()) {
+        } @else if (isRecovery() && !rejectedCommand()) {
           <div class="recovery-state"><h3>Resultado pendiente de comprobación</h3><p>No generes otra operación. Consultá la evidencia existente.</p><button type="button" class="ghost" (click)="refresh()" [disabled]="busy()">Consultar operación</button></div>
-        } @else {
+        } @else if (!rejectedCommand()) {
           <p class="eyebrow">4 · Confirmación</p><h3>Venta lista para confirmar</h3><p>El total está cubierto y comprobado. Confirmá para cerrar la venta.</p>
           <button type="button" class="primary wide" (click)="commit()" [disabled]="!canFinish(commitAction)">Confirmar venta</button>
         }
         @if (canFinish(releaseAction)) { <button type="button" class="danger-link" (click)="requestRelease()">Liberar reserva</button> }
-        <button type="button" class="ghost wide" (click)="refresh()" [disabled]="busy() || (!operationRef() && !requestedOperationId())">Actualizar estado</button>
+        @if (!rejectedCommand()) { <button type="button" class="ghost wide" (click)="refresh()" [disabled]="busy() || (!operationRef() && !requestedOperationId())">Actualizar estado</button> }
       </aside>
     </div>
   }
