@@ -5,6 +5,8 @@ import { defineConfig } from '@playwright/test';
 process.env['spring.application.json'] = JSON.stringify({ server: { port: 1 }, blackstore: { persistence: { url: 'jdbc:postgresql://127.0.0.1:1/forbidden' } } });
 process.env['JAVA_TOOL_OPTIONS'] = '-Dserver.port=2';
 const outputDir = process.env['BLACKSTORE_DCT_OUTPUT_DIR'] ?? 'work/dct-browser-results-current';
+// Only explicitly sanitized POS screenshots are written under outputDir/screenshots.
+// Automatic captures, traces and video remain disabled to exclude session data.
 
 export default defineConfig({
   testDir: './e2e/dct',

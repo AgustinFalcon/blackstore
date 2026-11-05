@@ -1,4 +1,15 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Subject } from 'rxjs';
+import { ACCOUNTING_API_BASE } from '../api';
+import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
+import { PosContextState } from '../domain/pos-execution-context';
+import { SessionState } from '../domain/session-types';
+import { CommandRuntimeStore } from '../services/command-runtime.store';
+import { SessionStore } from '../services/session.store';
+import { FOREGROUND_REFRESH } from './foreground-refresh';
 import { AccountingCommand,AccountingCommandKind } from '../domain/accounting-command';
 import { JournalEntry,JournalFamily,JournalPhase } from '../domain/command-journal';
 import { IndexedDbCommandJournal,JOURNAL_DATABASE,JournalDecoder } from './indexed-db-command-journal';
@@ -99,15 +110,59 @@ describe('untrusted journal decoder and transactional IndexedDB claim',()=>{
     await expectAsync(journal.prepare({...entry(),command,family:JournalFamily.Sale,cashSessionId:2,expectedPayloadHash:'f'.repeat(64),fingerprintVersion:SaleAdmissionFingerprint.version})).toBeRejected();
     expect((await journal.list()).entries).toEqual([]);
   });
-  for(const kind of [SaleCommandKind.Reserve,SaleCommandKind.Commit,SaleCommandKind.Release])for(const phase of [JournalPhase.Prepared,JournalPhase.AwaitingReceipt,JournalPhase.ReceiptVerifiedAwaitingRefresh]){
-    it(`rehydrates historical V1 ${kind.wire} in ${phase.wire} without route rewrite`,async()=>{
+  // Historical scalar envelopes are seeded directly, never through today's encoder/prepare.
+  const historicalCases = [
+    {kind:SaleCommandKind.Reserve,hash:'a3e90e5c5620c40fa5940fd82618c25e43614767e357ff7989765ce1a2e10959'},
+    {kind:SaleCommandKind.Commit,hash:'55e7f3f0309dc766d2d29ac7c35be90ee085dde73eb1942b2964997b24e2aade'},
+    {kind:SaleCommandKind.Release,hash:'fafcb7effd2c252c05dce0afd42643eef8f0e44b6cdd67357ebd6667b7d9dd31'},
+  ];
+  for(const {kind,hash} of historicalCases)for(const phase of [JournalPhase.Prepared,JournalPhase.AwaitingReceipt,JournalPhase.ReceiptVerifiedAwaitingRefresh]){
+    it(`upgrades persisted historical V1 ${kind.wire} in ${phase.wire} through hydrate, GET v2 and reload without rewriting evidence`,async()=>{
       const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'22222222-2222-2222-2222-222222222222',operationId:'33333333-3333-3333-3333-333333333333'};
       const fields=kind===SaleCommandKind.Reserve?{cashSessionId:2,variantId:'a',quantity:1,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',originalUnitPrice:'1.00',discountAmount:'0.00'}:{};
-      const command=SaleCommand.create(kind,identity,2,fields),saved:JournalEntry={version:1,scope:{origin:location.origin,clientInstanceId:identity.clientInstanceId,deviceId:identity.deviceId,terminalId:10},
-        family:JournalFamily.Sale,command,actorId:7,cashSessionId:2,phase,tabId:crypto.randomUUID(),expectedPayloadHash:await SaleAdmissionFingerprint.hash(command,7),fingerprintVersion:SaleFingerprintVersion.AdmissionV1};
-      const raw=JournalDecoder.encode(saved) as Record<string,unknown>;expect('admissionRoute' in raw).toBeFalse();
-      const decoded=JournalDecoder.decode(raw)!;expect(decoded.command.commandId).toBe(command.commandId);expect(decoded.phase).toBe(phase);
-      expect(decoded.expectedPayloadHash).toBe(saved.expectedPayloadHash);expect(decoded.admissionRoute).toBe(command.route);
+      const commandId='44444444-4444-4444-4444-444444444444',context={clientInstanceId:identity.clientInstanceId,deviceId:identity.deviceId,terminalId:10};
+      const body={...fields,...identity,commandId,reason:null};
+      const raw={version:1,scope:{origin:location.origin,...context},family:JournalFamily.Sale.wire,
+        command:{kind:kind.wire,commandId,identity,cashSessionId:2,body},actorId:7,cashSessionId:2,
+        phase:phase.wire,tabId:'55555555-5555-5555-5555-555555555555',expectedPayloadHash:hash,fingerprintVersion:SaleFingerprintVersion.AdmissionV1.wire};
+      const original=JSON.stringify(raw);
+      const stored=async(write=false):Promise<unknown>=>new Promise((resolve,reject)=>{
+        const open=indexedDB.open(dbName,1);
+        open.onupgradeneeded=()=>open.result.createObjectStore('intents',{keyPath:'command.commandId'});
+        open.onerror=()=>reject(open.error);open.onsuccess=()=>{
+          const db=open.result,tx=db.transaction('intents',write?'readwrite':'readonly');
+          const request=write?tx.objectStore('intents').add(raw):tx.objectStore('intents').get(commandId);
+          let result:unknown;request.onsuccess=()=>{result=request.result;};
+          tx.oncomplete=()=>{db.close();resolve(result);};tx.onabort=()=>{db.close();reject(tx.error);};
+        };
+      });
+      await stored(true);
+      for(let reload=0;reload<2;reload++){
+        TestBed.resetTestingModule();
+        const session={staff:signal({id:7}),state:signal(SessionState.Authenticated),generation:signal(1),changed:new Subject<void>(),can:()=>true};
+        TestBed.configureTestingModule({providers:[provideHttpClient(),provideHttpClientTesting(),{provide:JOURNAL_DATABASE,useValue:dbName},
+          {provide:SessionStore,useValue:session},{provide:FOREGROUND_REFRESH,useValue:{subscribe:()=>()=>{}}}]});
+        const http=TestBed.inject(HttpTestingController),runtime=TestBed.inject(CommandRuntimeStore);
+        const envelope=(data:unknown)=>({code:200,traceId:'historical-upgrade',data});
+        TestBed.tick();
+        http.expectOne(`${ACCOUNTING_API_BASE}/pos/context`).flush(envelope({state:PosContextState.Available.wire,context}));
+        http.expectOne(`${ACCOUNTING_API_BASE}/accounting/runtime`).flush(envelope({state:AccountingLifecycleState.Active.wire,contractVersion:'V2',activationAt:'2026-10-07T00:00:00Z',observedAt:'2026-10-08T00:00:00Z'}));
+        for(let wait=0;wait<100&&!runtime.hydrated();wait++)await new Promise<void>(resolve=>setTimeout(resolve,5));
+        expect(runtime.hydrated()).toBeTrue();expect(runtime.neutralBlock()).toBeFalse();expect(runtime.canWrite()).toBeFalse();
+        const recovered=runtime.pending()!;
+        expect(recovered.phase).toBe(phase);expect(recovered.version).toBe(1);expect(recovered.expectedPayloadHash).toBe(hash);
+        expect(recovered.fingerprintVersion).toBe(SaleFingerprintVersion.AdmissionV1);
+        expect(recovered.command.body).toEqual(body);expect((recovered.command as SaleCommand).identity).toEqual(identity);
+        expect(recovered.admissionRoute).toBe(kind===SaleCommandKind.Reserve?SaleAdmissionRoute.ReserveV2:kind===SaleCommandKind.Commit?SaleAdmissionRoute.CommitV2:SaleAdmissionRoute.ReleaseV2);
+        const get=http.expectOne(`${ACCOUNTING_API_BASE}/sales/commands/${commandId}`);expect(get.request.method).toBe('GET');
+        const recovery=runtime.consult();
+        get.flush(null); // An uncertain receipt must retain every historical byte and block writes.
+        await recovery;
+        http.expectNone(request=>request.method==='POST');http.verify();
+        expect(JSON.stringify(await stored())).toBe(original);
+        const reopened=TestBed.runInInjectionContext(()=>new IndexedDbCommandJournal()),snapshot=await reopened.list();
+        expect(snapshot.quarantined).toBeFalse();expect(snapshot.entries.length).toBe(1);expect(snapshot.entries[0].phase).toBe(phase);
+      }
     });
   }
   for(const kind of [SaleCommandKind.Commit,SaleCommandKind.Release]){
@@ -132,7 +187,11 @@ describe('untrusted journal decoder and transactional IndexedDB claim',()=>{
     expect(new TextEncoder().encode(JSON.stringify(encoded)).length).toBeLessThanOrEqual(524288);
     expect(decoded.version).toBe(2);expect(decoded.admissionRoute).toBe(SaleAdmissionRoute.ReserveV3);expect(decoded.command.body).toEqual(command.body);
     expect(Object.isFrozen(decoded.command.body['lines'])).toBeTrue();expect(Object.isFrozen((decoded.command.body['lines'] as readonly object[])[0])).toBeTrue();
-    await journal.prepare(saved);expect((await journal.list()).entries[0].command.body).toEqual(command.body);
+    await journal.prepare(saved);
+    const reopened=TestBed.runInInjectionContext(()=>new IndexedDbCommandJournal()),snapshot=await reopened.list();
+    expect(snapshot.quarantined).toBeFalse();expect(snapshot.entries.length).toBe(1);
+    expect(snapshot.entries[0].command.body).toEqual(command.body);expect(snapshot.entries[0].expectedPayloadHash).toBe(saved.expectedPayloadHash);
+    expect(snapshot.entries[0].fingerprintVersion).toBe(SaleFingerprintVersion.AdmissionV2);expect(snapshot.entries[0].admissionRoute).toBe(SaleAdmissionRoute.ReserveV3);
   });
   it('quarantines V2 nested extras, incompatible routes and malformed Unicode without weakening V1',async()=>{
     const identity={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'verified-device',saleId:'sale',operationId:'33333333-3333-3333-3333-333333333333'};
