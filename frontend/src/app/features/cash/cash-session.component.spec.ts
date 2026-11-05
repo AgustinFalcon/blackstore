@@ -15,13 +15,14 @@ import { SessionStore } from '../../core/services/session.store';
 import { authenticateTestSession } from '../../core/services/session-test-helper';
 import { StaffRole, CashSessionStatus, CashMutationOutcome, PaymentMethod } from '../../core/domain/pos-types';
 import { CounterContextService } from '../../core/services/counter-context.service';
+import { provideRouter } from '@angular/router';
 
 describe('CashSessionComponent', () => {
   beforeEach(() => { commands.blocked.set(CommandFailure.None); commands.execute.calls.reset(); });
   it('fails closed when the backend returns an unknown session status', async () => {
     await TestBed.configureTestingModule({
       imports: [CashSessionComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), {provide:AccountingCommandsStore,useValue:commands}],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(), {provide:AccountingCommandsStore,useValue:commands}],
     }).compileComponents();
 
     authenticateTestSession(TestBed.inject(SessionStore));
@@ -66,7 +67,7 @@ describe('CashSessionComponent', () => {
   it('does not let a historical reconciliation state block a new session', async () => {
     await TestBed.configureTestingModule({
       imports: [CashSessionComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), {provide:AccountingCommandsStore,useValue:commands}],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(), {provide:AccountingCommandsStore,useValue:commands}],
     }).compileComponents();
 
     authenticateTestSession(TestBed.inject(SessionStore));
@@ -86,7 +87,7 @@ describe('CashSessionComponent journal command port',()=>{
   let component:CashSessionComponent;let http:HttpTestingController;
   beforeEach(()=>{
     commands.blocked.set(CommandFailure.None);commands.execute.calls.reset();
-    TestBed.configureTestingModule({imports:[CashSessionComponent],providers:[provideHttpClient(),provideHttpClientTesting(),{provide:AccountingCommandsStore,useValue:commands}]});
+    TestBed.configureTestingModule({imports:[CashSessionComponent],providers:[provideRouter([]),provideHttpClient(),provideHttpClientTesting(),{provide:AccountingCommandsStore,useValue:commands}]});
     authenticateTestSession(TestBed.inject(SessionStore));component=TestBed.createComponent(CashSessionComponent).componentInstance;http=TestBed.inject(HttpTestingController);flushInitialRequests(http,CashSessionStatus.Open.wire);
   });
   afterEach(()=>http.verify());

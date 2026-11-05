@@ -10,7 +10,7 @@
 - TODO-002 [critical] Sol GO de StoreCore `storecore-pos-integration-contract-v1` (OpenAPI canónico; WIP no approved). Hasta entonces solo puertos/DTOs/fixtures.
 - TODO-003 [critical] Doble gate para `20260921-storecore-connector-adapter`: evidencia aceptada StoreCore `TASK-PIC-001..008`, SHA-256/version 1.0.0-draft bloqueado y GO Sol explícito del WIP. Ningún adaptador real antes.
 
-- TODO-004 [medium] [partial] BSUX-ANG incorporado; `/sesion` ya es ruta con identidad staff (PR #24). Residual: `/caja/cierre` y `/ticket/:saleId` no son rutas dedicadas; su diseño/aceptación no se cierra por DCT.
+- TODO-004 [medium] [in-progress] Rutas operativas `/caja/cierre` y `/ticket/:saleId` en corte SDD `20261105-blackstore-operational-detail-routes` sobre master `822c431`; integración pendiente de gates/reviews/CI.
 - TODO-007 [high] Caja/reportes: ledger append-only productivo, arqueo/diferencia y períodos SHIFT/DAY reales con timezone y filtros.
 
 ## Cortes integrados y aceptación residual

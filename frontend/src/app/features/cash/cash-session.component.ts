@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { API_BASE } from '../../core/api';
 import { CashMutationOutcome, PaymentMethod, PersistenceMode } from '../../core/domain/pos-types';
 import { StaffPermission } from '../../core/domain/session-types';
@@ -16,6 +17,7 @@ import { CashSessionSelection } from '../../core/domain/cash-session-selection';
 import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
 import { TicketMoney } from '../../core/domain/ticket-transition';
 import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
+import { CashPageMode } from '../../core/domain/cash-page-mode';
 
 interface CashCloseReview {
   readonly cashSessionId: number;
@@ -26,11 +28,17 @@ interface CashCloseReview {
 @Component({
   selector: 'bs-cash-session',
   standalone: true,
-  imports: [FormsModule, ConfirmationDialogComponent],
+  imports: [FormsModule, RouterLink, ConfirmationDialogComponent],
   template: `
     <section class="page">
-      <h2>Caja</h2>
-      <p class="lede">Una sesión abierta por terminal. El cierre queda auditado y no edita la apertura.</p>
+      <div class="section-heading">
+        <div><p class="eyebrow">Operación presencial</p><h2>{{ pageMode.title }}</h2></div>
+        @if (pageMode === pageModes.Close) { <a routerLink="/caja">Volver a la caja</a> }
+        @else if (identity.can(permissions.CashSessionClose)) { <a routerLink="/caja/cierre">Ir al cierre dedicado</a> }
+      </div>
+      <p class="lede">{{ pageMode === pageModes.Close
+        ? 'Revisá la caja seleccionada y confirmá el declarado con un motivo auditable. El cierre es append-only.'
+        : 'Una sesión abierta por terminal. El cierre queda auditado y no edita la apertura.' }}</p>
       <label>Caja visible
         <select name="selectedSession" [ngModel]="session()?.id ?? null" (ngModelChange)="selectSession($event)">
           <option [ngValue]="null">Seleccioná una caja o ingresá terminal y cajero</option>
@@ -39,7 +47,7 @@ interface CashCloseReview {
           }
         </select>
       </label>
-      <div class="card">
+      @if (pageMode.allowsOpen) { <div class="card">
         <p>Persistencia: <span class="sku">{{ persistence().label }}</span></p>
         @if (loading()) {
           <p class="skeleton" aria-hidden="true"></p>
@@ -52,7 +60,9 @@ interface CashCloseReview {
           <label>Apertura <input name="openingCash" type="number" [(ngModel)]="openingCash" min="0" required /></label>
           <button type="submit" [disabled]="!canOpen()">Abrir sesión</button>
         </form> }
-      </div>
+      </div> } @else if (loading()) {
+        <div class="card" role="status"><p class="skeleton" aria-hidden="true"></p><p>Cargando cajas visibles…</p></div>
+      }
       @if (session(); as opened) {
         <div class="card">
           <p>
@@ -66,7 +76,7 @@ interface CashCloseReview {
               <button type="submit" [disabled]="!canRequestClose()">Cerrar sesión</button>
             </form>
           }
-          @if (selection().state.permitsMutation && identity.can(permissions.ExpenseRecord)) {
+          @if (pageMode.allowsExpense && selection().state.permitsMutation && identity.can(permissions.ExpenseRecord)) {
             <form (ngSubmit)="addExpense()">
               <label>Categoría <input name="category" [(ngModel)]="expenseCategory" required /></label>
               <label>Gasto <input name="expenseAmount" type="number" [(ngModel)]="expenseAmount" min="0.01" required /></label>
@@ -76,7 +86,7 @@ interface CashCloseReview {
           }
         </div>
       } @else if (!loading() && !error()) {
-        <p class="empty">{{ selection().state.label }}</p>
+        <p class="empty">{{ pageMode === pageModes.Close ? closeAvailability().label : selection().state.label }}</p>
       }
       <bs-confirmation-dialog [phase]="closePhase()" title="Confirmar cierre de caja" titleId="cash-close-title"
         description="El cierre genera un arqueo auditado."
@@ -110,6 +120,9 @@ export class CashSessionComponent {
   readonly identity = inject(SessionStore);
   readonly permissions = StaffPermission;
   readonly commands = inject(AccountingCommandsStore);
+  readonly pageModes = CashPageMode;
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  readonly pageMode = CashPageMode.fromWire(this.route?.snapshot.data['cashPageMode'] ?? CashPageMode.Workspace.wire);
 
   private readonly requestedTerminal = signal(0);
   private readonly requestedCashier = signal<number | null>(this.identity.staff()?.id ?? null);
@@ -132,6 +145,7 @@ export class CashSessionComponent {
   readonly visibleSessions = signal<readonly CashSessionData[]>([]);
   readonly selectableSessions = computed(() => CashSessionSelection.visible(this.visibleSessions(), this.identity.staff()).filter(item => !item.status.canStartNewSession));
   readonly selection = computed(() => CashSessionSelection.requested(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId));
+  readonly closeAvailability = computed(() => CashSessionSelection.closeAvailability(this.selectableSessions().length, this.selection()));
   readonly session = computed(() => this.selection().session);
   readonly error = signal<string | null>(null);
   readonly notice = signal<string | null>(null);

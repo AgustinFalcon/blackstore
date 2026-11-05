@@ -386,7 +386,7 @@ export class PosWireMapper {
 
   static durablePage(response: unknown): DurableSalePage | null {
     const raw = PosWireMapper.payload(response);
-    if (!raw || !Array.isArray(raw['items']) || (raw['nextCursor'] !== null && typeof raw['nextCursor'] !== 'string')) return null;
+    if (!raw || !Array.isArray(raw['items']) || !PosWireMapper.validNextCursor(raw['nextCursor'])) return null;
     const items = raw['items'].map(item => PosWireMapper.durableSummary(item));
     if (items.some(item => !item)) return null;
     return Object.freeze({ items: Object.freeze(items as DurableSaleSummary[]), nextCursor: raw['nextCursor'] as string | null });
@@ -468,6 +468,12 @@ export class PosWireMapper {
   private static durableLineTextValid(line:Record<string,unknown>|null):boolean {
     if(!line||typeof line['sku']!=='string'||typeof line['productName']!=='string')return false;
     try{return SaleTextV2.ref(line['sku'])===line['sku']&&SaleTextV2.name(line['productName'])===line['productName'];}catch{return false;}
+  }
+
+  private static validNextCursor(raw: unknown): raw is string | null {
+    if (raw === null) return true;
+    if (typeof raw !== 'string' || !/^[1-9][0-9]{0,18}$/.test(raw)) return false;
+    return BigInt(raw) <= 9223372036854775807n;
   }
 
   private static identity(raw: Record<string, unknown> | null,opaqueSaleId=false): TicketIdentity | null {

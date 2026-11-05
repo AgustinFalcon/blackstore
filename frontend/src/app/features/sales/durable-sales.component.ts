@@ -39,6 +39,7 @@ interface DurableReleaseReview {
               <p>{{ sale.status.label }} · caja {{ sale.cashSessionId }} · total {{ sale.total?.decimal ?? 'No comprobado' }}</p>
               <p class="sku">{{ sale.identity.operationId }}</p>
               <a routerLink="/ticket" [queryParams]="{operationId:sale.identity.operationId}">Continuar en punto de venta</a>
+              <a [routerLink]="['/ticket', sale.identity.saleId]">Ver ticket</a>
             </article>
           } @empty { <p>No hay ventas visibles en esta página.</p> }
           @if (store.nextCursor(); as cursor) { <button type="button" (click)="store.list(cursor, filter)">Página siguiente</button> }

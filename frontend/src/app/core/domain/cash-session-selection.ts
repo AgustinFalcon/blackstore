@@ -1,5 +1,6 @@
 import { CashSessionData } from '../models/pos-models';
 import { StaffIdentity, StaffPermission, permits } from './session-types';
+import { CashCloseAvailability } from './cash-page-mode';
 
 export class CashSessionSelectionState {
   static readonly Empty = new CashSessionSelectionState('Sin caja activa para la terminal y el cajero solicitados', false);
@@ -33,5 +34,15 @@ export class CashSessionSelection {
     if (!staff || !permits(staff.role, StaffPermission.CashSessionOpen) || !Number.isSafeInteger(terminalId) || terminalId <= 0 || !Number.isSafeInteger(cashierId) || Number(cashierId) <= 0) return false;
     if (cashierId !== staff.id && !staff.role.canAssignCashier) return false;
     return !this.visible(sessions, staff).some(item => !item.status.canStartNewSession && (item.terminalId === terminalId || item.cashierId === cashierId));
+  }
+
+  static closeAvailability(visibleOpenSessions: number, selection: CashSessionSelection): CashCloseAvailability {
+    if (!Number.isSafeInteger(visibleOpenSessions) || visibleOpenSessions < 0) return CashCloseAvailability.Unknown;
+    if (visibleOpenSessions === 0) return CashCloseAvailability.NoSessions;
+    if (selection.state === CashSessionSelectionState.Selected) return CashCloseAvailability.Ready;
+    if (selection.state === CashSessionSelectionState.Empty) return CashCloseAvailability.SelectionRequired;
+    if (selection.state === CashSessionSelectionState.Ambiguous) return CashCloseAvailability.AmbiguousSelection;
+    if (selection.state === CashSessionSelectionState.Unknown) return CashCloseAvailability.InvalidSelection;
+    return CashCloseAvailability.Unknown;
   }
 }

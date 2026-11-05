@@ -2,6 +2,7 @@ import { CashSessionSelection, CashSessionSelectionState } from './cash-session-
 import { CashSessionStatus, StaffRole } from './pos-types';
 import { StaffIdentity } from './session-types';
 import { CashSessionData } from '../models/pos-models';
+import { CashCloseAvailability } from './cash-page-mode';
 
 describe('CashSessionSelection', () => {
   const staff = (role: StaffRole): StaffIdentity => ({ id: 7, displayName: 'Staff', role });
@@ -44,5 +45,12 @@ describe('CashSessionSelection', () => {
       expect(CashSessionSelection.requested(history, staff(StaffRole.Owner), 10, 7).session).toBeNull();
       expect(CashSessionSelection.canOpen(history, staff(StaffRole.Owner), 10, 7)).toBeTrue();
     }
+  });
+  it('distinguishes unavailable, pending, ambiguous and ready close selections', () => {
+    const owner = staff(StaffRole.Owner);
+    expect(CashSessionSelection.closeAvailability(0, CashSessionSelection.requested([], owner, 10, 7))).toBe(CashCloseAvailability.NoSessions);
+    expect(CashSessionSelection.closeAvailability(1, CashSessionSelection.requested(sessions, owner, 12, 9))).toBe(CashCloseAvailability.SelectionRequired);
+    expect(CashSessionSelection.closeAvailability(2, CashSessionSelection.requested([...sessions, cash(3, 10, 7)], owner, 10, 7))).toBe(CashCloseAvailability.AmbiguousSelection);
+    expect(CashSessionSelection.closeAvailability(1, CashSessionSelection.requested(sessions, owner, 10, 7))).toBe(CashCloseAvailability.Ready);
   });
 });
