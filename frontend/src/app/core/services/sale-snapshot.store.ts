@@ -6,12 +6,13 @@ import { API_BASE } from '../api';
 import { DurableSaleDetail, DurableSaleSummary } from '../domain/durable-sale';
 import { SaleRouteId, SaleSnapshotState } from '../domain/sale-snapshot-state';
 import { StaffPermission } from '../domain/session-types';
+import { TicketIdentity, sameTicketIdentity } from '../domain/ticket-transition';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
 import { SessionStore } from './session.store';
 
 interface SaleRouteResolution {
   readonly state: SaleSnapshotState;
-  readonly operationId: string | null;
+  readonly identity: TicketIdentity | null;
 }
 
 /** Read-only route resolver. A sale id never becomes write authority. */
@@ -48,11 +49,13 @@ export class SaleSnapshotStore {
     this.state.set(SaleSnapshotState.Loading);
     this.resolve(saleId, null, new Set<string>(), null).pipe(
       switchMap(resolution => {
-        if (resolution.state !== SaleSnapshotState.Found || !resolution.operationId) return of({ resolution, detail: null });
-        return this.http.get<unknown>(`${API_BASE}/sales/operations/${encodeURIComponent(resolution.operationId)}`).pipe(
+        if (resolution.state !== SaleSnapshotState.Found || !resolution.identity) return of({ resolution, detail: null });
+        return this.http.get<unknown>(`${API_BASE}/sales/operations/${encodeURIComponent(resolution.identity.operationId)}`).pipe(
           map(response => {
-            const detail = PosWireMapper.durableDetail(response, resolution.operationId!);
-            if (!detail || !saleId.matches(detail.identity.saleId)) throw new Error('incompatible sale snapshot');
+            const detail = PosWireMapper.durableDetail(response, resolution.identity!.operationId);
+            if (!detail || !saleId.matches(detail.identity.saleId) || !sameTicketIdentity(detail.identity, resolution.identity!)) {
+              throw new Error('incompatible sale snapshot');
+            }
             return { resolution, detail };
           }),
         );
@@ -79,14 +82,14 @@ export class SaleSnapshotStore {
       if (matches.length > 1 || (match && matches.length > 0)) return of(this.resolution(SaleSnapshotState.Ambiguous));
       const candidate = matches[0] ?? match;
       if (!page.nextCursor) return of(candidate
-        ? this.resolution(SaleSnapshotState.Found, candidate.identity.operationId)
+        ? this.resolution(SaleSnapshotState.Found, candidate.identity)
         : this.resolution(SaleSnapshotState.NotFound));
       if (seen.has(page.nextCursor)) return throwError(() => new Error('repeated sale cursor'));
       return this.resolve(saleId, page.nextCursor, new Set([...seen, page.nextCursor]), candidate);
     }));
   }
 
-  private resolution(state: SaleSnapshotState, operationId: string | null = null): SaleRouteResolution {
-    return Object.freeze({ state, operationId });
+  private resolution(state: SaleSnapshotState, identity: TicketIdentity | null = null): SaleRouteResolution {
+    return Object.freeze({ state, identity });
   }
 }

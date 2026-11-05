@@ -46,6 +46,18 @@ describe('SaleSnapshotStore', () => {
     http.expectNone(request => request.url.includes('/operations/'));
   });
 
+  it('fails closed when detail contradicts the technical identity from the authorized summary', () => {
+    store.load(saleId);
+    http.expectOne(request => request.url === `${API_BASE}/sales`).flush(envelope({
+      items: [summary(firstOperation)], nextCursor: null,
+    }));
+    http.expectOne(`${API_BASE}/sales/operations/${firstOperation}`).flush(envelope({
+      ...detail(firstOperation), deviceId: 'counter-other',
+    }));
+    expect(store.state()).toBe(SaleSnapshotState.Unavailable);
+    expect(store.detail()).toBeNull();
+  });
+
   it('rejects an invalid route identifier before issuing HTTP', () => {
     store.load('x'.repeat(81));
     expect(store.state()).toBe(SaleSnapshotState.Invalid);
