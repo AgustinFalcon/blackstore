@@ -888,7 +888,7 @@ class AccountingMutationPostgresTest {
                     }
                     if (accountingActive) {
                         c.prepareStatement("INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id) VALUES(?,'Reserve',?,1,?,?,?,?,?,?,?)").use { receipt ->
-                            receipt.setObject(1, UUID.randomUUID())
+                            val receiptId=UUID.randomUUID();receipt.setObject(1, receiptId)
                             receipt.setString(2, mapper.hash(payload))
                             receipt.setLong(3, cash)
                             receipt.setObject(4, UUID.fromString(identity.clientInstanceId))
@@ -898,6 +898,7 @@ class AccountingMutationPostgresTest {
                             receipt.setLong(8, id)
                             receipt.setLong(9, outboxId)
                             receipt.executeUpdate()
+                            c.prepareStatement("INSERT INTO sale_command_admission_contracts(command_id,contract_family,fingerprint_version,canonical_route) VALUES(?,'sale-v2','sale-admission-v1','/api/v2/sales/reservations')").use { metadata -> metadata.setObject(1,receiptId);metadata.executeUpdate() }
                         }
                     }
                 }
@@ -927,15 +928,17 @@ class AccountingMutationPostgresTest {
             JdbcAccountingLifecycleAdmission().requireV2(c)
             val locked = JdbcAccountingAggregateLocks().lockSale(c, identity)
             JdbcSaleRecordStore(source).insertCanonicalCommand(c, pending, command, staff.id.value, "v2 commit fixture")
+            val receiptId=UUID.randomUUID()
             c.prepareStatement("""INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id)
                 SELECT ?,'Commit',repeat('c',64),?,i.cash_session_id,i.client_instance_id,i.device_id,i.sale_id,i.operation_id,i.id,o.id
                 FROM sale_intents i JOIN storecore_outbox_commands o ON o.operation_id=i.operation_id AND o.operation_kind='COMMIT'
                 WHERE i.operation_id=?""").use { receipt ->
-                receipt.setObject(1, UUID.randomUUID())
+                receipt.setObject(1, receiptId)
                 receipt.setLong(2, staff.id.value)
                 receipt.setObject(3, UUID.fromString(identity.operationId))
                 receipt.executeUpdate()
             }
+            c.prepareStatement("INSERT INTO sale_command_admission_contracts(command_id,contract_family,fingerprint_version,canonical_route) VALUES(?,'sale-v2','sale-admission-v1','/api/v2/sales/{operationId}/commit')").use { it.setObject(1,receiptId);it.executeUpdate() }
             check(JdbcBlackStoreWriter().advanceSaleStatus(c, locked.projectionId, current.status.name, SaleStatus.COMMIT_PENDING.name) == 1)
             c.prepareStatement("UPDATE sale_state_projection SET version=version+1,updated_at=now() WHERE id=?").use { it.setLong(1, locked.projectionId); it.executeUpdate() }
             c.commit()

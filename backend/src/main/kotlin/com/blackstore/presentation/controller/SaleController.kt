@@ -65,7 +65,7 @@ class SaleController(
             PaymentCoverageWire.toWire(view.snapshot.paymentCoverage), view.snapshot.hasPaymentHistory,
             view.createdBy == null || sale.blockSameOperationRepost || view.sale.state in setOf(com.blackstore.domain.sales.DurableSaleState.UNKNOWN,
                 com.blackstore.domain.sales.DurableSaleState.LEGACY_INCOMPLETE, com.blackstore.domain.sales.DurableSaleState.RECONCILIATION_REQUIRED),
-            sale.retired, sale.lines.map { DurableSaleLineResponse(it.sku, it.productName, it.quantity, it.effectiveUnitPrice.multiply(it.quantity.toBigDecimal())) },
+            sale.retired, sale.lines.map { DurableSaleLineResponse(it.sku, it.productName, it.quantity, it.effectiveUnitPrice.multiply(it.quantity.toBigDecimal()),it.variantId,it.originalUnitPrice,it.priceVersion) },
             view.payments.map { DurableSalePaymentResponse(it.paymentId, it.status, it.method, it.amount, it.feeAmount, it.originalPaymentId) },
             kind?.let(::DurableSalePendingCommandResponse), if (view.createdBy == null) emptySet() else view.allowedActions)
     }
@@ -211,7 +211,8 @@ data class ReserveSaleResponse(
 data class SaleActionRequest(val reason: String? = null)
 
 data class DurableSaleListResponse(val items: List<DurableSaleDetailResponse>, val nextCursor: String?)
-data class DurableSaleLineResponse(val sku: String, val productName: String, val quantity: Int, val totalAmount: BigDecimal)
+data class DurableSaleLineResponse(val sku: String, val productName: String, val quantity: Int, val totalAmount: BigDecimal,
+    val variantId: String?=null,val originalUnitPrice: BigDecimal?=null,val priceVersion: String?=null)
 data class DurableSalePaymentResponse(val paymentId: Long, val status: com.blackstore.domain.sales.PaymentStatus,
     val method: com.blackstore.domain.sales.PaymentMethod, val amount: BigDecimal?, val feeAmount: BigDecimal?, val originalPaymentId: Long? = null)
 data class DurableSalePendingCommandResponse(val kind: com.blackstore.domain.sales.CommandKind)

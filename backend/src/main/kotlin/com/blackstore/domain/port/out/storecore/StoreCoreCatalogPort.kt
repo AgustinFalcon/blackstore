@@ -27,4 +27,8 @@ data class CatalogItem(
     val variantId: String,
     val priceVersion: String? = null,
     val unitPrice: BigDecimal? = null,
+    val rawSku: String = sku,
+    val rawName: String = name,
+    val rawVariantId: String = variantId,
+    val rawPriceVersion: String? = priceVersion,
 )

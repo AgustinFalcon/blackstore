@@ -60,14 +60,18 @@ class LoopbackCatalogAdapter(
             val items =
                 data.path("items").mapNotNull { node ->
                     if (!node.path("active").asBoolean(true)) return@mapNotNull null
-                    val sku = node.path("sku").asText("").trim()
-                    val name = node.path("name").asText("").trim()
-                    val variant = node.path("variantId").asText("").trim()
+                    val rawSku = node.path("sku").asText("")
+                    val rawName = node.path("name").asText("")
+                    val rawVariant = node.path("variantId").asText("")
+                    val sku = rawSku.trim()
+                    val name = rawName.trim()
+                    val variant = rawVariant.trim()
                     if (sku.isEmpty() || name.isEmpty() || variant.isEmpty()) return@mapNotNull null
-                    val priceVersion = node.path("priceVersion").asText("").trim().ifEmpty { null }
+                    val rawPriceVersion = node.path("priceVersion").asText("").takeIf { it.isNotEmpty() }
+                    val priceVersion = rawPriceVersion?.trim()?.ifEmpty { null }
                     val unitPrice =
                         node.path("unitPrice").takeIf { !it.isMissingNode && !it.isNull }?.decimalValue()
-                    CatalogItem(sku, name, variant, priceVersion, unitPrice)
+                    CatalogItem(sku, name, variant, priceVersion, unitPrice, rawSku, rawName, rawVariant, rawPriceVersion)
                 }
             val stale = validUntil != null && !validUntil.isAfter(now)
             return CatalogSnapshot(

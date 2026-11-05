@@ -29,6 +29,10 @@ data class StaffSession(val digest: String, val userId: StaffUserId, val csrfTok
     }
 }
 data class ResolvedStaffSession(val staff: AuthenticatedStaff, val session: StaffSession)
+/** Internal mutation context. The opaque digest is revalidated inside the admission transaction. */
+data class AuthenticatedSessionContext(val staff: AuthenticatedStaff, val sessionDigest: String) {
+    init { require(sessionDigest.matches(Regex("[0-9a-f]{64}"))) }
+}
 sealed class StaffRequestContext {
     data object Anonymous : StaffRequestContext()
     data class Authenticated(val session: ResolvedStaffSession) : StaffRequestContext()

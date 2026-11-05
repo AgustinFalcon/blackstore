@@ -8,17 +8,20 @@ data class TicketLine(
     val quantity: Int,
     val originalUnitPrice: BigDecimal,
     val discountAmount: BigDecimal,
+    val variantId: String? = null,
+    val priceVersion: String? = null,
 ) {
     val effectiveUnitPrice: BigDecimal = originalUnitPrice.subtract(discountAmount)
 
     init {
-        require(sku.isNotBlank() && productName.isNotBlank())
+        require(sku.isNotEmpty() && productName.isNotEmpty())
         require(quantity > 0)
         MoneyPolicy.normalize(originalUnitPrice)
         MoneyPolicy.normalize(discountAmount)
         MoneyPolicy.normalize(effectiveUnitPrice.multiply(BigDecimal(quantity)))
         require(originalUnitPrice.signum() >= 0)
         require(discountAmount.signum() >= 0 && discountAmount <= originalUnitPrice)
+        require((variantId == null) == (priceVersion == null))
     }
 }
 

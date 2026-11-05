@@ -113,7 +113,7 @@ class AccountingReportPostgresTest {
                     }
                     if (accountingActive) {
                         c.prepareStatement("INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id) VALUES(?,'Reserve',?,3,?,?,?,?,?,?,?)").use { receipt ->
-                            receipt.setObject(1, UUID.randomUUID())
+                            val receiptId=UUID.randomUUID();receipt.setObject(1, receiptId)
                             receipt.setString(2, mapper.hash(payload))
                             receipt.setLong(3, cash)
                             receipt.setObject(4, UUID.fromString(identity.clientInstanceId))
@@ -123,6 +123,7 @@ class AccountingReportPostgresTest {
                             receipt.setLong(8, id)
                             receipt.setLong(9, outboxId)
                             receipt.executeUpdate()
+                            c.prepareStatement("INSERT INTO sale_command_admission_contracts(command_id,contract_family,fingerprint_version,canonical_route) VALUES(?,'sale-v2','sale-admission-v1','/api/v2/sales/reservations')").use { metadata -> metadata.setObject(1,receiptId);metadata.executeUpdate() }
                         }
                     }
                 }

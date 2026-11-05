@@ -15,6 +15,10 @@ publicación y StoreCore live continúan bloqueados.
 
 [Carrito de mostrador y cobro explícito](wip/20261008-blackstore-pos-cart-explicit-payment/meta.md), origen PR #45 `79c612c78160135df0e9011d5bcd93533d14d4e8`: POSC-D aprobado por revisión coordinada técnica, seguridad y producto/UX, sin P0–P3 pendientes. Secuencia D/B/T/U/E: backend multiline versionado antes de tipos/journal y UX. Preserva fingerprints/journal v1; B/T/U/E, aceptación, CI y live permanecen pendientes en este head documental. Los estados históricos siguientes conservan sus fuentes y no sustituyen gates POSC.
 
+### POSC-B local PASS, review pendiente — 2026-11-05
+
+Sobre base `3a6a520555d499fceda835cf573f25921c922e5f`, el candidato POSC-B implementa reserva v3 multiline, AdmissionV2, metadata V13, lectura reconstruible y revalidación SID/terminal transaccional. Backend local: 311/311 PASS, cero omitidas; PG16 clean/upgrade incluido. Evidencia y límites en [POSC-B](wip/20261008-blackstore-pos-cart-explicit-payment/4-implementation/posc-b-evidence.md). No declara todavía review, CI, merge ni POSC-T/U/E.
+
 **Validado:** 2026-10-07.
 **Madurez:** core local fail-closed integrado; aceptación DCT aún parcial. Companion live y homologación pendientes.
 **Git:** [BlackStore](https://github.com/AgustinFalcon/blackstore) privado. PR #26 MERGED, head `caab0a9`, merge master `a9887a3`. [CI PR 37634224683](https://github.com/AgustinFalcon/blackstore/actions/runs/37634224683) verde y [CI post-merge master 37634797108](https://github.com/AgustinFalcon/blackstore/actions/runs/37634797108) verde (frontend 34 s, backend 3 min 43 s). Sin tag ni publicación.

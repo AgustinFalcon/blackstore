@@ -2,7 +2,7 @@
 
 ## Bloqueantes
 
-- POSC [high, design-approved] [Carrito y cobro explícito](wip/20261008-blackstore-pos-cart-explicit-payment/meta.md): reserva multiline backend-first, compatibilidad fingerprint/journal v1 y aceptación PG16/browser propia. D aprobado; B/T/U/E planned y NOT_RUN en este head documental. No UI-only ni StoreCore/ML live.
+- POSC [high, B-in-review] [Carrito y cobro explícito](wip/20261008-blackstore-pos-cart-explicit-payment/meta.md): D aprobado; B local 311/311 PASS y review pendiente; T/U/E continúan planned. No UI-only ni StoreCore/ML live.
 
 - TODO-006 [critical] Harness E2E real StoreCore+BlackStore sin `route.fulfill`, con dos PostgreSQL y prueba de reinicio.
 

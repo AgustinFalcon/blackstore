@@ -6,6 +6,7 @@ import java.security.MessageDigest
 /** Length-prefixed fields prevent ambiguous concatenation. Only normalized semantic values enter v1. */
 class SaleCommandFingerprint {
     fun hash(actorId: Long, cashId: Long, command: SaleCommand): String {
+        require(command !is SaleCommand.ReserveMultiline) { "AdmissionV2 requires its own codec" }
         val q = command.identity
         val fields = mutableListOf("sale-admission-v1",command.kind.name,actorId.toString(),cashId.toString(),q.clientInstanceId,q.deviceId,q.saleId,q.operationId,command.reason.orEmpty())
         if (command is SaleCommand.Reserve) fields += listOf(command.cashSessionId.toString(),command.variantId,command.quantity.toString(),command.expectedPriceVersion,
