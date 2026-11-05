@@ -1,6 +1,7 @@
 package com.blackstore.infrastructure.persistence
 
 import com.blackstore.domain.accounting.AccountingRuntimeState
+import com.blackstore.domain.accounting.AccountingCommandDraft
 import com.blackstore.domain.cash.StaffRole
 import com.blackstore.domain.identity.*
 import com.blackstore.domain.model.*
@@ -15,6 +16,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import java.math.BigDecimal
 import java.sql.SQLException
 import java.time.Instant
+import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -22,6 +24,7 @@ import javax.sql.DataSource
 import java.lang.reflect.Proxy
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.CountDownLatch
+import java.net.URI
 import com.blackstore.domain.pos.PosContextResult
 
 /** Isolated PG16 database. A direct URL must explicitly identify a disposable T08-B database. */
@@ -38,6 +41,179 @@ class SaleAdmissionPostgresTest {
     private fun command()=SaleCommand.Reserve(UUID.randomUUID(),OperationQuadruple(client,"device","sale",UUID.randomUUID().toString()),1,"variant",1,"price",TicketLine("sku","Product",1,BigDecimal("10.00"),BigDecimal("0.00")),null)
     private fun accepted(result: SaleCommandResult)=(result as SaleCommandResult.Accepted).receipt
     private fun failure(result: SaleCommandResult)=(result as SaleCommandResult.Rejected).failure
+
+    @Test fun v3MultilineAdmissionIsAtomicSessionBoundAndFamilySeparated()=database { source ->
+        sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+        val digest="d".repeat(64)
+        sql(source,"INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$digest',1,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+        val v3Items=listOf(CatalogItem("sku-a","Product A","variant-a","price-a",BigDecimal("10.00")),
+            CatalogItem("sku-b","Product B","variant-b","price-b",BigDecimal("7.50")))
+        val v3Catalog=object: StoreCoreCatalogPort { override fun currentSnapshot()=snapshot.copy(items=v3Items,v2Items=v3Items) }
+        val port=JdbcSaleMutationCommands(source,v3Catalog,StoreCoreCanonicalContract.CANONICAL_PATH,StoreCoreCanonicalContract.VERSION,StoreCoreCanonicalContract.SHA256,terminalId=1,connectorClientInstanceId=client)
+        fun line(v:String,sku:String,name:String,priceVersion:String,price:String,q:Int)=SaleReservationLine(v,q,priceVersion,TicketLine(sku,name,q,BigDecimal(price),BigDecimal.ZERO))
+        val identity=OperationQuadruple(client,"device","multiline-sale",UUID.randomUUID().toString())
+        val valid=SaleCommand.ReserveMultiline(UUID.randomUUID(),identity,1,listOf(line("variant-a","sku-a","Product A","price-a","10.00",2),line("variant-b","sku-b","Product B","price-b","7.50",1)),null)
+        val context=AuthenticatedSessionContext(cashier,digest)
+        val receipt=accepted(port.execute(context,valid))
+        assertEquals("2",scalar(source,"SELECT count(*) FROM sale_lines"))
+        assertEquals("27.50",scalar(source,"SELECT sum(effective_unit_price*quantity)::numeric(14,2) FROM sale_lines"))
+        assertEquals("sale-v3|sale-admission-v2|/api/v3/sales/reservations",scalar(source,"SELECT contract_family||'|'||fingerprint_version||'|'||canonical_route FROM sale_command_admission_contracts"))
+        assertTrue(port.findReceipt(cashier,receipt.commandId,SaleAdmissionFamily.V3) is SaleCommandResult.Accepted)
+        assertEquals(SaleCommandResult.NotFound,port.findReceipt(cashier,receipt.commandId,SaleAdmissionFamily.V2))
+        assertEquals(receipt,accepted(port.execute(context,valid)))
+        val restarted=requireNotNull(JdbcDurableSaleRepository(source).findDurable(identity.operationId)).saga
+        assertEquals(listOf("variant-a","variant-b"),restarted.lines.map { it.variantId })
+        assertEquals(listOf("price-a","price-b"),restarted.lines.map { it.priceVersion })
+        val invalid=valid.copy(commandId=UUID.randomUUID(),identity=identity.copy(operationId=UUID.randomUUID().toString()),lines=valid.lines.mapIndexed { i,it ->
+            it.copy(ticketLine=it.ticketLine.copy(originalUnitPrice=if(i==0) BigDecimal("10.01") else BigDecimal("7.51"))) })
+        val invalidResult=port.execute(context,invalid) as SaleCommandResult.Rejected
+        assertEquals(SaleCommandFailure.Validation,invalidResult.failure)
+        assertEquals(listOf(SaleLineFailure("variant-a",SaleLineFailureCode.PriceMismatch),SaleLineFailure("variant-b",SaleLineFailureCode.PriceMismatch)),invalidResult.lineFailures)
+        assertEquals("1",scalar(source,"SELECT count(*) FROM sale_intents"))
+        assertEquals("1",scalar(source,"SELECT count(*) FROM storecore_outbox_commands"))
+        assertEquals("1",scalar(source,"SELECT count(*) FROM sale_command_admission_receipts"))
+        assertEquals(SaleCommandFailure.PayloadMismatch,failure(port.execute(context,valid.copy(lines=valid.lines.mapIndexed { i,it -> if(i==0) it.copy(quantity=1,ticketLine=it.ticketLine.copy(quantity=1)) else it }))))
+        assertEquals(SaleCommandFailure.ExistingOperationCommand,failure(port.execute(context,valid.copy(commandId=UUID.randomUUID()))))
+        val crossFamily=SaleCommand.Reserve(valid.commandId,identity,1,"variant-a",2,"price-a",TicketLine("sku-a","Product A",2,BigDecimal("10.00"),BigDecimal.ZERO),null)
+        assertEquals(SaleCommandFailure.PayloadMismatch,failure(port.execute(cashier,crossFamily)))
+        sql(source,"UPDATE staff_sessions SET revoked_at=clock_timestamp() WHERE token_digest='$digest'")
+        val denied=valid.copy(commandId=UUID.randomUUID(),identity=identity.copy(operationId=UUID.randomUUID().toString()))
+        assertEquals(SaleCommandFailure.Forbidden,failure(port.execute(context,denied)))
+        assertEquals("1",scalar(source,"SELECT count(*) FROM sale_intents"))
+    }
+    @Test fun v3UnicodeWhitespaceOutsideTrimSetSurvivesCatalogThroughPostgres()=database { source ->
+        sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+        val digest="c".repeat(64);sql(source,"INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$digest',1,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+        val value="\u00A0";val item=CatalogItem("","","","",BigDecimal("1.00"),value,value,value,value)
+        val unicodeCatalog=object: StoreCoreCatalogPort { override fun currentSnapshot()=snapshot.copy(stale=true,items=emptyList(),v2Items=listOf(item),v2Stale=false) }
+        val port=JdbcSaleMutationCommands(source,unicodeCatalog,StoreCoreCanonicalContract.CANONICAL_PATH,StoreCoreCanonicalContract.VERSION,StoreCoreCanonicalContract.SHA256,terminalId=1,connectorClientInstanceId=client)
+        val identity=OperationQuadruple(client,"device",value,UUID.randomUUID().toString())
+        val command=SaleCommand.ReserveMultiline(UUID.randomUUID(),identity,1,listOf(SaleReservationLine(value,1,value,TicketLine(value,value,1,BigDecimal("1.00"),BigDecimal.ZERO,value,value))),null)
+        accepted(port.execute(AuthenticatedSessionContext(cashier,digest),command))
+        assertEquals(value,scalar(source,"SELECT sale_id FROM sale_intents"));assertEquals(value,scalar(source,"SELECT sku FROM sale_lines"))
+        assertEquals(value,scalar(source,"SELECT variant_id FROM sale_lines"));assertEquals(value,scalar(source,"SELECT price_version FROM sale_lines"))
+        val repository=JdbcDurableSaleRepository(source);val restored=requireNotNull(repository.findDurable(identity.operationId))
+        assertEquals(DurableSaleState.PENDING_RESERVATION,restored.state);assertEquals(value,restored.saga.quadruple.saleId)
+        val claim=requireNotNull(repository.claimCommand(identity.operationId,CommandKind.RESERVE,Duration.ofSeconds(30)))
+        assertEquals(DurableCommandCodecVersion.V2,claim.command.codecVersion);assertEquals(value,claim.command.quadruple.saleId)
+        val expires=Instant.now().plusSeconds(3600);val receipt=StoreCoreOperationReceipt(identity,StoreCoreOperationKind.RESERVE,StoreCoreOperationState.RESERVED,
+            "reservation-unicode","receipt-unicode",snapshot.contract,listOf(value),expires)
+        val reserved=restored.saga.applyRemoteDurable(StoreCoreOperationState.RESERVED,RemoteEvidence("reservation-unicode","receipt-unicode",
+            snapshot.contract.contractVersion,requireNotNull(snapshot.contract.openapiDigestSha256),listOf(value),expires))
+        assertEquals(AttemptOutcome.APPLIED,repository.applyClaimEvidence(claim,reserved,"e".repeat(64),StoreCoreOperationState.RESERVED.name,receipt))
+        assertTrue(JdbcAccountingMutationCommands(source).execute(cashier,AccountingCommandDraft.PaymentCapture(UUID.randomUUID(),identity,PaymentMethod.CASH,BigDecimal("1.00"))) is com.blackstore.domain.port.out.accounting.AccountingMutationOutcome.Applied)
+        val terminal=com.blackstore.application.dto.sales.SaleV2RequestTranslator.terminal(identity.operationId,
+            com.blackstore.application.dto.sales.SaleTerminalV2Request(UUID.randomUUID(),identity.clientInstanceId,identity.deviceId,identity.saleId,identity.operationId),SaleCommandKind.Commit)
+        assertTrue(port.execute(AuthenticatedSessionContext(cashier,digest),terminal) is SaleCommandResult.Accepted)
+        val commitClaim=requireNotNull(repository.claimCommand(identity.operationId,CommandKind.COMMIT,Duration.ofSeconds(30)))
+        assertEquals(DurableCommandCodecVersion.V2,commitClaim.command.codecVersion);assertEquals(value,commitClaim.command.quadruple.saleId)
+    }
+    @Test fun v3ReportsEveryInvalidLineWhenCatalogMoneyIsInvalid()=database { source ->
+        sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+        val digest="9".repeat(64);sql(source,"INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$digest',1,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+        val items=listOf(CatalogItem("sku-a","Product A","variant-a","price-a",BigDecimal("10.00")),
+            CatalogItem("sku-b","Product B","variant-b","price-b",BigDecimal("7.501")),
+            CatalogItem("sku-c","Product C","variant-c","price-c",BigDecimal("5.00")))
+        val port=JdbcSaleMutationCommands(source,object: StoreCoreCatalogPort { override fun currentSnapshot()=snapshot.copy(items=items,v2Items=items) },
+            StoreCoreCanonicalContract.CANONICAL_PATH,StoreCoreCanonicalContract.VERSION,StoreCoreCanonicalContract.SHA256,terminalId=1,connectorClientInstanceId=client)
+        fun line(variant:String,sku:String,name:String,version:String,price:String)=SaleReservationLine(variant,1,version,TicketLine(sku,name,1,BigDecimal(price),BigDecimal.ZERO,variant,version))
+        val command=SaleCommand.ReserveMultiline(UUID.randomUUID(),OperationQuadruple(client,"device","invalid-money",UUID.randomUUID().toString()),1,listOf(
+            line("variant-a","sku-a","Product A","price-a","10.01"),line("variant-b","sku-b","Product B","price-b","7.50"),
+            line("variant-c","wrong-sku","Product C","price-c","5.00")),null)
+        val result=port.execute(AuthenticatedSessionContext(cashier,digest),command) as SaleCommandResult.Rejected
+        assertEquals(listOf(SaleLineFailure("variant-a",SaleLineFailureCode.PriceMismatch),SaleLineFailure("variant-b",SaleLineFailureCode.PriceMismatch),
+            SaleLineFailure("variant-c",SaleLineFailureCode.SkuMismatch)),result.lineFailures)
+        assertEquals("0",scalar(source,"SELECT count(*) FROM sale_intents"));assertEquals("0",scalar(source,"SELECT count(*) FROM storecore_outbox_commands"))
+    }
+    @Test fun v3SessionRevocationBeforeAndAfterTransactionalRevalidationHasDefinedFence()=database { source ->
+        sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+        fun install(digest:String)=sql(source,"INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$digest',1,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+        fun draft(sale:String)=SaleCommand.ReserveMultiline(UUID.randomUUID(),OperationQuadruple(client,"device",sale,UUID.randomUUID().toString()),1,
+            listOf(SaleReservationLine("variant",1,"price",TicketLine("sku","Product",1,BigDecimal("10.00"),BigDecimal.ZERO))),null)
+        val beforeDigest="b".repeat(64);install(beforeDigest)
+        val pool=Executors.newSingleThreadExecutor()
+        try { source.connection.use { terminalLock ->
+            terminalLock.autoCommit=false;terminalLock.createStatement().execute("UPDATE terminals SET terminal_code=terminal_code WHERE id=1")
+            val future=pool.submit<SaleCommandResult> { adapter(source).execute(AuthenticatedSessionContext(cashier,beforeDigest),draft("before-revoke")) }
+            awaitBlocked(source);sql(source,"UPDATE staff_sessions SET revoked_at=clock_timestamp() WHERE token_digest='$beforeDigest'")
+            terminalLock.commit()
+            assertEquals(SaleCommandFailure.Forbidden,failure(future.get(10,TimeUnit.SECONDS)))
+            assertEquals("0",scalar(source,"SELECT count(*) FROM sale_intents"))
+        } } finally { pool.shutdownNow() }
+
+        val afterDigest="a".repeat(64);install(afterDigest)
+        val barrier=CommitBarrierSource(source);val afterPool=Executors.newSingleThreadExecutor()
+        try {
+            val future=afterPool.submit<SaleCommandResult> { adapter(barrier).execute(AuthenticatedSessionContext(cashier,afterDigest),draft("after-revoke")) }
+            assertTrue(barrier.reached.await(10,TimeUnit.SECONDS))
+            sql(source,"UPDATE staff_sessions SET revoked_at=clock_timestamp() WHERE token_digest='$afterDigest'")
+            barrier.proceed.countDown();accepted(future.get(10,TimeUnit.SECONDS))
+            assertEquals("1",scalar(source,"SELECT count(*) FROM sale_command_admission_receipts"))
+        } finally { barrier.proceed.countDown();afterPool.shutdownNow() }
+    }
+    @Test fun v3ExpiryInactiveUserAndRoleChangeAfterLockWaitDenyWithoutFacts()=database { source ->
+        sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+        val cases=listOf<(DataSource,String)->Unit>(
+            { db,digest -> sql(db,"UPDATE staff_sessions SET expires_at=created_at+interval '1 millisecond' WHERE token_digest='$digest'") },
+            { db,_ -> sql(db,"UPDATE staff_users SET active=false WHERE id=1") },
+            { db,_ -> sql(db,"UPDATE staff_users SET role_code='AUDITOR' WHERE id=1") })
+        cases.forEachIndexed { index,mutate ->
+            sql(source,"UPDATE staff_users SET active=true,role_code='CASHIER' WHERE id=1")
+            val digest=listOf("e","f","a")[index].repeat(64)
+            sql(source,"INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$digest',1,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+            val draft=SaleCommand.ReserveMultiline(UUID.randomUUID(),OperationQuadruple(client,"device","security-$index",UUID.randomUUID().toString()),1,
+                listOf(SaleReservationLine("variant",1,"price",TicketLine("sku","Product",1,BigDecimal("10.00"),BigDecimal.ZERO))),null)
+            val pool=Executors.newSingleThreadExecutor()
+            try { source.connection.use { terminalLock ->
+                terminalLock.autoCommit=false;terminalLock.createStatement().execute("UPDATE terminals SET active=false WHERE id=1")
+                val future=pool.submit<SaleCommandResult> { adapter(source).execute(AuthenticatedSessionContext(cashier,digest),draft) }
+                awaitBlocked(source);mutate(source,digest);terminalLock.createStatement().execute("UPDATE terminals SET active=true WHERE id=1");terminalLock.commit()
+                assertEquals(SaleCommandFailure.Forbidden,failure(future.get(10,TimeUnit.SECONDS)))
+                assertEquals("0",scalar(source,"SELECT count(*) FROM sale_intents WHERE operation_id='${draft.identity.operationId}'"))
+            } } finally { pool.shutdownNow() }
+        }
+        sql(source,"UPDATE staff_users SET active=true,role_code='CASHIER' WHERE id=1")
+    }
+    @Test fun v3RealChildCrashBeforeAndAfterCommitRecoversMultilineWithoutDuplication()=database { source ->
+        sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
+        val digest="d".repeat(64)
+        sql(source,"INSERT INTO staff_sessions(token_digest,user_id,csrf_token,created_at,last_used_at,expires_at) VALUES('$digest',1,'csrf',clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '1 hour')")
+        val jdbcUrl=source.connection.use { it.metaData.url }
+        require(URI(jdbcUrl.removePrefix("jdbc:")).host in setOf("localhost","127.0.0.1","::1"))
+        val role="poscb_crash_${UUID.randomUUID().toString().replace("-","")}";val password=UUID.randomUUID().toString()
+        sql(source,"CREATE ROLE $role LOGIN NOINHERIT PASSWORD '$password'")
+        sql(source,"GRANT blackstore_app,blackstore_projection_worker TO $role")
+        val reader=Executors.newSingleThreadExecutor()
+        try {
+            for(boundary in listOf(SaleAdmissionCrashBoundary.BeforeCommit,SaleAdmissionCrashBoundary.AfterCommit)) {
+                val commandId=UUID.randomUUID();val operationId=UUID.randomUUID();val saleId="crash-${boundary.name}"
+                val builder=ProcessBuilder(System.getProperty("java.home")+"/bin/java","-cp",System.getProperty("blackstore.test.classpath"),SaleAdmissionCrashChild::class.java.name,
+                    boundary.name,client,commandId.toString(),saleId,operationId.toString()).redirectErrorStream(true)
+                builder.environment()["BLACKSTORE_CRASH_JDBC_URL"]=jdbcUrl;builder.environment()["BLACKSTORE_CRASH_JDBC_USER"]=role
+                builder.environment()["BLACKSTORE_CRASH_JDBC_PASSWORD"]=password
+                val child=builder.start()
+                try {
+                    val ready=reader.submit<String> {
+                        val output=mutableListOf<String>();val stream=child.inputStream.bufferedReader()
+                        generateSequence { stream.readLine() }.forEach { line -> output+=line;if(line.contains("POSCB_CRASH_READY")) return@submit line }
+                        error("child exited before barrier: ${output.joinToString(" | ")}")
+                    }
+                    assertTrue(ready.get(20,TimeUnit.SECONDS).contains("POSCB_CRASH_READY"))
+                    child.destroyForcibly();assertTrue(child.waitFor(10,TimeUnit.SECONDS))
+                } finally { if(child.isAlive) child.destroyForcibly() }
+                val expected=if(boundary==SaleAdmissionCrashBoundary.BeforeCommit) "0" else "1"
+                for(table in listOf("sale_intents","storecore_outbox_commands","sale_command_admission_receipts","sale_command_admission_contracts"))
+                    assertEquals(expected,scalar(source,"SELECT count(*) FROM $table WHERE ${if(table.startsWith("sale_command_admission")) "command_id='$commandId'" else "operation_id='$operationId'"}"))
+                assertEquals(if(boundary==SaleAdmissionCrashBoundary.BeforeCommit) "0" else "2",scalar(source,"SELECT count(*) FROM sale_lines l JOIN sale_state_projection s ON s.id=l.sale_id WHERE s.operation_id='$operationId'"))
+                if(boundary==SaleAdmissionCrashBoundary.AfterCommit) {
+                    val receipt=accepted(adapter(source).findReceipt(cashier,commandId,SaleAdmissionFamily.V3));assertEquals(commandId,receipt.commandId)
+                    val restored=requireNotNull(JdbcDurableSaleRepository(source).findDurable(operationId.toString())).saga
+                    assertEquals(BigDecimal("27.50"),restored.lines.fold(BigDecimal.ZERO) { total,line -> total+line.effectiveUnitPrice.multiply(line.quantity.toBigDecimal()) })
+                    assertEquals(listOf("variant-a","variant-b"),restored.lines.map { it.variantId })
+                }
+            }
+        } finally { reader.shutdownNow();sql(source,"DROP ROLE $role") }
+    }
 
     @Test fun cleanAdmissionIsAtomicPendingAndReplaySurvivesPauseWithoutDispatch()=database { source ->
         val port=adapter(source);val draft=command()
@@ -153,7 +329,7 @@ class SaleAdmissionPostgresTest {
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate()
         assertEquals(before,scalar(source,"SELECT row_to_json(i)::text FROM sale_intents i"))
         assertEquals("0",scalar(source,"SELECT count(*) FROM sale_command_admission_receipts"))
-        assertEquals("12",scalar(source,"SELECT max(version::integer) FROM flyway_schema_history WHERE success AND version IS NOT NULL"))
+        assertEquals("13",scalar(source,"SELECT max(version::integer) FROM flyway_schema_history WHERE success AND version IS NOT NULL"))
     }
     @Test fun unprovisionedCleanDatabaseAndUpgradeNeverInventContext()=database(10) { source ->
         val draft=command()
@@ -263,7 +439,7 @@ class SaleAdmissionPostgresTest {
             } as java.sql.Connection
         }
     }
-    private fun database(target: Int=12, provision: Boolean=true,block: (DataSource)->Unit) {
+    private fun database(target: Int=13, provision: Boolean=true,block: (DataSource)->Unit) {
         val url=System.getenv("BLACKSTORE_T08B_TEST_JDBC_URL")
         if(url!=null) {
             require(url.endsWith("/blackstore_t08b_test")) { "Only an explicitly disposable T08-B database may be cleaned" }

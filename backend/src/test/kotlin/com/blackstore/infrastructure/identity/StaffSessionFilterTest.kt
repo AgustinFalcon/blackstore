@@ -29,6 +29,7 @@ class StaffSessionFilterTest {
             "POST /api/v2/sales/reservations" to StaffPermission.SaleReserve,
             "POST /api/v2/sales/operation/commit" to StaffPermission.SaleCommit,
             "POST /api/v2/sales/operation/release" to StaffPermission.SaleRelease)
+            .plus(mapOf("POST /api/v3/sales/reservations" to StaffPermission.SaleReserve,"GET /api/v3/sales/commands/command" to StaffPermission.SaleCommandRead))
         routes.forEach { (route, permission) ->
             val (method, path) = route.split(" ")
             assertEquals(permission, StaffHttpPermission.permission(method, path))
@@ -49,7 +50,7 @@ class StaffSessionFilterTest {
         val session = ResolvedStaffSession(AuthenticatedStaff(StaffUserId(1), "Operator", StaffRole.CASHIER),
             StaffSession("digest", StaffUserId(1), "csrf", now, now, now.plusSeconds(43200), null))
         Mockito.`when`(resolver.execute(token)).thenReturn(session)
-        for (path in listOf("/api/v2/cash-sessions", "/api/v2/cash-sessions/1/close", "/api/v2/expenses", "/api/v2/payments", "/api/v2/payments/3/reversals", "/api/v2/sales/reservations", "/api/v2/sales/operation/commit", "/api/v2/sales/operation/release")) {
+        for (path in listOf("/api/v2/cash-sessions", "/api/v2/cash-sessions/1/close", "/api/v2/expenses", "/api/v2/payments", "/api/v2/payments/3/reversals", "/api/v2/sales/reservations", "/api/v2/sales/operation/commit", "/api/v2/sales/operation/release", "/api/v3/sales/reservations")) {
             val request = MockHttpServletRequest("POST", path)
             request.setCookies(Cookie("__Host-blackstore-session", token))
             val response = MockHttpServletResponse(); var effects = 0

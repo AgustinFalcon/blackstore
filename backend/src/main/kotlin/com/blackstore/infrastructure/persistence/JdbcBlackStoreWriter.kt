@@ -388,6 +388,8 @@ class JdbcBlackStoreWriter {
         quantity: Int,
         originalUnitPrice: BigDecimal,
         discountAmount: BigDecimal,
+        variantId: String? = null,
+        priceVersion: String? = null,
     ) {
         MoneyPolicy.normalize(originalUnitPrice)
         MoneyPolicy.normalize(discountAmount)
@@ -396,8 +398,8 @@ class JdbcBlackStoreWriter {
         connection.prepareStatement(
             """
             INSERT INTO sale_lines (
-                sale_id, sku, product_snapshot, quantity, original_unit_price, discount_amount, effective_unit_price
-            ) VALUES (?, ?, ?::jsonb, ?, ?, ?, ?)
+                sale_id, sku, product_snapshot, quantity, original_unit_price, discount_amount, effective_unit_price, variant_id, price_version
+            ) VALUES (?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
         ).use { statement ->
             statement.setLong(1, projectionId)
@@ -407,6 +409,8 @@ class JdbcBlackStoreWriter {
             statement.setBigDecimal(5, originalUnitPrice)
             statement.setBigDecimal(6, discountAmount)
             statement.setBigDecimal(7, originalUnitPrice.subtract(discountAmount))
+            statement.setString(8, variantId)
+            statement.setString(9, priceVersion)
             statement.executeUpdate()
         }
     }

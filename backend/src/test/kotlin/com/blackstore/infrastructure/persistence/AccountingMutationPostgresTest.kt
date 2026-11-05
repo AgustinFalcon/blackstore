@@ -280,7 +280,7 @@ class AccountingMutationPostgresTest {
         val reader = Executors.newSingleThreadExecutor()
         try {
             for (boundary in AccountingCrashBoundary.entries.filter { it != AccountingCrashBoundary.Unknown }) {
-                val fixture = committable(source, commands)
+                val fixture = committable(source, commands, multiline = true)
                 val before = workerFactCounts(source, fixture.committed.quadruple.operationId)
                 val applicationName = "clr-worker-crash-${UUID.randomUUID()}"
                 val child = ProcessBuilder(System.getProperty("java.home") + "/bin/java", "-cp",
@@ -331,8 +331,11 @@ class AccountingMutationPostgresTest {
                     assertEquals(before.recognitionReceipts + 1, afterReplay.recognitionReceipts)
                     assertEquals(before.inboxApplications + 1, afterReplay.inboxApplications)
                     assertEquals(before.audits + 2, afterReplay.audits)
+                    assertEquals("27.50", scalar(source, "SELECT gross_sales::numeric(14,2)::text FROM sale_state_projection WHERE operation_id='${fixture.committed.quadruple.operationId}'"))
+                    assertEquals("2", scalar(source, "SELECT count(*) FROM sale_lines l JOIN sale_state_projection s ON s.id=l.sale_id WHERE s.operation_id='${fixture.committed.quadruple.operationId}'"))
+                    assertEquals("[\"price-a\", \"price-b\"]", scalar(source, "SELECT accepted_price_versions::text FROM sale_state_projection WHERE operation_id='${fixture.committed.quadruple.operationId}'"))
                     applied(commands.execute(staff, AccountingCommandDraft.CashSessionClose(
-                        UUID.randomUUID(), fixture.cashId, BigDecimal.TEN, "worker crash scenario cleanup")))
+                        UUID.randomUUID(), fixture.cashId, fixture.total, "worker crash scenario cleanup")))
                 } finally {
                     if (child.isAlive) { child.destroyForcibly(); child.waitFor(10, TimeUnit.SECONDS) }
                 }
@@ -856,7 +859,7 @@ class AccountingMutationPostgresTest {
         is AccountingMutationOutcome.Applied -> fail("expected rejected accounting mutation, got receipt ${outcome.receipt}")
     }
     private fun activate(source: DataSource) = sql(source, "UPDATE accounting_runtime SET state='ACTIVE', accounting_activation_at=clock_timestamp()")
-    private fun sale(source: DataSource, cash: Long): OperationQuadruple {
+    private fun sale(source: DataSource, cash: Long, multiline: Boolean = false): OperationQuadruple {
         val identity = OperationQuadruple(UUID.randomUUID().toString(), "POS", "sale", UUID.randomUUID().toString())
         val contractVersion = com.blackstore.domain.model.StoreCoreCanonicalContract.VERSION
         val openapiDigest = com.blackstore.domain.model.StoreCoreCanonicalContract.SHA256
@@ -866,13 +869,20 @@ class AccountingMutationPostgresTest {
             c.autoCommit = false
             val id = writer.insertPendingSale(c, UUID.fromString(identity.clientInstanceId), identity.deviceId, identity.saleId,
                 UUID.fromString(identity.operationId), cash, 1, contractVersion, openapiDigest)
-            writer.insertSaleLine(c, id, "SKU", "Product", 1, BigDecimal.TEN, BigDecimal.ZERO)
-            c.createStatement().execute("UPDATE sale_state_projection SET status='RESERVED',storecore_reservation_ref='$reservationRef',reservation_receipt='receipt',contract_version='$contractVersion',openapi_digest='$openapiDigest',accepted_price_versions='[\"price-v1\"]',reservation_expires_at=clock_timestamp()+interval '1 hour' WHERE id=$id")
+            if(multiline) {
+                writer.insertSaleLine(c,id,"sku-a","Product A",2,BigDecimal("10.00"),BigDecimal.ZERO,"variant-a","price-a")
+                writer.insertSaleLine(c,id,"sku-b","Product B",1,BigDecimal("7.50"),BigDecimal.ZERO,"variant-b","price-b")
+            } else writer.insertSaleLine(c, id, "SKU", "Product", 1, BigDecimal.TEN, BigDecimal.ZERO)
+            val acceptedVersions=if(multiline) "[\"price-a\",\"price-b\"]" else "[\"price-v1\"]"
+            c.createStatement().execute("UPDATE sale_state_projection SET status='RESERVED',storecore_reservation_ref='$reservationRef',reservation_receipt='receipt',contract_version='$contractVersion',openapi_digest='$openapiDigest',accepted_price_versions='$acceptedVersions',reservation_expires_at=clock_timestamp()+interval '1 hour' WHERE id=$id")
             // A real canonical outbox is needed for durable read to classify the sale, rather than guessing legacy state.
             val command = com.blackstore.domain.sales.OutboxCommand(identity, com.blackstore.domain.model.StoreCoreOperationKind.RESERVE,
                 com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH, contractVersion, openapiDigest, "b".repeat(64), payload =
-                com.blackstore.domain.sales.CanonicalCommandPayload.Reserve("catalog-v1", listOf(
-                    com.blackstore.domain.sales.CanonicalReserveLine("SKU", 1, "price-v1"))))
+                com.blackstore.domain.sales.CanonicalCommandPayload.Reserve("catalog-v1", if(multiline) listOf(
+                    com.blackstore.domain.sales.CanonicalReserveLine("variant-a",2,"price-a"),
+                    com.blackstore.domain.sales.CanonicalReserveLine("variant-b",1,"price-b")) else listOf(
+                    com.blackstore.domain.sales.CanonicalReserveLine("SKU", 1, "price-v1"))),
+                codecVersion=if(multiline) DurableCommandCodecVersion.V2 else DurableCommandCodecVersion.V1)
             val mapper = DurableCommandMapper()
             val payload = mapper.encode(command)
             c.prepareStatement("INSERT INTO storecore_outbox_commands(client_instance_id,device_id,sale_id,operation_id,operation_kind,contract_version,openapi_digest,request_hash,payload_redacted,canonical_payload,payload_hash,actor_id,cash_session_id) VALUES(?,?,?,?,'RESERVE',?, ?,?,'{}',?::jsonb,?,1,?) RETURNING id").use { s ->
@@ -888,7 +898,7 @@ class AccountingMutationPostgresTest {
                     }
                     if (accountingActive) {
                         c.prepareStatement("INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id) VALUES(?,'Reserve',?,1,?,?,?,?,?,?,?)").use { receipt ->
-                            receipt.setObject(1, UUID.randomUUID())
+                            val receiptId=UUID.randomUUID();receipt.setObject(1, receiptId)
                             receipt.setString(2, mapper.hash(payload))
                             receipt.setLong(3, cash)
                             receipt.setObject(4, UUID.fromString(identity.clientInstanceId))
@@ -898,6 +908,7 @@ class AccountingMutationPostgresTest {
                             receipt.setLong(8, id)
                             receipt.setLong(9, outboxId)
                             receipt.executeUpdate()
+                            c.prepareStatement("INSERT INTO sale_command_admission_contracts(command_id,contract_family,fingerprint_version,canonical_route) VALUES(?,'sale-v2','sale-admission-v1','/api/v2/sales/reservations')").use { metadata -> metadata.setObject(1,receiptId);metadata.executeUpdate() }
                         }
                     }
                 }
@@ -908,18 +919,20 @@ class AccountingMutationPostgresTest {
     }
 
     private data class CommittableSale(val cashId: Long, val claim: ClaimedSaleCommand, val committed: SaleSaga,
-        val receipt: com.blackstore.domain.model.StoreCoreOperationReceipt)
+        val receipt: com.blackstore.domain.model.StoreCoreOperationReceipt,val total: BigDecimal)
 
-    private fun committable(source: DataSource, commands: JdbcAccountingMutationCommands): CommittableSale {
+    private fun committable(source: DataSource, commands: JdbcAccountingMutationCommands,multiline: Boolean = false): CommittableSale {
         val cash = applied(commands.execute(staff, opening().copy(commandId = UUID.randomUUID()))).cashSessionId
-        val identity = sale(source, cash)
-        applied(commands.execute(staff, AccountingCommandDraft.PaymentCapture(UUID.randomUUID(), identity, PaymentMethod.CASH, BigDecimal.TEN)))
+        val identity = sale(source, cash,multiline)
+        val total=if(multiline) BigDecimal("27.50") else BigDecimal.TEN
+        applied(commands.execute(staff, AccountingCommandDraft.PaymentCapture(UUID.randomUUID(), identity, PaymentMethod.CASH,total)))
         val repository = JdbcDurableSaleRepository(source)
         val current = requireNotNull(repository.findDurable(identity.operationId)).saga
         val evidence = requireNotNull(current.evidence)
         val command = OutboxCommand(identity, StoreCoreOperationKind.COMMIT,
             com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH, evidence.contractVersion, evidence.openapiDigest,
-            "c".repeat(64), reservationRef = evidence.reservationRef, payload = CanonicalCommandPayload.Terminal(evidence.reservationRef))
+            "c".repeat(64), reservationRef = evidence.reservationRef, payload = CanonicalCommandPayload.Terminal(evidence.reservationRef),
+            codecVersion=current.outbox.single { it.kind==StoreCoreOperationKind.RESERVE }.codecVersion)
         val pending = current.withCommand(command).markCommitPending()
         source.connection.use { c ->
             c.autoCommit = false
@@ -927,15 +940,17 @@ class AccountingMutationPostgresTest {
             JdbcAccountingLifecycleAdmission().requireV2(c)
             val locked = JdbcAccountingAggregateLocks().lockSale(c, identity)
             JdbcSaleRecordStore(source).insertCanonicalCommand(c, pending, command, staff.id.value, "v2 commit fixture")
+            val receiptId=UUID.randomUUID()
             c.prepareStatement("""INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id)
                 SELECT ?,'Commit',repeat('c',64),?,i.cash_session_id,i.client_instance_id,i.device_id,i.sale_id,i.operation_id,i.id,o.id
                 FROM sale_intents i JOIN storecore_outbox_commands o ON o.operation_id=i.operation_id AND o.operation_kind='COMMIT'
                 WHERE i.operation_id=?""").use { receipt ->
-                receipt.setObject(1, UUID.randomUUID())
+                receipt.setObject(1, receiptId)
                 receipt.setLong(2, staff.id.value)
                 receipt.setObject(3, UUID.fromString(identity.operationId))
                 receipt.executeUpdate()
             }
+            c.prepareStatement("INSERT INTO sale_command_admission_contracts(command_id,contract_family,fingerprint_version,canonical_route) VALUES(?,'sale-v2','sale-admission-v1','/api/v2/sales/{operationId}/commit')").use { it.setObject(1,receiptId);it.executeUpdate() }
             check(JdbcBlackStoreWriter().advanceSaleStatus(c, locked.projectionId, current.status.name, SaleStatus.COMMIT_PENDING.name) == 1)
             c.prepareStatement("UPDATE sale_state_projection SET version=version+1,updated_at=now() WHERE id=?").use { it.setLong(1, locked.projectionId); it.executeUpdate() }
             c.commit()
@@ -949,7 +964,7 @@ class AccountingMutationPostgresTest {
             com.blackstore.domain.model.StoreCoreOperationState.COMMITTED,
             RemoteEvidence(evidence.reservationRef, requireNotNull(receipt.receipt), evidence.contractVersion, evidence.openapiDigest,
                 evidence.acceptedPriceVersions, null))
-        return CommittableSale(cash, claim, committed, receipt)
+        return CommittableSale(cash, claim, committed, receipt,total)
     }
 
     private fun scalar(source: DataSource, sql: String): String = source.connection.use { c -> c.createStatement().use { s -> s.executeQuery(sql).use { r -> r.next(); r.getString(1) } } }

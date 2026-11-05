@@ -14,7 +14,8 @@ class DurableCommandMapper {
  fun state(wire: String?): DurableSaleState = DurableSaleState.entries.firstOrNull { it.name == wire } ?: DurableSaleState.UNKNOWN
  fun encode(command: OutboxCommand): String {
   val payload = requireNotNull(command.payload) { "legacy command is not replayable" }
-  val node = json.createObjectNode().put("schemaVersion",1).put("kind",command.kind.name)
+  require(command.codecVersion != DurableCommandCodecVersion.Unknown)
+  val node = json.createObjectNode().put("schemaVersion",command.codecVersion.schema).put("kind",command.kind.name)
    .put("clientInstanceId",command.quadruple.clientInstanceId).put("deviceId",command.quadruple.deviceId)
    .put("saleId",command.quadruple.saleId).put("operationId",command.quadruple.operationId)
    .put("canonicalPath",command.canonicalPath).put("contractVersion",command.contractVersion).put("openapiDigest",command.openapiDigest)
@@ -34,13 +35,16 @@ class DurableCommandMapper {
  }
  fun decode(raw: String, expectedHash: String, requestHash: String): OutboxCommand {
   val node = json.readTree(raw)
-  require(node.path("schemaVersion").asInt() == 1)
+  val codec=DurableCommandCodecVersion.fromWire(node.path("schemaVersion").takeIf { it.isIntegralNumber }?.asInt())
+  require(codec!=DurableCommandCodecVersion.Unknown)
   fun text(key: String): String = node.path(key).takeIf { it.isTextual && it.asText().isNotBlank() }?.asText() ?: error("incomplete canonical payload")
+  fun ref(key: String): String = if(codec==DurableCommandCodecVersion.V1) text(key) else node.path(key).takeIf { it.isTextual }?.asText()?.let(SaleTextV2::ref) ?: error("incomplete canonical payload")
   val kind = when(kind(text("kind"))) { CommandKind.RESERVE -> StoreCoreOperationKind.RESERVE; CommandKind.COMMIT -> StoreCoreOperationKind.COMMIT; CommandKind.RELEASE -> StoreCoreOperationKind.RELEASE; else -> error("unknown command") }
   val payload = if(kind == StoreCoreOperationKind.RESERVE) CanonicalCommandPayload.Reserve(text("catalogVersion"), node.path("lines").map {
-   CanonicalReserveLine(it.path("variantId").asText(),it.path("quantity").asInt(),it.path("expectedPriceVersion").asText())
-  }) else CanonicalCommandPayload.Terminal(text("reservationRef"))
-  val command = OutboxCommand(OperationQuadruple(text("clientInstanceId"),text("deviceId"),text("saleId"),text("operationId")),kind,text("canonicalPath"),text("contractVersion"),text("openapiDigest"),requestHash,(payload as? CanonicalCommandPayload.Terminal)?.reservationRef,payload)
+   CanonicalReserveLine(if(codec==DurableCommandCodecVersion.V1) it.path("variantId").asText().also { value -> require(value.isNotBlank()) } else SaleTextV2.ref(it.path("variantId").asText()),
+    it.path("quantity").asInt(),if(codec==DurableCommandCodecVersion.V1) it.path("expectedPriceVersion").asText().also { value -> require(value.isNotBlank()) } else SaleTextV2.ref(it.path("expectedPriceVersion").asText()))
+  }) else CanonicalCommandPayload.Terminal(ref("reservationRef"))
+  val command = OutboxCommand(OperationQuadruple(text("clientInstanceId"),ref("deviceId"),ref("saleId"),text("operationId")),kind,text("canonicalPath"),text("contractVersion"),text("openapiDigest"),requestHash,(payload as? CanonicalCommandPayload.Terminal)?.reservationRef,payload,codec)
   require(hash(encode(command)) == expectedHash) { "canonical payload checksum mismatch" }
   require(json.readTree(encode(command)) == node) { "non-allowlisted canonical payload" }
   return command

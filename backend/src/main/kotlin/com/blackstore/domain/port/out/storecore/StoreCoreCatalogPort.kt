@@ -19,6 +19,8 @@ data class CatalogSnapshot(
     val contract: StoreCoreContractRef,
     val stale: Boolean,
     val items: List<CatalogItem> = emptyList(),
+    val v2Items: List<CatalogItem> = items,
+    val v2Stale: Boolean = stale,
 )
 
 data class CatalogItem(
@@ -27,4 +29,8 @@ data class CatalogItem(
     val variantId: String,
     val priceVersion: String? = null,
     val unitPrice: BigDecimal? = null,
+    val rawSku: String = sku,
+    val rawName: String = name,
+    val rawVariantId: String = variantId,
+    val rawPriceVersion: String? = priceVersion,
 )

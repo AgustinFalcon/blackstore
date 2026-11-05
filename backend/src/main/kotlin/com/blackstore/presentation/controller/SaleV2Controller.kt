@@ -16,7 +16,7 @@ class SaleV2Controller(private val service: SaleCommandApplicationService) {
     @PostMapping("/reservations") fun reserve(request: HttpServletRequest,@RequestBody body: SaleReserveV2Request)=mutate(request) { SaleV2RequestTranslator.reserve(body) }
     @PostMapping("/{operationId}/commit") fun commit(request: HttpServletRequest,@PathVariable operationId: String,@RequestBody body: SaleTerminalV2Request)=mutate(request) { SaleV2RequestTranslator.terminal(operationId,body,SaleCommandKind.Commit) }
     @PostMapping("/{operationId}/release") fun release(request: HttpServletRequest,@PathVariable operationId: String,@RequestBody body: SaleTerminalV2Request)=mutate(request) { SaleV2RequestTranslator.terminal(operationId,body,SaleCommandKind.Release) }
-    @GetMapping("/commands/{commandId}") fun receipt(request: HttpServletRequest,@PathVariable commandId: UUID)=respond(request,service.receipt(request.staffSession().staff,commandId),true)
+    @GetMapping("/commands/{commandId}") fun receipt(request: HttpServletRequest,@PathVariable commandId: UUID)=respond(request,service.receipt(request.staffSession().staff,commandId,SaleAdmissionFamily.V2),true)
     private fun mutate(request: HttpServletRequest,translate: ()->SaleCommand): ResponseEntity<BaseResponse<SaleAdmissionV2Response>> {
         val staff=request.staffSession().staff
         val command=try { translate() } catch(_: IllegalArgumentException) { return respond(request,SaleCommandResult.Rejected(SaleCommandFailure.Validation),false) }

@@ -11,9 +11,9 @@ data class OperationQuadruple(
     val operationId: String,
 ) {
     init {
-        require(clientInstanceId.isNotBlank()) { "clientInstanceId is required" }
-        require(deviceId.isNotBlank()) { "deviceId is required" }
-        require(saleId.isNotBlank()) { "saleId is required" }
-        require(operationId.isNotBlank()) { "operationId is required" }
+        require(clientInstanceId.isNotEmpty()) { "clientInstanceId is required" }
+        require(deviceId.isNotEmpty()) { "deviceId is required" }
+        require(saleId.isNotEmpty()) { "saleId is required" }
+        require(operationId.isNotEmpty()) { "operationId is required" }
     }
 }

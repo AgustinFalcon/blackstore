@@ -53,7 +53,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
     } }
    }
    val lines=c.prepareStatement("SELECT * FROM sale_lines WHERE sale_id=? ORDER BY id").use { q ->
-    q.setLong(1,id);q.executeQuery().use { rows -> buildList { while(rows.next()) add(TicketLine(rows.getString("sku"),json.readTree(rows.getString("product_snapshot")).path("name").asText(),rows.getInt("quantity"),rows.getBigDecimal("original_unit_price"),rows.getBigDecimal("discount_amount"))) } }
+    q.setLong(1,id);q.executeQuery().use { rows -> buildList { while(rows.next()) add(TicketLine(rows.getString("sku"),json.readTree(rows.getString("product_snapshot")).path("name").asText(),rows.getInt("quantity"),rows.getBigDecimal("original_unit_price"),rows.getBigDecimal("discount_amount"),rows.getString("variant_id"),rows.getString("price_version"))) } }
    }
    val reservation=r.getString("storecore_reservation_ref")?.let { ref -> runCatching { RemoteEvidence(ref,r.getString("reservation_receipt"),r.getString("contract_version"),r.getString("openapi_digest"),json.readTree(r.getString("accepted_price_versions")).map { it.asText() },r.getTimestamp("reservation_expires_at")?.toInstant()) }.getOrNull() }
    val mapped=mapper.state(r.getString("status"))

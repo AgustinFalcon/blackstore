@@ -25,6 +25,15 @@ class LoopbackCatalogHttpTest {
 
     private val now = Instant.parse("2026-09-24T12:00:00Z")
 
+    @Test fun admissionV2ViewPreservesUnicodeWhitespaceDiscardedByLegacyTrim() {
+        val value="\u00A0"
+        val root=ObjectMapper().readTree("""{"code":200,"data":{"catalogVersion":"cat-v2","items":[{"variantId":"$value","sku":"$value","name":"$value","priceVersion":"$value","unitPrice":1.00,"active":true}]}}""")
+        val snapshot=requireNotNull(LoopbackCatalogAdapter.parse(root,StoreCoreContractRef(StoreCoreCanonicalContract.CANONICAL_PATH,StoreCoreCanonicalContract.VERSION),now))
+        assertEquals(emptyList<Any>(),snapshot.items);assertEquals(true,snapshot.stale)
+        assertEquals(value,snapshot.v2Items.single().rawName);assertEquals(value,snapshot.v2Items.single().rawVariantId)
+        assertEquals(false,snapshot.v2Stale)
+    }
+
     @Test
     fun localStubCatalogSuppliesTheReserveLineAndAClosedStubBlocksTheSale() {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

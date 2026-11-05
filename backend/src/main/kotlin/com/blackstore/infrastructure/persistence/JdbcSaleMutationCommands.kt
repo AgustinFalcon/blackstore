@@ -1,6 +1,7 @@
 package com.blackstore.infrastructure.persistence
 
 import com.blackstore.application.sales.SaleCommandFingerprint
+import com.blackstore.application.sales.SaleAdmissionV2Fingerprint
 import com.blackstore.application.sales.ReserveRequestFingerprint
 import com.blackstore.application.sales.SaleReceiptAuthorityPolicy
 import com.blackstore.application.sales.SaleReceiptReplayPolicy
@@ -43,6 +44,7 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
     private val records = JdbcSaleRecordStore(source)
     private val writer = JdbcBlackStoreWriter()
     private val fingerprints = SaleCommandFingerprint()
+    private val multilineFingerprints = SaleAdmissionV2Fingerprint()
     private val policy = StaffAuthorizationPolicy()
     private val serialization = SerializationStep()
     private val authority = AuthorityStep()
@@ -52,15 +54,18 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
     private val posContext = PosContextAdmissionStep()
     private val persistence = PersistAdmissionStep()
 
-    override fun execute(staff: AuthenticatedStaff, command: SaleCommand): SaleCommandResult = safely(staff) {
+    override fun execute(staff: AuthenticatedStaff, command: SaleCommand): SaleCommandResult = executeInternal(staff,null,command)
+    override fun execute(context: AuthenticatedSessionContext, command: SaleCommand): SaleCommandResult =
+        executeInternal(context.staff,context.sessionDigest,command)
+    private fun executeInternal(staff: AuthenticatedStaff, sessionDigest: String?, command: SaleCommand): SaleCommandResult = safely(staff) {
         transaction(false) { c ->
             lifecycle.lock(c)
             serialization.acquire(c,command)
             val saved = receipt(c,command.commandId)
             val scope=aggregate.lock(c,command,saved)
-            val actor=authority.current(c,staff,command,scope.cash)
-            replay.resolve(command,saved,actor,scope.cash)?.let { return@transaction it }
-            if(command is SaleCommand.Reserve) {
+            var actor=authority.current(c,staff,if(saved!=null) sessionDigest else null,command,scope.cash)
+            replay.resolve(c,command,saved,actor,scope.cash)?.let { return@transaction it }
+            if(command.isReserve()) {
                 if(projection(c,command.identity.operationId)!=null) {
                     // Existing operations require full identity visibility before conflict disclosure.
                     // No terminal lock/binding is needed because this path cannot admit an intention.
@@ -69,9 +74,10 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
                 }
                 admission.requireNew(c,scope.cash)
                 posContext.require(c,command,scope.cash)
+                if(sessionDigest!=null) actor=authority.current(c,staff,sessionDigest,command,scope.cash)
             }
             val stored=aggregate.verify(c,command,scope.cash)
-            if(command !is SaleCommand.Reserve) admission.requireNew(c,scope.cash)
+            if(!command.isReserve()) admission.requireNew(c,scope.cash)
             persistence.write(c,actor,command,scope.cash.id,stored)
         }
     }
@@ -85,7 +91,7 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
     private data class LockedScope(val cash: OwnedCashSession)
     private inner class AggregateStep {
         fun lock(c: Connection,command: SaleCommand,saved: SaleCommandAdmissionReceipt?): LockedScope {
-            val cashId = saved?.cashSessionId ?: locateOperationCash(c,command.identity.operationId) ?: (command as? SaleCommand.Reserve)?.cashSessionId
+            val cashId = saved?.cashSessionId ?: locateOperationCash(c,command.identity.operationId) ?: command.reserveCashSessionId()
                 ?: reject(SaleCommandFailure.NotVisible)
             // Locate is only a hint; current authority and identity are checked after waiting.
             cash(c,cashId) ?: reject(SaleCommandFailure.NotVisible)
@@ -95,26 +101,28 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
         }
         fun verify(c: Connection,command: SaleCommand,cash: OwnedCashSession): StoredSale? {
             val cashId=cash.id
-            if(command is SaleCommand.Reserve && command.cashSessionId!=cashId) reject(SaleCommandFailure.NotVisible)
+            if(command.reserveCashSessionId()?.let { it!=cashId } == true) reject(SaleCommandFailure.NotVisible)
             val projection = projection(c,command.identity.operationId)
             val stored = projection?.let { durable.lock(c,command.identity.operationId) }
             if(stored!=null && (stored.saga.quadruple!=command.identity || stored.saga.cashSessionId!=cashId)) reject(SaleCommandFailure.NotVisible)
-            if(command !is SaleCommand.Reserve && stored==null) reject(SaleCommandFailure.NotVisible)
-            if(command is SaleCommand.Reserve && stored!=null) reject(SaleCommandFailure.ExistingOperationCommand)
+            if(!command.isReserve() && stored==null) reject(SaleCommandFailure.NotVisible)
+            if(command.isReserve() && stored!=null) reject(SaleCommandFailure.ExistingOperationCommand)
             if(stored?.saga?.outbox?.any { it.kind==remoteKind(command.kind) }==true) reject(SaleCommandFailure.ExistingOperationCommand)
             return stored
         }
     }
     private inner class AuthorityStep {
-        fun current(c: Connection,staff: AuthenticatedStaff,command: SaleCommand,cash: OwnedCashSession): AuthenticatedStaff = actor(c,staff.id.value).also {
+        fun current(c: Connection,staff: AuthenticatedStaff,sessionDigest: String?,command: SaleCommand,cash: OwnedCashSession): AuthenticatedStaff =
+            (sessionDigest?.let { activeSessionActor(c,staff.id.value,it) } ?: actor(c,staff.id.value)).also {
             authorize(it,command.kind,cash,command.reason,true)
         }
     }
     private inner class ReceiptReplayStep {
-        fun resolve(command: SaleCommand,saved: SaleCommandAdmissionReceipt?,actor: AuthenticatedStaff,cash: OwnedCashSession): SaleCommandResult.Accepted? {
+        fun resolve(c: Connection,command: SaleCommand,saved: SaleCommandAdmissionReceipt?,actor: AuthenticatedStaff,cash: OwnedCashSession): SaleCommandResult.Accepted? {
             saved ?: return null
             authorize(actor,saved.kind,cash,command.reason,true)
-            SaleReceiptReplayPolicy().failure(command,saved,fingerprints.hash(saved.actorId,saved.cashSessionId,command))?.let(::reject)
+            if(contractRoute(c,saved.commandId)!=admissionRoute(command)) reject(SaleCommandFailure.PayloadMismatch)
+            SaleReceiptReplayPolicy().failure(command,saved,admissionHash(saved.actorId,saved.cashSessionId,command))?.let(::reject)
             return SaleCommandResult.Accepted(saved,true)
         }
     }
@@ -122,7 +130,7 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
         fun requireNew(c: Connection,cash: OwnedCashSession) { SaleLifecycleAdmissionStep().failure(lifecycle.state(c),cash.open)?.let(::reject) }
     }
     private inner class PosContextAdmissionStep {
-        fun require(c: Connection,command: SaleCommand.Reserve,cash: OwnedCashSession) {
+        fun require(c: Connection,command: SaleCommand,cash: OwnedCashSession) {
             // Global order: fence -> command/operation -> cash -> terminal -> sale -> delivery.
             val cashTerminal = scalar(c,"SELECT terminal_id FROM cash_session_projection WHERE id=?",cash.id) { it.getLong(1) }
                 ?: reject(SaleCommandFailure.NotVisible)
@@ -135,6 +143,7 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
                 is SaleCommand.Reserve -> {
                     reserve(c,actor,command)
                 }
+                is SaleCommand.ReserveMultiline -> reserve(c,actor,command)
                 is SaleCommand.Commit, is SaleCommand.Release -> {
                     terminal(c,actor,command,requireNotNull(stored))
                 }
@@ -143,9 +152,13 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
                 ?: reject(SaleCommandFailure.Unavailable)
             val intent = scalar(c,"SELECT sale_intent_id FROM sale_state_projection WHERE operation_id=?",UUID.fromString(command.identity.operationId)) { it.getLong(1) }
                 ?: reject(SaleCommandFailure.Unavailable)
-            val hash = fingerprints.hash(actor.id.value,cashId,command)
+            val hash = admissionHash(actor.id.value,cashId,command)
             c.prepareStatement("INSERT INTO sale_command_admission_receipts(command_id,kind,payload_hash,actor_id,cash_session_id,client_instance_id,device_id,sale_id,operation_id,intent_id,outbox_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)").use { s ->
                 listOf(command.commandId,command.kind.name,hash,actor.id.value,cashId,UUID.fromString(saga.quadruple.clientInstanceId),saga.quadruple.deviceId,saga.quadruple.saleId,UUID.fromString(saga.quadruple.operationId),intent,outbox).forEachIndexed { i,v -> s.setObject(i+1,v) };s.executeUpdate()
+            }
+            val route=admissionRoute(command)
+            c.prepareStatement("INSERT INTO sale_command_admission_contracts(command_id,contract_family,fingerprint_version,canonical_route) VALUES(?,?,?,?)").use { s ->
+                s.setObject(1,command.commandId);s.setString(2,route.family.dbWire());s.setString(3,route.fingerprintVersion.wire);s.setString(4,route.path);s.executeUpdate()
             }
             return SaleCommandResult.Accepted(requireNotNull(receipt(c,command.commandId)))
         }
@@ -157,6 +170,21 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
             if(!policy.permits(actor.role,StaffPermission.SaleCommandRead)) reject(SaleCommandFailure.Forbidden)
             val saved = receipt(c,commandId) ?: return@transaction SaleCommandResult.NotFound
             val owned = cash(c,saved.cashSessionId) ?: return@transaction SaleCommandResult.NotFound
+            if(actor.role==StaffRole.CASHIER && owned.cashierId!=actor.id) return@transaction SaleCommandResult.NotFound
+            authorize(actor,saved.kind,owned,null,false)
+            SaleCommandResult.Accepted(saved,true)
+        }
+    }
+    override fun findReceipt(staff: AuthenticatedStaff,commandId: UUID,family: SaleAdmissionFamily): SaleCommandResult = safely(staff) {
+        transaction(true) { c ->
+            val actor=actor(c,staff.id.value)
+            if(!policy.permits(actor.role,StaffPermission.SaleCommandRead)) reject(SaleCommandFailure.Forbidden)
+            val expected=family.dbWire()
+            val saved=scalar(c,"SELECT r.* FROM sale_command_admission_receipts r JOIN sale_command_admission_contracts m ON m.command_id=r.command_id WHERE r.command_id=? AND m.contract_family=?",commandId,expected) {
+                SaleCommandAdmissionReceipt(commandId,SaleCommandKind.fromWire(it.getString("kind")),it.getString("payload_hash"),it.getLong("actor_id"),it.getLong("cash_session_id"),
+                    OperationQuadruple(it.getString("client_instance_id"),it.getString("device_id"),it.getString("sale_id"),it.getString("operation_id")),it.getLong("intent_id"),it.getLong("outbox_id"),it.getTimestamp("accepted_at").toInstant())
+            } ?: return@transaction SaleCommandResult.NotFound
+            val owned=cash(c,saved.cashSessionId) ?: return@transaction SaleCommandResult.NotFound
             if(actor.role==StaffRole.CASHIER && owned.cashierId!=actor.id) return@transaction SaleCommandResult.NotFound
             authorize(actor,saved.kind,owned,null,false)
             SaleCommandResult.Accepted(saved,true)
@@ -185,6 +213,29 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
         return saga
     }
 
+    private fun reserve(c: Connection, actor: AuthenticatedStaff, command: SaleCommand.ReserveMultiline): SaleSaga {
+        val now=scalar(c,"SELECT clock_timestamp()") { it.getTimestamp(1).toInstant() }!!
+        val snapshot=catalog.currentSnapshot() ?: reject(SaleCommandFailure.Unavailable)
+        CatalogSalePolicy().assertSaleAllowed(snapshot.copy(stale=snapshot.v2Stale),now)
+        val lineFailures=command.lines.mapNotNull { submitted -> validateLine(snapshot,submitted)?.let { SaleLineFailure(submitted.variantId,it) } }
+        if(lineFailures.isNotEmpty()) rejectLines(lineFailures)
+        val canonical=command.lines
+        MoneyPolicy.normalize(canonical.fold(java.math.BigDecimal.ZERO) { total,line -> total+line.ticketLine.effectiveUnitPrice.multiply(line.quantity.toBigDecimal()) })
+        val q=command.identity
+        val remoteLines=canonical.map { ReserveLineCommand(it.variantId,it.quantity,it.expectedPriceVersion) }
+        val ticket=canonical.map { it.ticketLine }
+        val remote=OutboxCommand(q,StoreCoreOperationKind.RESERVE,path,version,digest,
+            ReserveRequestFingerprint.hash(q,command.cashSessionId,remoteLines,ticket,command.reason),
+            payload=CanonicalCommandPayload.Reserve(snapshot.version,remoteLines.map { CanonicalReserveLine(it.variantId,it.quantity,it.expectedPriceVersion) }),
+            codecVersion=DurableCommandCodecVersion.V2)
+        val saga=SaleSaga(q,command.cashSessionId,lines=ticket,createdBy=actor.id.value).withReserveCommand(remote)
+        val id=writer.insertPendingSale(c,UUID.fromString(q.clientInstanceId),q.deviceId,q.saleId,UUID.fromString(q.operationId),command.cashSessionId,actor.id.value,version,digest)
+        records.insertCanonicalCommand(c,saga,remote,actor.id.value,command.reason)
+        canonical.forEach { writer.insertSaleLine(c,id,it.ticketLine.sku,it.ticketLine.productName,it.quantity,it.ticketLine.originalUnitPrice,it.ticketLine.discountAmount,it.variantId,it.expectedPriceVersion) }
+        writer.insertAudit(c,actor.id.value,SaleStaffCommandEvent.RESERVE_REQUESTED.name,"sale",id,command.reason.orEmpty())
+        return saga
+    }
+
     private fun terminal(c: Connection, actor: AuthenticatedStaff, command: SaleCommand, stored: StoredSale): SaleSaga {
         val saga=stored.saga
         val kind=remoteKind(command.kind)
@@ -198,8 +249,9 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
             scalar(c,"SELECT clock_timestamp()") { it.getTimestamp(1).toInstant() }!!)
         val evidence=saga.evidence ?: reject(SaleCommandFailure.TransitionConflict)
         if(evidence.contractVersion!=version || evidence.openapiDigest!=digest) reject(SaleCommandFailure.TransitionConflict)
+        val codec=saga.outbox.singleOrNull { it.kind==StoreCoreOperationKind.RESERVE }?.codecVersion ?: reject(SaleCommandFailure.TransitionConflict)
         val remote=OutboxCommand(saga.quadruple,kind,path,version,digest,StoreCoreRequestHash.hex(kind,saga.quadruple.operationId),
-            reservationRef=evidence.reservationRef,payload=CanonicalCommandPayload.Terminal(evidence.reservationRef))
+            reservationRef=evidence.reservationRef,payload=CanonicalCommandPayload.Terminal(evidence.reservationRef),codecVersion=codec)
         records.insertCanonicalCommand(c,saga,remote,actor.id.value,command.reason)
         c.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
         if(kind==StoreCoreOperationKind.COMMIT) {
@@ -213,17 +265,39 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
     }
 
     private fun remoteKind(kind: SaleCommandKind)=when(kind) { SaleCommandKind.Reserve -> StoreCoreOperationKind.RESERVE; SaleCommandKind.Commit -> StoreCoreOperationKind.COMMIT; SaleCommandKind.Release -> StoreCoreOperationKind.RELEASE; SaleCommandKind.Unknown -> reject(SaleCommandFailure.Validation) }
+    private fun SaleCommand.isReserve() = this is SaleCommand.Reserve || this is SaleCommand.ReserveMultiline
+    private fun SaleCommand.reserveCashSessionId(): Long? = when(this) {
+        is SaleCommand.Reserve -> cashSessionId
+        is SaleCommand.ReserveMultiline -> cashSessionId
+        else -> null
+    }
+    private fun admissionHash(actorId: Long,cashId: Long,command: SaleCommand): String = when(command) {
+        is SaleCommand.ReserveMultiline -> multilineFingerprints.hash(actorId,cashId,command)
+        else -> fingerprints.hash(actorId,cashId,command)
+    }
+    private fun admissionRoute(command: SaleCommand): SaleAdmissionRoute = when(command) {
+        is SaleCommand.ReserveMultiline -> SaleAdmissionRoute.ReserveV3
+        is SaleCommand.Reserve -> SaleAdmissionRoute.ReserveV2
+        is SaleCommand.Commit -> SaleAdmissionRoute.CommitV2
+        is SaleCommand.Release -> SaleAdmissionRoute.ReleaseV2
+    }
+    private fun SaleAdmissionFamily.dbWire()=wire.takeIf { this!=SaleAdmissionFamily.Unknown } ?: reject(SaleCommandFailure.Validation)
     private fun authorize(actor: AuthenticatedStaff,kind: SaleCommandKind,cash: OwnedCashSession,reason: String?,mutation: Boolean) {
         SaleReceiptAuthorityPolicy().failure(actor,kind,cash,reason,mutation)?.let(::reject)
     }
     private fun actor(c: Connection,id: Long): AuthenticatedStaff = scalar(c,"SELECT display_name,role_code FROM staff_users WHERE id=? AND active",id) {
         AuthenticatedStaff(StaffUserId(id),it.getString(1),StaffRole.fromWire(it.getString(2)))
     } ?: reject(SaleCommandFailure.Forbidden)
+    private fun activeSessionActor(c: Connection,id: Long,digest: String): AuthenticatedStaff = scalar(c,"SELECT u.display_name,u.role_code FROM staff_sessions s JOIN staff_users u ON u.id=s.user_id WHERE s.token_digest=? AND s.user_id=? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND s.last_used_at>clock_timestamp()-interval '30 minutes' AND u.active",digest,id) {
+        AuthenticatedStaff(StaffUserId(id),it.getString(1),StaffRole.fromWire(it.getString(2)))
+    }?.takeIf { it.role!=StaffRole.UNKNOWN } ?: reject(SaleCommandFailure.Forbidden)
     private fun cash(c: Connection,id: Long): OwnedCashSession? = scalar(c,"SELECT cashier_id,status FROM cash_session_projection WHERE id=?",id) {
         OwnedCashSession(id,StaffUserId(it.getLong(1)),CashSessionStatus.fromWire(it.getString(2)))
     }
     private fun locateOperationCash(c: Connection,id: String): Long? = scalar(c,"SELECT cash_session_id FROM sale_intents WHERE operation_id=?",UUID.fromString(id)) { it.getLong(1) }
     private fun projection(c: Connection,id: String): Long? = scalar(c,"SELECT id FROM sale_state_projection WHERE operation_id=?",UUID.fromString(id)) { it.getLong(1) }
+    private fun contractRoute(c: Connection,id: UUID): SaleAdmissionRoute = scalar(c,"SELECT canonical_route FROM sale_command_admission_contracts WHERE command_id=?",id) { SaleAdmissionRoute.fromWire(it.getString(1)) }
+        ?.takeIf { it!=SaleAdmissionRoute.Unknown } ?: reject(SaleCommandFailure.PayloadMismatch)
     private fun receipt(c: Connection,id: UUID): SaleCommandAdmissionReceipt? = scalar(c,"SELECT * FROM sale_command_admission_receipts WHERE command_id=?",id) {
         SaleCommandAdmissionReceipt(id,SaleCommandKind.fromWire(it.getString("kind")),it.getString("payload_hash"),it.getLong("actor_id"),it.getLong("cash_session_id"),
             OperationQuadruple(it.getString("client_instance_id"),it.getString("device_id"),it.getString("sale_id"),it.getString("operation_id")),it.getLong("intent_id"),it.getLong("outbox_id"),it.getTimestamp("accepted_at").toInstant())
@@ -236,10 +310,24 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
             c.createStatement().use { it.execute("SET LOCAL ROLE blackstore_app") };val result=block(c);c.commit();result
         } catch(e: Exception) { c.rollback();throw e }
     }
-    private class Denied(val failure: SaleCommandFailure): RuntimeException()
+    private class Denied(val failure: SaleCommandFailure,val lines: List<SaleLineFailure> = emptyList()): RuntimeException()
     private fun reject(failure: SaleCommandFailure): Nothing=throw Denied(failure)
+    private fun rejectLines(lines: List<SaleLineFailure>): Nothing=throw Denied(SaleCommandFailure.Validation,lines)
+    private fun validateLine(snapshot: CatalogSnapshot,submitted: SaleReservationLine): SaleLineFailureCode? {
+        val item=snapshot.v2Items.singleOrNull { it.rawVariantId==submitted.variantId } ?: return SaleLineFailureCode.VariantMissing
+        val rawVersion=item.rawPriceVersion ?: return SaleLineFailureCode.PriceVersionMismatch
+        if(runCatching { SaleTextV2.ref(item.rawVariantId);SaleTextV2.ref(item.rawSku);SaleTextV2.ref(rawVersion);SaleTextV2.name(item.rawName) }.isFailure)
+            return SaleLineFailureCode.CatalogTextInvalid
+        if(item.rawSku!=submitted.ticketLine.sku) return SaleLineFailureCode.SkuMismatch
+        if(SaleTextV2.name(item.rawName)!=submitted.ticketLine.productName) return SaleLineFailureCode.ProductNameMismatch
+        if(rawVersion!=submitted.expectedPriceVersion) return SaleLineFailureCode.PriceVersionMismatch
+        val catalogPrice=item.unitPrice?.let { runCatching { MoneyPolicy.normalize(it) }.getOrNull() } ?: return SaleLineFailureCode.PriceMismatch
+        if(catalogPrice!=submitted.ticketLine.originalUnitPrice) return SaleLineFailureCode.PriceMismatch
+        if(submitted.ticketLine.discountAmount.signum()!=0) return SaleLineFailureCode.DiscountNotAllowed
+        return null
+    }
     private fun safely(staff: AuthenticatedStaff,block: ()->SaleCommandResult): SaleCommandResult=try { block() }
-        catch(e: Denied) { denial(staff,e.failure);SaleCommandResult.Rejected(e.failure) }
+        catch(e: Denied) { denial(staff,e.failure);SaleCommandResult.Rejected(e.failure,e.lines) }
         catch(e: AccountingAdmissionException) { SaleCommandResult.Rejected(when(e.failure) {
             AccountingCommandFailure.NotActivated -> SaleCommandFailure.NotActivated; AccountingCommandFailure.Paused -> SaleCommandFailure.Paused; else -> SaleCommandFailure.Unavailable }) }
         catch(_: SQLException) { SaleCommandResult.Unavailable }

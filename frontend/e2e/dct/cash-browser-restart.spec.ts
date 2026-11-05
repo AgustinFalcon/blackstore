@@ -25,7 +25,7 @@ test('cash-browser-restart: real cash facts and staff session survive a new JAR 
   expect(Number(before.cash.cashier_id)).toBe(staff.id);
   expect(Number(before.cash.terminal_id)).toBe(terminal);
   expect((await runtime.database.query("SELECT active FROM staff_users WHERE login='cashier'"))[0].active).toBe(false);
-  expect((await runtime.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(12);
+  expect((await runtime.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(13);
   expect(before.expenses).toHaveLength(1);
   expect(before.expenses[0].amount).toBe('7.25');
   expect(Number(before.expenses[0].created_by)).toBe(staff.id);

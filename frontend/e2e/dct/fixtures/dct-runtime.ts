@@ -69,7 +69,7 @@ export class DctRuntime {
     await this.backend.stop();
     this.terminalId = await this.database.terminal();
     await this.database.provisionAccountingRuntime(this.accountingState, this.terminalId, this.clientInstanceId);
-    expect((await this.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(12);
+    expect((await this.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(13);
     expect(await this.database.query('SELECT terminal_id,client_instance_id,device_id FROM pos_terminal_context')).toEqual([
       { terminal_id: String(this.terminalId), client_instance_id: this.clientInstanceId, device_id: 'dct-browser-device' },
     ]);
