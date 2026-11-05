@@ -1,6 +1,12 @@
 # BlackStore — frontend comercial demostrable
 
-Estado: IMPLEMENTED_LOCAL_PARTIAL_ACCEPTANCE_PENDING_REVIEW. Fecha: 2026-10-08; revalidación 2026-10-20. Base de implementación: PR #47 exacto `05fbf923d7ee0e9a0181f6b737e865dac2072d36`, que conserva PR #46 `26020bb2278230b3c59426b49a480ff1daa49df3`.
+Estado: FRONTEND_DEMO_APPROVED_LOCAL. Fecha: 2026-10-08; cierre local revalidado 2026-11-05. Código exacto aprobado: `15655610745d100f7692e3b65199618b0c0004c4`. Los gates POSC/live, integraciones, deploy y homologación permanecen separados y no se consideran acreditados.
+
+Incremento de cierre 2026-11-05: el addendum
+`2-technical/final-frontend-closure-addendum.md` y el plan
+`3-tasks/final-frontend-closure-20261105.md` incorporan los gaps detectados sobre
+`358b9bc`. El alcance sigue siendo POS Demo Cajero/Encargada; no se reclasifica como
+ecommerce comprador/admin ni se heredan gates POSC/live.
 
 Origen documental: PR #47 `4d2c9cd`, creado sobre el antiguo PR #45 `79c612c78160135df0e9011d5bcd93533d14d4e8`. El stack vigente incorpora PR #45 `bbd12c7d893e9df9a866dc2c20f1e253fc9435ff` y POSC-D de PR #46; esos antecedentes no acreditan ejecución de este demo. El diff propio de #47 contenía exclusivamente este WIP documental. Este incremento #48 implementa demo local; #49 continúa independiente.
 
