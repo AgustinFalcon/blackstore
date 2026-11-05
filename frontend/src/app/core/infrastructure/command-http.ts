@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, of } from 'rxjs';
-import { API_BASE, ACCOUNTING_API_BASE } from '../api';
+import { API_BASE, ACCOUNTING_API_BASE, SALE_ADMISSION_API_BASE } from '../api';
 import { AccountingCommand, AccountingCommandKind, CommandReceipt } from '../domain/accounting-command';
 import { SaleAdmissionRoute, SaleCommand, SaleCommandKind } from '../domain/sale-command';
 import { PosWireMapper } from './pos-wire-mapper';
@@ -21,7 +21,7 @@ export class CommandHttp {
     return this.safe(this.http.post(path, command.body));
   }
   receipt(command: AccountingCommand | SaleCommand): Observable<unknown> {
-    const path=command instanceof SaleCommand&&command.route===SaleAdmissionRoute.ReserveV3?`/api/v3/sales/commands/${command.commandId}`:
+    const path=command instanceof SaleCommand&&command.route===SaleAdmissionRoute.ReserveV3?`${SALE_ADMISSION_API_BASE}/sales/commands/${command.commandId}`:
       `${ACCOUNTING_API_BASE}/${command instanceof SaleCommand?'sales':'accounting'}/commands/${command.commandId}`;
     return this.safe(this.http.get(path));
   }

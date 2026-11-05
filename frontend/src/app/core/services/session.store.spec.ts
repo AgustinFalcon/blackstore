@@ -2,7 +2,7 @@ import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { API_BASE } from '../api';
+import { API_BASE, SALE_ADMISSION_API_BASE } from '../api';
 import { StaffRole } from '../domain/pos-types';
 import { SessionState } from '../domain/session-types';
 import { sessionInterceptor } from '../infrastructure/session.interceptor';
@@ -73,6 +73,18 @@ describe('SessionStore with own API interceptor', () => {
     payment.flush({}, { status: 403, statusText: 'Forbidden' });
     expect(failed).toBeTrue(); expect(session.state()).toBe(SessionState.Authenticated);
     expect(session.notice()).toContain('Permiso insuficiente'); http.expectNone(`${API_BASE}/payments`);
+  });
+  it('protects v3 sale admission with the authenticated CSRF context', async () => {
+    await login();
+    TestBed.inject(HttpClient).post(`${SALE_ADMISSION_API_BASE}/sales/reservations`, {}, {
+      headers: { 'X-Actor-Id': '1', 'X-Role': StaffRole.Owner.wire },
+    }).subscribe();
+    const reservation = http.expectOne(`${SALE_ADMISSION_API_BASE}/sales/reservations`);
+    expect(reservation.request.withCredentials).toBeTrue();
+    expect(reservation.request.headers.get('X-CSRF-Token')).toBe('authenticated-context');
+    expect(reservation.request.headers.has('X-Actor-Id')).toBeFalse();
+    expect(reservation.request.headers.has('X-Role')).toBeFalse();
+    reservation.flush(envelope({}));
   });
   it('cancels pending private responses and clears session identity immediately at logout', async () => {
     await login();
