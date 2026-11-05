@@ -1,4 +1,10 @@
 import { PaymentMethod, PaymentStatus, SaleAction, SaleStatus } from './pos-types';
+export class PaymentLedgerSemantics {
+  static readonly Legacy = new PaymentLedgerSemantics();
+  static readonly Net = new PaymentLedgerSemantics();
+  static readonly Unknown = new PaymentLedgerSemantics();
+  private constructor() {}
+}
 
 /** Exact NUMERIC(14,2) amount. No rounding or implicit coercion is permitted. */
 export class TicketMoney {
@@ -76,6 +82,7 @@ export interface TicketIdentity {
 }
 
 export interface TicketSnapshot {
+  readonly ledgerSemantics?: PaymentLedgerSemantics;
   readonly identity: TicketIdentity;
   readonly status: SaleStatus;
   readonly evidenceValid: boolean;
@@ -129,7 +136,7 @@ export class TicketTransitionPolicy {
     return TransitionDecision.NewCommand;
   }
   static decide(snapshot: TicketSnapshot | null, action: SaleAction, attempt?: PaymentAttempt): TransitionDecision {
-    if (!snapshot?.evidenceValid || snapshot.blocked || snapshot.retired) return TransitionDecision.deny(TransitionDenial.InvalidEvidence);
+    if (!snapshot?.evidenceValid || snapshot.blocked || snapshot.retired || snapshot.ledgerSemantics === PaymentLedgerSemantics.Unknown) return TransitionDecision.deny(TransitionDenial.InvalidEvidence);
     if (snapshot.status === SaleStatus.Unknown || snapshot.status === SaleStatus.ReconciliationRequired) return TransitionDecision.deny(TransitionDenial.IneligibleState);
     if ((action === SaleAction.Commit && snapshot.status === SaleStatus.Committed) ||
         (action === SaleAction.Release && snapshot.status === SaleStatus.Released)) return TransitionDecision.TerminalReplay;
@@ -147,7 +154,8 @@ export class TicketTransitionPolicy {
     }
     if (action === SaleAction.Commit) return snapshot.coverage === PaymentCoverage.Paid && snapshot.pending.cents === 0n
       ? TransitionDecision.NewCommand : TransitionDecision.deny(TransitionDenial.IncompleteCoverage);
-    if (action === SaleAction.Release) return snapshot.status === SaleStatus.Reserved && snapshot.hasPaymentHistory === false && snapshot.coverage === PaymentCoverage.Unpaid
+    if (action === SaleAction.Release) return (snapshot.status === SaleStatus.Reserved || snapshot.status === SaleStatus.PaymentCaptured) &&
+      (snapshot.hasPaymentHistory === false || snapshot.ledgerSemantics === PaymentLedgerSemantics.Net) && snapshot.coverage === PaymentCoverage.Unpaid
       ? TransitionDecision.NewCommand : TransitionDecision.deny(TransitionDenial.PaymentHistory);
     if (action === SaleAction.Reverse) return snapshot.hasPaymentHistory === true &&
       (snapshot.coverage === PaymentCoverage.Partial || snapshot.coverage === PaymentCoverage.Paid)

@@ -9,6 +9,7 @@ enum class CashMutationFailure(val status: Int, val code: String, val label: Str
     Forbidden(403, "FORBIDDEN", "Staff operation denied"),
     Validation(400, "VALIDATION", "Invalid request"),
     Conflict(409, "CASH_SESSION_CONFLICT", "Cash session is no longer eligible"),
+    LegacyContractDisabled(409, "LEGACY_CONTRACT_DISABLED", "Legacy accounting contract is disabled"),
     Unavailable(503, "PERSISTENCE_UNAVAILABLE", "Service unavailable"),
     Unknown(403, "FORBIDDEN", "Staff operation denied");
 }

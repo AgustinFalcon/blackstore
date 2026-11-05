@@ -10,12 +10,23 @@ import { PosWireMapper } from '../../core/infrastructure/pos-wire-mapper';
 import { BaseResponse, isSuccessResponse } from '../../core/models/base-response';
 import { CashSessionData, CashSessionWire, WorkspaceWire } from '../../core/models/pos-models';
 import { CounterContextService } from '../../core/services/counter-context.service';
+import { AccountingCommand, AccountingCommandKind, CommandOutcome, CommandReceipt, ExpenseOperation } from '../../core/domain/accounting-command';
+import { AccountingCommandsStore } from '../../core/services/accounting-commands.store';
 import { CashSessionSelection } from '../../core/domain/cash-session-selection';
+import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
+import { TicketMoney } from '../../core/domain/ticket-transition';
+import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
+
+interface CashCloseReview {
+  readonly cashSessionId: number;
+  readonly declaredCash: number;
+  readonly reason: string;
+}
 
 @Component({
   selector: 'bs-cash-session',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, ConfirmationDialogComponent],
   template: `
     <section class="page">
       <h2>Caja</h2>
@@ -49,24 +60,40 @@ import { CashSessionSelection } from '../../core/domain/cash-session-selection';
             <span class="badge" [class.ok]="opened.status.isOpen" [class.info]="opened.status.isClosed">{{ opened.status.label }}</span>
           </p>
           @if (selection().state.permitsMutation && identity.can(permissions.CashSessionClose)) {
-            <form (ngSubmit)="close()">
+            <form (ngSubmit)="requestClose()">
               <label>Declarado <input name="declared" type="number" [(ngModel)]="declared" min="0" required /></label>
               <label>Motivo de cierre <input name="closeReason" [(ngModel)]="closeReason" required /></label>
-              <button type="submit" [disabled]="loading() || mutationPending() || !!error()">Cerrar sesión</button>
+              <button type="submit" [disabled]="!canRequestClose()">Cerrar sesión</button>
             </form>
+          }
+          @if (selection().state.permitsMutation && identity.can(permissions.ExpenseRecord)) {
             <form (ngSubmit)="addExpense()">
               <label>Categoría <input name="category" [(ngModel)]="expenseCategory" required /></label>
               <label>Gasto <input name="expenseAmount" type="number" [(ngModel)]="expenseAmount" min="0.01" required /></label>
               <label>Motivo <input name="reason" [(ngModel)]="expenseReason" required /></label>
-              <button type="submit" [disabled]="loading() || mutationPending() || !!error()">Registrar gasto</button>
+              <button type="submit" [disabled]="!canMutate()">Registrar gasto</button>
             </form>
           }
         </div>
       } @else if (!loading() && !error()) {
         <p class="empty">{{ selection().state.label }}</p>
       }
+      <bs-confirmation-dialog [phase]="closePhase()" title="Confirmar cierre de caja" titleId="cash-close-title"
+        description="El cierre genera un arqueo auditado."
+        [detail]="closeReviewDetail()" confirmLabel="Cerrar sesión" cancelLabel="Seguir en caja"
+        (confirmed)="confirmClose()" (cancelled)="cancelClose()" />
       @if (notice()) {
         <p class="badge" [class.ok]="outcome().isApplied" [class.info]="!outcome().isApplied" role="status">{{ notice() }}</p>
+      }
+      @if (commands.unresolved(); as command) {
+        <p>Comando {{ command.commandId }} pendiente de comprobación.</p>
+        <button type="button" (click)="consultReceipt()" [disabled]="mutationPending()">Consultar recibo</button>
+      }
+      <p role="status">{{ commands.runtime.notice() }}</p>
+      <button type="button" (click)="commands.runtime.refresh()" [disabled]="mutationPending()">Comprobar contexto y evidencia</button>
+      @if (commands.receipt()?.closeSnapshot; as snapshot) {
+        <p>Arqueo de caja {{ commands.receipt()?.cashSessionId }}: {{ snapshot.outcome.label }} · {{ snapshot.coverage.label }}.
+        Esperado {{ snapshot.expected?.decimal ?? 'no disponible' }} · declarado {{ snapshot.declared.decimal }} · diferencia {{ snapshot.difference?.decimal ?? 'no disponible' }}</p>
       }
       @if (error()) {
         <div class="retry-row">
@@ -82,8 +109,9 @@ export class CashSessionComponent {
   private readonly counter = inject(CounterContextService);
   readonly identity = inject(SessionStore);
   readonly permissions = StaffPermission;
+  readonly commands = inject(AccountingCommandsStore);
 
-  private readonly requestedTerminal = signal(10);
+  private readonly requestedTerminal = signal(0);
   private readonly requestedCashier = signal<number | null>(this.identity.staff()?.id ?? null);
   private initializedWorkstation = false;
   get terminalId(): number { return this.requestedTerminal(); }
@@ -97,8 +125,10 @@ export class CashSessionComponent {
   expenseCategory = 'insumos';
   expenseAmount = 2;
   expenseReason = 'bolsas';
-  declared = 0;
-  closeReason = 'cierre de turno';
+  declared: number | null = null;
+  closeReason = '';
+  readonly closePhase = signal(ConfirmationPhase.Idle);
+  readonly closeReview = signal<CashCloseReview | null>(null);
   readonly visibleSessions = signal<readonly CashSessionData[]>([]);
   readonly selectableSessions = computed(() => CashSessionSelection.visible(this.visibleSessions(), this.identity.staff()).filter(item => !item.status.canStartNewSession));
   readonly selection = computed(() => CashSessionSelection.requested(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId));
@@ -114,6 +144,7 @@ export class CashSessionComponent {
       this.reloadEpoch++; this.loading.set(false); this.mutationPending.set(false);
       this.outcome.set(CashMutationOutcome.Unknown);
       this.visibleSessions.set([]); this.cashierId = null; this.notice.set(null); this.error.set(null);
+      this.cancelClose();
     });
     this.reload();
   }
@@ -156,100 +187,81 @@ export class CashSessionComponent {
 
   open(): void {
     if (!this.canOpen()) return;
-    if (this.cashierId !== this.identity.staff()?.id && (!this.canAssignOther() || !this.assignmentReason.trim())) return;
-    this.error.set(null);
-    const generation = this.beginMutation();
-    this.http
-      .post<BaseResponse<CashSessionWire>>(`${API_BASE}/cash-sessions`, {
-        terminalId: Number(this.terminalId),
-        cashierId: Number(this.cashierId),
-        openingCash: Number(this.openingCash),
-        reason: this.assignmentReason,
-      }, {
-        headers: {
-          'X-Trace-Id': crypto.randomUUID(),
-        },
-      })
-      .subscribe({
-        next: (response) => {
-          if (!this.completeMutation(response, 200, generation)) return;
-          const session = PosWireMapper.cashMutationSession(response);
-          if (session) {
-            this.recordSession(session);
-            this.counter.load();
-          } else this.rejectMutation(CashMutationOutcome.Unknown);
-        },
-        error: (err: HttpErrorResponse) => {
-          this.completeMutation(err.error, err.status, generation);
-        },
-      });
+    this.mutate(AccountingCommand.create(AccountingCommandKind.Open, {
+      terminalId: Number(this.terminalId), cashierId: Number(this.cashierId), openingCash: Number(this.openingCash), reason: this.assignmentReason,
+    }));
   }
-
-  close(): void {
-    if (!this.identity.can(StaffPermission.CashSessionClose)) return;
+  requestClose(): void {
+    if (!this.canRequestClose()) return;
     const opened = this.session();
-    if (!opened || !this.selection().state.permitsMutation || this.loading() || this.mutationPending() || this.error() || !this.closeReason.trim()) return;
-    this.error.set(null);
-    const generation = this.beginMutation();
-    this.http
-      .post<BaseResponse<CashSessionWire>>(`${API_BASE}/cash-sessions/${opened.id}/close`, {
-        declared: Number(this.declared),
-        reason: this.closeReason,
-      }, {
-        headers: {
-          'X-Trace-Id': crypto.randomUUID(),
-        },
-      })
-      .subscribe({
-        next: (response) => {
-          if (!this.completeMutation(response, 200, generation)) return;
-          const session = PosWireMapper.cashMutationSession(response);
-          if (session) {
-            this.recordSession(session);
-            this.notice.set(`Sesión ${session.id} ${session.status.label}`);
-            this.counter.load();
-          } else this.rejectMutation(CashMutationOutcome.Unknown);
-        },
-        error: (err: HttpErrorResponse) => {
-          this.completeMutation(err.error, err.status, generation);
-        },
-      });
+    if (!opened || this.declared === null) return;
+    this.closeReview.set(Object.freeze({ cashSessionId: opened.id, declaredCash: Number(this.declared), reason: this.closeReason.trim() }));
+    this.closePhase.set(ConfirmationPhase.Reviewing);
   }
-
+  cancelClose(): void { this.closeReview.set(null); this.closePhase.set(ConfirmationPhase.Idle); }
+  confirmClose(): void {
+    const review = this.closeReview();
+    if (!this.closePhase().isReviewing || !review) return;
+    if (this.session()?.id !== review.cashSessionId) {
+      this.cancelClose();
+      this.notice.set('La caja seleccionada cambió. Revisá nuevamente el cierre.');
+      return;
+    }
+    this.cancelClose();
+    this.close(review);
+  }
+  closeReviewDetail(): string {
+    const review = this.closeReview();
+    return review ? `Caja ${review.cashSessionId} · declarado ${review.declaredCash} · motivo ${review.reason}.` : '';
+  }
+  private close(review: CashCloseReview): void {
+    const opened = this.session();
+    if (!this.identity.can(StaffPermission.CashSessionClose) || !opened || opened.id !== review.cashSessionId || !this.selection().state.permitsMutation || !this.canMutate()) return;
+    this.mutate(AccountingCommand.create(AccountingCommandKind.Close, {
+      cashSessionId: review.cashSessionId, declaredCash: review.declaredCash, reason: review.reason,
+    }, opened.id));
+  }
   addExpense(): void {
-    if (!this.identity.can(StaffPermission.ExpenseRecord)) return;
     const opened = this.session();
-    if (!opened || !this.selection().state.permitsMutation || this.loading() || this.mutationPending() || this.error() || !this.expenseReason.trim()) return;
-    this.error.set(null);
-    const generation = this.beginMutation();
-    this.http
-      .post<BaseResponse<{ id: number; amount: number; category: string }>>(`${API_BASE}/expenses`, {
-        cashSessionId: opened.id,
-        category: this.expenseCategory,
-        amount: Number(this.expenseAmount),
-        reason: this.expenseReason,
-        method: PaymentMethod.Cash.wire,
-      }, {
-        headers: {
-          'X-Trace-Id': crypto.randomUUID(),
-        },
-      })
-      .subscribe({
-        next: (response) => {
-          if (!this.completeMutation(response, 200, generation)) return;
-          if (PosWireMapper.cashMutationExpense(response)) this.notice.set('Gasto registrado');
-          else this.rejectMutation(CashMutationOutcome.Unknown);
-        },
-        error: (err: HttpErrorResponse) => {
-          this.completeMutation(err.error, err.status, generation);
-        },
-      });
+    if (!this.identity.can(StaffPermission.ExpenseRecord) || !opened || !this.selection().state.permitsMutation || !this.canMutate() ||
+        !this.expenseReason.trim() || !this.isValidMoney(this.expenseAmount, true)) return;
+    this.mutate(AccountingCommand.create(AccountingCommandKind.Expense, {
+      cashSessionId: opened.id, category: this.expenseCategory, amount: Number(this.expenseAmount), reason: this.expenseReason,
+      operation: ExpenseOperation.AccrueAndSettle.wire, paymentMethod: PaymentMethod.Cash.wire,
+    }));
+  }
+  canMutate(): boolean {
+    return !this.loading() && !this.mutationPending() && !this.error() && !this.commands.unresolved() && !this.commands.blocked().blocksWrites;
+  }
+  canRequestClose(): boolean {
+    return this.canMutate() && this.isValidMoney(this.declared, false) && !!this.closeReason.trim();
+  }
+  consultReceipt(): void {
+    if (this.mutationPending()) return;
+    this.mutationPending.set(true);
+    this.commands.consult().subscribe(receipt => this.recordReceipt(receipt));
+  }
+  private mutate(command: AccountingCommand): void {
+    this.mutationPending.set(true); this.notice.set(null);
+    this.commands.execute(command).subscribe(receipt => this.recordReceipt(receipt));
+  }
+  private recordReceipt(receipt: CommandReceipt): void {
+    this.mutationPending.set(false);
+    this.notice.set(receipt.failure.label || receipt.outcome.label);
+    if (receipt.outcome === CommandOutcome.Committed) { this.outcome.set(CashMutationOutcome.Applied); this.reload(); }
+    else { this.outcome.set(CashMutationOutcome.Unknown); this.error.set(receipt.failure.label || receipt.outcome.label); }
   }
   canAssignOther(): boolean { return this.identity.staff()?.role.canAssignCashier ?? false; }
 
   canOpen(): boolean {
-    return !this.loading() && !this.mutationPending() && !this.error() && CashSessionSelection.canOpen(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId)
+    return this.canMutate() && CashSessionSelection.canOpen(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId)
+      && this.isValidMoney(this.openingCash, false)
       && (this.cashierId === this.identity.staff()?.id || !!this.assignmentReason.trim());
+  }
+
+  private isValidMoney(raw: unknown, strictlyPositive: boolean): boolean {
+    const money = TicketMoney.fromDecimal(raw);
+    return money !== null && (strictlyPositive ? money.cents > 0n : money.cents >= 0n);
   }
 
   selectSession(id: number | null): void {
@@ -259,37 +271,4 @@ export class CashSessionComponent {
     this.cashierId = matches[0].cashierId;
   }
 
-  private recordSession(session: CashSessionData): void {
-    this.visibleSessions.update(sessions => [...sessions.filter(item => item.id !== session.id), session]);
-  }
-
-  private beginMutation(): number {
-    this.mutationPending.set(true); this.notice.set(null);
-    return this.identity.generation();
-  }
-
-  private completeMutation(response: unknown, status: number, generation: number): boolean {
-    if (generation !== this.identity.generation()) return false;
-    this.mutationPending.set(false);
-    const outcome = PosWireMapper.cashMutationOutcome(response, status);
-    this.outcome.set(outcome);
-    if (outcome === CashMutationOutcome.Applied) return true;
-    this.rejectMutation(outcome);
-    return false;
-  }
-
-  private rejectMutation(outcome: CashMutationOutcome): void {
-    this.outcome.set(outcome); this.notice.set(null);
-    if (outcome.clearsSelection || outcome.reloadsContext) {
-      this.visibleSessions.set([]);
-      this.counter.invalidate();
-    }
-    if (outcome.clearsSelection) {
-      this.reloadEpoch++; this.loading.set(false); this.cashierId = null;
-    }
-    if (outcome.reloadsContext) {
-      this.notice.set(outcome.label);
-      this.reload();
-    } else this.error.set(outcome.label);
-  }
 }

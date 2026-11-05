@@ -12,6 +12,7 @@ import com.blackstore.domain.sales.PaymentMethod
 import com.blackstore.domain.sales.PaymentRecord
 import com.blackstore.domain.sales.PaymentTransitionPolicy
 import com.blackstore.domain.sales.MoneyPolicy
+import com.blackstore.domain.sales.PaymentLedgerSemantics
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.port.out.sales.SaleOperationQuery
 import com.blackstore.application.sales.LocalSaleCoordinator
@@ -29,6 +30,7 @@ class CounterApplicationService(
     private val coordinator: LocalSaleCoordinator,
     private val authorization: AuthorizeStaffAction? = null,
     private val cashMutations: com.blackstore.domain.port.out.cash.CashMutationCommands? = null,
+    private val paymentLedgerSemantics: PaymentLedgerSemantics = PaymentLedgerSemantics.LegacyCapturedOnly,
 ) {
     private val payments = PaymentBook()
     private val roles = RoleAuthorizationPolicy()
@@ -66,7 +68,7 @@ class CounterApplicationService(
     fun capture(identity: OperationQuadruple, method: PaymentMethod, amount: BigDecimal, feeAmount: BigDecimal, actorId: Long? = null, reason: String? = null): PaymentRecord =
         coordinator.coordinate(identity) {
             val sale = saleQuery.findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
-            PaymentTransitionPolicy().capture(sale, store.paymentLedger(identity), method, amount, feeAmount).assertAllowed()
+            PaymentTransitionPolicy(paymentLedgerSemantics).capture(sale, store.paymentLedger(identity), method, amount, feeAmount).assertAllowed()
             store.savePayment(payments.capture(ids.getAndIncrement(), method, MoneyPolicy.normalize(amount), MoneyPolicy.normalize(feeAmount)).copy(actorId = actorId, reason = reason), identity)
         }
 
@@ -86,7 +88,7 @@ class CounterApplicationService(
         coordinator.coordinate(identity) {
         roles.assertAllowed(role, SessionAction.OPERATE, actorId, actorId)
         val sale = saleQuery.findSale(identity) ?: throw IllegalArgumentException("sale missing or ambiguous")
-        PaymentTransitionPolicy().reverse(sale, store.paymentLedger(identity), paymentId).assertAllowed()
+        PaymentTransitionPolicy(paymentLedgerSemantics).reverse(sale, store.paymentLedger(identity), paymentId).assertAllowed()
         val original = store.findPayment(paymentId) ?: throw IllegalArgumentException("payment $paymentId was not found")
         val reversal =
             payments.reverse(

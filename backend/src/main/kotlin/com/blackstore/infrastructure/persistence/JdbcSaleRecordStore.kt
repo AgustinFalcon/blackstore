@@ -9,6 +9,7 @@ import java.util.UUID
 import javax.sql.DataSource
 import com.blackstore.domain.port.out.sales.DurableSaleStore
 import com.blackstore.domain.sales.*
+import com.blackstore.domain.accounting.AccountingRuntimeState
 
 @Component
 @ConditionalOnProperty(name = ["blackstore.persistence.enabled"], havingValue = "true")
@@ -18,6 +19,8 @@ class JdbcSaleRecordStore(
     private val writer = JdbcBlackStoreWriter()
     private val durable = JdbcDurableSaleRepository(dataSource)
     private val mapper = DurableCommandMapper()
+    private val aggregateLocks = JdbcAccountingAggregateLocks()
+    private val lifecycle = JdbcAccountingLifecycleAdmission()
 
     override fun recordIntentAndOutbox(saga: SaleSaga) {
         val clientId = UUID.fromString(saga.quadruple.clientInstanceId)
@@ -26,6 +29,7 @@ class JdbcSaleRecordStore(
         val digest = command.openapiDigest.padEnd(64, '0').take(64)
         asRole("blackstore_app") { connection ->
             connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?,0))").use { s -> s.setString(1,saga.quadruple.toString());s.execute() }
+            aggregateLocks.lockCash(connection, saga.cashSessionId)
             val existing = connection.prepareStatement("SELECT id FROM sale_state_projection WHERE operation_id=?").use { s ->s.setObject(1,operationId);s.executeQuery().use { r ->if(r.next()) r.getLong(1) else null } }
             if(existing!=null) {
                 val stored=durable.read(connection,existing)
@@ -39,6 +43,10 @@ class JdbcSaleRecordStore(
             require(admission==null || (admission.event==SaleStaffCommandEvent.RESERVE_REQUESTED && admission.actor.value==saga.createdBy))
             val actor=saga.createdBy ?: error("trusted actor required")
             authorize(connection,saga,actor,admission?.reason)
+            // These commands are exposed only by /api/v1.  The durable worker has
+            // its own admission below and must not make the legacy HTTP contract
+            // writable after accounting activation.
+            lifecycle.requireLegacy(connection)
             val id =
                 writer.insertPendingSale(
                     connection = connection,
@@ -79,6 +87,8 @@ class JdbcSaleRecordStore(
             reservationRef?.let { runCatching { UUID.fromString(it) }.getOrNull() }
                 ?: reservationRef?.let { UUID.nameUUIDFromBytes(it.toByteArray()) }
         asRole("blackstore_app") { connection ->
+            durable.lock(connection, saga.quadruple)
+            lifecycle.requireWorker(connection)
             writer.insertInbox(
                 connection,
                 UUID.fromString(saga.quadruple.clientInstanceId),
@@ -101,6 +111,9 @@ class JdbcSaleRecordStore(
         val reason = saga.reconciliationReason ?: return
         val versions = evidence.acceptedPriceVersions.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
         asRole("blackstore_projection_worker") { connection ->
+            durable.lock(connection, saga.quadruple)
+            lifecycle.requireWorker(connection)
+            connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
             writer.markReconciliationRequired(
                 connection,
                 findProjection(connection, saga),
@@ -118,6 +131,9 @@ class JdbcSaleRecordStore(
         val evidence = saga.evidence ?: return
         val digest = evidence.openapiDigest.padEnd(64, '0').take(64)
         asRole("blackstore_projection_worker") { connection ->
+            durable.lock(connection, saga.quadruple)
+            lifecycle.requireWorker(connection)
+            connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
             writer.markReserved(
                 connection,
                 findProjection(connection, saga),
@@ -137,8 +153,11 @@ class JdbcSaleRecordStore(
 
     override fun recordCommitted(saga: SaleSaga) {
         asRole("blackstore_projection_worker") { connection ->
+            durable.lock(connection, saga.quadruple)
+            lifecycle.requireWorker(connection)
+            connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
             val projectionId = findProjection(connection, saga)
-            writer.advanceSaleStatus(connection, projectionId, "COMMIT_PENDING", "COMMITTED")
+            check(writer.advanceSaleStatus(connection, projectionId, "COMMIT_PENDING", "COMMITTED") == 1)
         }
     }
 
@@ -148,8 +167,11 @@ class JdbcSaleRecordStore(
 
     override fun recordReleased(saga: SaleSaga) {
         asRole("blackstore_projection_worker") { connection ->
+            durable.lock(connection, saga.quadruple)
+            lifecycle.requireWorker(connection)
+            connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
             val projectionId = findProjection(connection, saga)
-            writer.advanceSaleStatus(connection, projectionId, "RELEASE_PENDING", "RELEASED")
+            check(writer.advanceSaleStatus(connection, projectionId, "RELEASE_PENDING", "RELEASED") == 1)
         }
     }
 
@@ -166,12 +188,20 @@ class JdbcSaleRecordStore(
             val stored=durable.lock(connection,saga.quadruple.operationId)
             authorize(connection,stored.saga,audit.actor.value,audit.reason)
             val ledger=ledger(connection,stored.saga)
-            val decision=PaymentTransitionPolicy().terminal(stored.saga,ledger,kind)
+            val semantics=connection.prepareStatement("SELECT state FROM accounting_runtime WHERE singleton").use { statement -> statement.executeQuery().use { rows ->
+                if(!rows.next()) PaymentLedgerSemantics.Unknown else when(AccountingRuntimeState.fromWire(rows.getString(1))) {
+                    AccountingRuntimeState.PreActivation -> PaymentLedgerSemantics.LegacyCapturedOnly
+                    AccountingRuntimeState.Active,AccountingRuntimeState.Paused -> PaymentLedgerSemantics.NetCapturedAndRefunded
+                    AccountingRuntimeState.Unknown -> throw com.blackstore.domain.accounting.AccountingAdmissionException(com.blackstore.domain.accounting.AccountingCommandFailure.Unavailable)
+                }
+            } }
+            val decision=PaymentTransitionPolicy(semantics).terminal(stored.saga,ledger,kind)
             decision.assertAllowed()
             if(decision==TransitionDecision.TerminalReplay || decision==TransitionDecision.RecoverExistingCommand) {
                 require(stored.saga.outbox.single { it.kind==kind }.let { mapper.encode(it)==mapper.encode(command) }) { "IDEMPOTENCY_PAYLOAD_MISMATCH" }
                 return@asRole
             }
+            lifecycle.requireLegacy(connection)
             require(command.reservationRef==stored.saga.evidence?.reservationRef)
             insertCanonicalCommand(connection,saga,command,audit.actor.value,audit.reason)
             val id=findProjection(connection,saga)
@@ -206,7 +236,7 @@ class JdbcSaleRecordStore(
         }
     }
     internal fun ledger(c: java.sql.Connection,saga: SaleSaga): OperationLedger = c.prepareStatement("SELECT * FROM payments WHERE sale_id=? ORDER BY id").use { s ->
-        s.setLong(1,findProjection(c,saga));s.executeQuery().use { r ->OperationLedger.Known(buildList { while(r.next()) add(PaymentLedgerEntry(saga.quadruple,r.getLong("id"),PaymentMethod.fromWire(r.getString("payment_method")),PaymentStatus.fromWire(r.getString("status")),r.getBigDecimal("amount"),r.getBigDecimal("fee_amount"))) }) }
+        s.setLong(1,findProjection(c,saga));s.executeQuery().use { r ->OperationLedger.Known(buildList { while(r.next()) add(PaymentLedgerEntry(saga.quadruple,r.getLong("id"),PaymentMethod.fromWire(r.getString("payment_method")),PaymentStatus.fromWire(r.getString("status")),r.getBigDecimal("amount"),r.getBigDecimal("fee_amount"),(r.getObject("original_payment_id") as? Number)?.toLong())) }) }
     }
 
     private fun findProjection(connection: java.sql.Connection, saga: SaleSaga): Long =
@@ -230,6 +260,7 @@ class JdbcSaleRecordStore(
             connection.autoCommit = false
             try {
                 connection.createStatement().execute("SET LOCAL ROLE $role")
+                lifecycle.lock(connection)
                 val result = block(connection)
                 connection.commit()
                 result

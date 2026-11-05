@@ -1,5 +1,53 @@
 # Especificación técnica
 
+## Estado actual CLR-T09 — corte PR #45 en validación
+
+V12 incorpora fence diferido, nombres `public`, search path cerrado, lock
+compartido del lifecycle y rechazo fail-closed de writers legacy. El corte se
+valida desde `79c612c` y no hereda PASS ni APPROVE del overlay combinado. La
+evidencia 2026-10-16 identifica ahora el snapshot externo
+`115fad53006b55d27b021883bf49153a3de050fa` y queda como antecedente; pruebas,
+review y CI de este head permanecen pendientes hasta registrarse expresamente.
+Sin activación live, homologación, publicación ni merge.
+
+## Estado integrado local T08-D — antecedente
+
+2026-10-08: rama local `feat/cash-ledger-frontend-t08d`, merge no-ff `5417916` desde backend exacto `bb9e64b176939220c09267993cef9571824b60f2` con frontend exacto `3be9b4a327f1fc9ce8b642bff9a0c8567b9cb072`. Ambos historiales y addenda SDD preservados. Source frontend `b8024dcc0292897aa7a77f96e9ed9e25d63d54ea`: referencia original explícita y reversibilidad por captura no reembolsada; proyección cerrada GET-only, correlación intención/receipt/actor/caja/IDs/snapshot y refresh de contexto/lifecycle antes de Resolved. npm ci/typecheck/build PASS, Karma completo 223/223 PASS y audit productivo 0. C `implemented_pending_pg16_browser_ci_review`; T08 parcial/T09 planned. PG16/browser CLR/crash/restart/CI/reviews de este source pendientes; no homologación, activación ni publicación. Los registros debajo son antecedentes conservados y no sustituyen este estado.
+
+Ver [evidencia local](../evidence/CLR-T08-D-frontend-local-20261008.md).
+
+## Antecedentes conservados — no son estado vigente
+
+## Addendum T08-D — contrato de evidencia autoritativa
+
+[ADR-004](adr/ADR-004-accounting-command-projection-evidence.md) proposed desde `fc858de42a5e021aab2f47ab68794a2519ff2cb5`; revisión/GO específicos pendientes. Propone originalPaymentId nullable en DurableSalePaymentResponse desde PaymentLedgerEntry y validación refund→capture en política de dominio/traductor único, sin heurística ni backfill. Propone GET /api/v2/expenses/commands/{commandId}/projection con ExpenseCommandProjectionResult cerrado Found/NotFound/Unavailable/Unknown, BaseResponse/no-store, permisos AccountingCommandRead + permiso actual ExpenseRecord/ownership de caja; closed no impide lectura histórica. 404 opaco precede toda revelación de receipt/kind/existencia. No privilegio nuevo para AUDITOR/Unknown.
+
+Puerto/query, pasos de autoridad/carga/validación y adaptador REPEATABLE READ read-only en una conexión; correlación exacta commandId/expenseId/settlementId/ledgerEventIds, operación cerrada y evidence snapshot cutoff/asOf/accountingVersion/completitud. Devengo/pago inmediato/settlement total se acreditan con fuentes originales y postings propios del comando; incoherencia degrada a Unavailable y unknown wire a Unknown. No writes/dispatch/POST automático. Contrato y matriz completos en ADR-004. D sólo SDD; D-BACKEND planned y gate adicional de C `blocked_on_pos_context_and_evidence`; B-POS conserva su aceptación pendiente, T08 parcial y T09 planned. Las menciones previas de bloqueo exclusivo POS debajo son antecedentes, sustituidos por este estado y el DAG JSON.
+
+### Antecedente T08-C integrado (conservado)
+
+Estado único vigente C: `blocked_on_authoritative_read_models`. Hook preventivo focus/visible invalida inmediatamente epoch/contexto/lifecycle/autoridad y hace GET context+lifecycle+journal con generación/actor guardados; controles/handler bloqueados mientras stale/refetch y ante Unknown/Paused. Puerto de infraestructura de responsabilidad única con listeners únicos/cleanup; no window en dominio. [Evidencia actual](../evidence/CLR-T08-C-foreground-20261008.md), source 7516b0e validado194/194 y nuevo corte NOT_RUN. T08 parcial, T08-D/PG16/browser CLR/crash/CI pendientes; los incrementos debajo son antecedentes.
+
+Ronda 2: Reserve Accepted permanece ReceiptVerifiedAwaitingRefresh durante polling GET-only de identidad correlacionada, máximo 20 lecturas/100 ms/deadline 5 s; sólo Reserved válido resuelve claim antes de capture. Pending continúa; Unknown/NotFound/timeout conserva bloqueo. Objeto compartido con AwaitReservationStep, guard por actor/generación/contexto/command/familia. [Evidencia y tests pendientes](../evidence/CLR-T08-C-async-reserve-review2-20261008.md). C continúa blocked_on_authoritative_read_models.
+
+Estado vigente tras review 0a6bb36: T08-C `blocked_on_authoritative_read_models`, T08 parcial. C no es totalmente usable: cualquier refund bloquea nuevas reversas hasta linkage autoritativo por pago; egreso/liquidación permanece ReceiptVerifiedAwaitingRefresh hasta read model T08-D. Addendum backend separado, sin backend en este corte. Fingerprint contractual sale-admission-v1 y guard de entrega por actor/generación corrigen frontend; tests nuevos NOT_RUN. [Evidencia vigente](../evidence/CLR-T08-C-review-corrections-20261008.md) sustituye estados actuales anteriores; PASS 161/161 aplica sólo a source 8227177.
+
+Antecedente T08-C source 8227177 sobre `fc858de42a5e021aab2f47ab68794a2519ff2cb5`: tipos/traductores/journal/v2 implementados, entonces `implemented_pending_pg16_browser_ci_review`, sustituido por blocked_on_authoritative_read_models. [Evidencia histórica](../evidence/CLR-T08-C-frontend-local-20261008.md): 161/161/typecheck/build PASS exactos de ese source, no aceptación runtime ni estado vigente.
+
+## Addendum T08-B-POS — contexto verificado
+
+Implementación 2026-10-08 sobre `d57cc7a9cb8edccf8a76cbca36eee12a661258ea`: V11 vacío/inmutable, referencias de provisión/evidencia obligatorias, app SELECT-only; terminal FOR SHARE mediante función definer estrecha sin UPDATE runtime. Configuración explícita de terminal/conector capturada al iniciar, sin inferencia de seed/companion. Query read-only y validación nueva Reserve con misma conexión después de autoridad/replay, caja→terminal→venta→delivery. [Runbook](../../../../backend/POS-CONTEXT-PROVISIONING.md) y [evidencia](../evidence/CLR-T08-B-POS-backend-local-20261008.md). Estado implementado con aceptación PG16/browser/CI/reviews pendiente; C bloqueado y ADR-003 proposed sin aprobación heredada.
+
+[ADR-003](adr/ADR-003-pos-execution-context.md) proposed sobre `39aa9d6dad199d88328e9c3799911e355a9cbddd`: PosExecutionContext cerrado, binding V11 explícito/inmutable, GET /api/v2/pos/context con WorkspaceRead/no-store y concordancia de conector. Nueva Reserve valida contexto/caja dentro de transacción después de replay autorizado. Historia conserva cuádruple y permisos; ninguna autoridad desde browser. T08-C pasa de planned a `blocked_on_pos_context` hasta backend addendum integrado/revisado. Esta decisión requiere revisión propia y no hereda GO T08-A.
+
+## Ampliación contractual T08-A — GO de diseño
+
+Base exacta `9e6e2cb0522bf2e001245a1593edeea2bb3136a6`. [ADR-002](adr/ADR-002-sale-v2-lifecycle-command-journal.md) accepted fija el diseño para cerrar los residuales de T08: POST v2 de reserve/commit/release con commandId y recibo durable de admisión, GET de lifecycle y journal IndexedDB de intenciones antes del POST. GO de diseño explícito del usuario y APPROVE documental/Security sobre `0b4cddc7f26ec6965ad81443ec4cde74aadd2ce5`, sin afirmar endpoints implementados ni aprobación runtime. En el corte histórico T08-A, T08-B backend/schema y T08-C UI/recovery quedaron `planned`; el estado vigente de T08-B se registra en tasks/progress/evidence y permanece `implemented_pending_pg16_ci_review`, mientras T08-C continúa `planned` con gates propios.
+
+`SaleCommandAdmissionReceipt.Accepted` acredita admisión local/outbox, nunca venta COMMITTED ni recibo contable. Conserva endpoints y tabla propios; terminalidad/reconocimiento provienen de evidencia autoritativa. La migración propuesta V10 es forward-only después de V9, sin reescribir historia. Los contratos v1 mutantes conservan el fence vigente; esta consola no hará fallback a v1 y se bloqueará preventivamente en PreActivation/Paused/Unknown.
+
+La propuesta detalla permiso AccountingRuntimeRead (incluido auditor sin ampliar sus permisos de venta), autorización actual de recibos por kind/ownership, replay no mutante, locks, crash/pausa y rehidratación por actor/ámbito/pestaña sin guardar SID/CSRF. PaymentCapture v2 rechaza la presencia de feeAmount; FeeRecord sigue OWNER interno y fuera del browser. [Plan](../3-tasks/plan.md) y [tareas](../3-tasks/tasks.json) separan documentación preparada de implementación/aceptación todavía pendientes.
+
 ## Brechas verificadas y diseño
 
 Base bajo backend/src/main: V1 ya tiene cash_ledger_events y restricciones append-only, pero carece de identidad durable de comando/componente/medio. JdbcCounterEntryStore.savePayment bloquea venta, escribe payment/audit y no posting de caja. JdbcCashMutationCommands cubre atomicidad DCT de caja/egreso, no ledger; el egreso actual no acredita paid_at. JdbcCounterEntryStore.figures suma globalmente. ReportFormulas/CounterApplicationService usan formulaName/periodKind string. No se toma la existencia de esas tablas como contabilidad implementada.
@@ -17,6 +65,14 @@ Recibo de comando append-only con commandId, actor, kind, payloadHash canónico,
 Contrato v2 cerrado antes de CLR-T02: las mutaciones de caja, gasto, pago y reversión se publican bajo `/api/v2` con `commandId` UUID obligatorio en JSON; apertura/cierre usan CashSessionOpen/CashSessionClose, gasto o liquidación ExpenseRecord, captura PaymentCapture y reversión PaymentReverse. `GET /api/v2/accounting/commands/{commandId}` retorna `Committed`, `NotFound` o `Unavailable` mediante DTO cerrado y exige el mismo permiso y ownership actuales del comando original; nunca revela existencia antes de esa autorización y nunca ejecuta/repite el POST. Respuesta perdida: consulta acotada; NotFound conserva resultado Unknown y sólo una acción humana explícita puede reenviar exactamente el mismo commandId/payload. FEE/ADJUSTMENT no tienen endpoint browser; usan puerto operativo OWNER separado, razón y evidencia obligatorias. SHIFT/DAY contables también son v2 con request tipado (`cashSessionId` para SHIFT; `localDate`, `zone`, filtros autorizados para DAY) y rechazan parámetros ignorados.
 
 Transición contractual: en PreActivation v1 conserva su contrato actual y v2 mutante permanece deshabilitado. No se agregan campos obligatorios ni semántica contable silenciosa a v1. Antes de activar, backend, workers y UI deben estar listos para v2 y demostrar que no quedan clientes internos v1; una marca durable `accounting_activation_at` realiza la transición atómica a Active y prohíbe regresar a PreActivation. Desde Active, todas las mutaciones v1 afectadas fallan cerradas con resultado tipado `LegacyContractDisabled` y código estable, sin escribir por el writer viejo. Paused es el kill switch posterior: bloquea mutaciones v2 y conserva v1 deshabilitado. Los reportes v1 siguen siendo legacy, se etiquetan como tales y nunca se presentan como contabilidad completa. No hay ventana con writers v1 y v2 activos para el mismo hecho. Rollback conserva un binario compatible con V8/v2 y el lifecycle durable, no reactiva escrituras legacy.
+
+La defensa no depende sólo del binario vigente. V12 agrega un constraint trigger
+diferido sobre cada nuevo outbox comercial: toma el mismo lock de lifecycle,
+permite legacy únicamente en PreActivation, exige en Active el recibo V2
+correlacionado creado en la misma transacción y rechaza todo nuevo outbox en
+Paused. Así un binario anterior que ignore el chequeo de aplicación revierte
+también su intención al commit; historia previa y recovery de lectura quedan
+intactos. La migración es forward-only y no habilita rollback a legacy.
 
 Queries usan snapshot consistente PostgreSQL REPEATABLE READ read-only para límites, cobertura, postings, reconocimientos y agregados. No usar MAX(identity) como orden de commits: una secuencia puede tener huecos y transacciones pendientes. Cutoff y snapshot/version identifican la lectura; las cajas cerradas incluyen watermark local fijado bajo lock. Para caja abierta se indica provisional y el mismo snapshot en todo el envelope. SQL parametrizado filtra caja, terminal, cajero e instantes antes de sumar; ningún JOIN multiplica pagos por líneas. Para SHIFT cerrado el snapshot de arqueo y ledger son fuente del efectivo histórico, sin recalcularlo con configuración nueva. Reconocimiento comercial y movimientos financieros tienen tiempos separados y se filtran por su propio occurredAt.
 

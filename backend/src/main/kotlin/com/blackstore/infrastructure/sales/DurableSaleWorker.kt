@@ -4,6 +4,9 @@ import com.blackstore.application.sales.DurableSaleCommandFlow
 import com.blackstore.domain.port.out.sales.DurableSaleStore
 import com.blackstore.domain.port.out.sales.SaleRecordStore
 import com.blackstore.domain.port.out.storecore.StoreCoreInventoryPort
+import com.blackstore.infrastructure.persistence.PersistenceReadiness
+import com.blackstore.domain.accounting.AccountingAdmissionException
+import com.blackstore.domain.accounting.AccountingCommandFailure
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
@@ -29,13 +32,24 @@ class DurableSaleWorker(
     @Value("\${blackstore.storecore.control.capability-active:false}") private val capability: Boolean,
     @Value("\${blackstore.storecore.control.kill-switch:true}") private val killSwitch: Boolean,
     @Value("\${blackstore.sales.worker.enabled:true}") private val workerEnabled: Boolean,
+    private val persistenceReadiness: PersistenceReadiness,
 ) {
     private val mode = CommercialWorkerMode.fromWire(modeWire)
     private val flow = DurableSaleCommandFlow(records as? DurableSaleStore ?: error("durable persistence unavailable"), inventory)
     @Scheduled(initialDelayString = "\${blackstore.sales.worker.initial-delay-ms:10000}", fixedDelayString = "\${blackstore.sales.worker.poll-ms:1000}")
     fun run() {
-        if (!workerEnabled || !mode.permitted(enabled, capability, killSwitch)) return
+        if (!persistenceReadiness.isReady() || !workerEnabled || !mode.permitted(enabled, capability, killSwitch)) return
         // One claim per tick bounds work; transaction and transport gates stay at their owning edges.
-        flow.runNext()
+        try { flow.runNext() }
+        catch (error: AccountingAdmissionException) {
+            if (!WorkerLifecycleGate.isIdle(error.failure)) throw error
+        }
     }
+}
+
+internal object WorkerLifecycleGate {
+    fun isIdle(failure: AccountingCommandFailure): Boolean = failure in setOf(
+        AccountingCommandFailure.NotActivated,
+        AccountingCommandFailure.Paused,
+    )
 }

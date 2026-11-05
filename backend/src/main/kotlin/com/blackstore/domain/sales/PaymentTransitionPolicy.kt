@@ -15,10 +15,14 @@ object MoneyPolicy {
 
 enum class PaymentCoverage(val label: String) { Unpaid("Sin pagos"), Partial("Pago parcial"), Paid("Pagado"), InvalidUnknown("Cobertura no disponible") }
 enum class TransitionReason(val label: String) {
-    SaleMissingOrAmbiguous("Venta ausente o ambigua"), StateIneligible("Estado no elegible"), EvidenceInvalid("Evidencia inválida"),
+    SaleMissingOrAmbiguous("Venta ausente o ambigua"), StateIneligible("Estado no elegible"), StateUnavailable("Estado no disponible"), EvidenceInvalid("Evidencia inválida"),
     LedgerUnknown("Historial no disponible"), MoneyInvalid("Importe inválido"), Overcapture("Importe superior al saldo"),
     CoverageIncomplete("Cobertura incompleta"), PaymentHistory("La venta tiene historial de pagos"),
     OriginalPaymentMismatch("El pago original no pertenece a la venta"), CommandInvalid("Comando original incompatible"),
+}
+
+enum class PaymentLedgerSemantics {
+    LegacyCapturedOnly, NetCapturedAndRefunded, Unknown;
 }
 sealed class TransitionDecision {
     data object NewCommand : TransitionDecision()
@@ -46,7 +50,9 @@ data class PaymentSnapshot(
     val paymentCoverage: PaymentCoverage, val hasPaymentHistory: Boolean, val evidenceValid: Boolean,
 )
 
-class PaymentTransitionPolicy {
+class PaymentTransitionPolicy(
+    private val semantics: PaymentLedgerSemantics = PaymentLedgerSemantics.LegacyCapturedOnly,
+) {
     fun snapshot(sale: SaleSaga, ledger: OperationLedger): PaymentSnapshot {
         val evidence = sale.evidence
         val validEvidence = evidence != null && evidence.reservationRef.isNotBlank() && evidence.receipt.isNotBlank() &&
@@ -56,16 +62,28 @@ class PaymentTransitionPolicy {
         }?.takeIf { MoneyPolicy.valid(it) && it.signum() > 0 }
         val entries = (ledger as? OperationLedger.Known)?.entries
         val history = entries == null || entries.isNotEmpty()
+        if (semantics == PaymentLedgerSemantics.Unknown ||
+            (semantics == PaymentLedgerSemantics.LegacyCapturedOnly && entries?.any { it.status != PaymentStatus.CAPTURED } == true)
+        ) return PaymentSnapshot(total, null, PaymentCoverage.InvalidUnknown, history, validEvidence)
         if (total == null || entries == null || entries.map { it.paymentId }.distinct().size != entries.size || entries.any {
-                it.identity != sale.quadruple || it.method == PaymentMethod.UNKNOWN || it.status != PaymentStatus.CAPTURED ||
+                it.identity != sale.quadruple || it.method == PaymentMethod.UNKNOWN || it.status !in setOf(PaymentStatus.CAPTURED, PaymentStatus.REFUNDED) ||
                     it.paymentId <= 0 ||
                     it.amount == null || it.feeAmount == null || !MoneyPolicy.valid(it.amount) || !MoneyPolicy.valid(it.feeAmount) ||
-                    it.amount.signum() <= 0 || it.feeAmount.signum() < 0 || it.originalPaymentId != null
+                    it.amount.signum() <= 0 || it.feeAmount.signum() < 0 ||
+                    (it.status == PaymentStatus.CAPTURED && it.originalPaymentId != null)
             }) return PaymentSnapshot(total, null, PaymentCoverage.InvalidUnknown, history, validEvidence)
-        val sum = entries.fold(BigDecimal.ZERO) { acc, entry -> acc + entry.amount!! }
-        val fees = entries.fold(BigDecimal.ZERO) { acc, entry -> acc + entry.feeAmount!! }
-        if (!MoneyPolicy.valid(sum) || !MoneyPolicy.valid(fees) || sum > total) return PaymentSnapshot(total, null, PaymentCoverage.InvalidUnknown, history, validEvidence)
-        val coverage = when { entries.isEmpty() -> PaymentCoverage.Unpaid; sum.compareTo(total) == 0 -> PaymentCoverage.Paid; else -> PaymentCoverage.Partial }
+        val captures = entries.filter { it.status == PaymentStatus.CAPTURED }.associateBy { it.paymentId }
+        val refunds = entries.filter { it.status == PaymentStatus.REFUNDED }
+        if (refunds.map { it.originalPaymentId }.distinct().size != refunds.size || refunds.any { refund ->
+                val original = captures[refund.originalPaymentId]
+                original == null || refund.method != original.method || refund.amount!!.compareTo(original.amount!!) != 0
+            }) return PaymentSnapshot(total, null, PaymentCoverage.InvalidUnknown, history, validEvidence)
+        val sum = entries.fold(BigDecimal.ZERO) { acc, entry ->
+            if (entry.status == PaymentStatus.CAPTURED) acc + entry.amount!! else acc - entry.amount!!
+        }
+        val fees = captures.values.fold(BigDecimal.ZERO) { acc, entry -> acc + entry.feeAmount!! }
+        if (!MoneyPolicy.valid(sum) || !MoneyPolicy.valid(fees) || sum.signum() < 0 || sum > total) return PaymentSnapshot(total, null, PaymentCoverage.InvalidUnknown, history, validEvidence)
+        val coverage = when { sum.signum() == 0 -> PaymentCoverage.Unpaid; sum.compareTo(total) == 0 -> PaymentCoverage.Paid; else -> PaymentCoverage.Partial }
         return PaymentSnapshot(MoneyPolicy.normalize(total), MoneyPolicy.normalize(total - sum), coverage, history, validEvidence)
     }
 
@@ -76,15 +94,16 @@ class PaymentTransitionPolicy {
             return TransitionDecision.Denied(TransitionReason.MoneyInvalid)
         val snapshot = snapshot(sale, ledger)
         if (snapshot.pendingAmount == null) return TransitionDecision.Denied(TransitionReason.LedgerUnknown)
-        val fees = (ledger as OperationLedger.Known).entries.fold(fee) { sum, entry -> sum + entry.feeAmount!! }
+        val fees = (ledger as OperationLedger.Known).entries.filter { it.status == PaymentStatus.CAPTURED }.fold(fee) { sum, entry -> sum + entry.feeAmount!! }
         if (!MoneyPolicy.valid(fees)) return TransitionDecision.Denied(TransitionReason.MoneyInvalid)
         if (amount > snapshot.pendingAmount) return TransitionDecision.Denied(TransitionReason.Overcapture)
         return TransitionDecision.NewCommand
     }
 
     fun terminal(sale: SaleSaga, ledger: OperationLedger, kind: StoreCoreOperationKind): TransitionDecision {
-        if (sale.retired || sale.blockSameOperationRepost || sale.status == SaleStatus.UNKNOWN || sale.status == SaleStatus.RECONCILIATION_REQUIRED)
-            return TransitionDecision.Denied(TransitionReason.StateIneligible)
+        if (semantics == PaymentLedgerSemantics.Unknown || sale.retired || sale.blockSameOperationRepost ||
+            sale.status == SaleStatus.UNKNOWN || sale.status == SaleStatus.RECONCILIATION_REQUIRED)
+            return TransitionDecision.Denied(TransitionReason.StateUnavailable)
         val terminal = if (kind == StoreCoreOperationKind.COMMIT) SaleStatus.COMMITTED else SaleStatus.RELEASED
         val pending = if (kind == StoreCoreOperationKind.COMMIT) SaleStatus.COMMIT_PENDING else SaleStatus.RELEASE_PENDING
         if (sale.status == terminal || sale.status == pending) {
@@ -102,7 +121,8 @@ class PaymentTransitionPolicy {
             if (snapshot.paymentCoverage == PaymentCoverage.Paid) TransitionDecision.NewCommand
             else TransitionDecision.Denied(TransitionReason.CoverageIncomplete)
         } else {
-            if (snapshot.paymentCoverage == PaymentCoverage.Unpaid && !snapshot.hasPaymentHistory) TransitionDecision.NewCommand
+            if (snapshot.paymentCoverage == PaymentCoverage.Unpaid &&
+                (semantics == PaymentLedgerSemantics.NetCapturedAndRefunded || !snapshot.hasPaymentHistory)) TransitionDecision.NewCommand
             else TransitionDecision.Denied(TransitionReason.PaymentHistory)
         }
     }
@@ -117,7 +137,10 @@ class PaymentTransitionPolicy {
     }
 
     private fun eligible(sale: SaleSaga): TransitionDecision.Denied? = when {
-        sale.retired || sale.blockSameOperationRepost || sale.status !in setOf(SaleStatus.RESERVED, SaleStatus.PAYMENT_CAPTURED) ->
+        semantics == PaymentLedgerSemantics.Unknown || sale.retired || sale.blockSameOperationRepost ||
+            sale.status == SaleStatus.UNKNOWN || sale.status == SaleStatus.RECONCILIATION_REQUIRED ->
+            TransitionDecision.Denied(TransitionReason.StateUnavailable)
+        sale.status !in setOf(SaleStatus.RESERVED, SaleStatus.PAYMENT_CAPTURED) ->
             TransitionDecision.Denied(TransitionReason.StateIneligible)
         sale.evidence == null -> TransitionDecision.Denied(TransitionReason.EvidenceInvalid)
         else -> null

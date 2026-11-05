@@ -1,0 +1,20 @@
+# CLR-T08-C — correcciones de review sobre 0a6bb36
+
+Actualización de evidencia: validación exacta posterior de source 7516b0e focused5/full194/typecheck/build PASS/audit productivo0; conserva el FAIL 3673658 189/5 y la cronología NOT_RUN de este registro. Estado único actual blocked_on_authoritative_read_models; foreground nuevo no hereda PASS. [Registro vigente](CLR-T08-C-foreground-20261008.md).
+
+Base `0a6bb36af77369253b5a199df900e379747300cd`, branch existente `feat/cash-ledger-frontend-t08c-v2`. Sólo frontend/docs; sin backend, migración, CI ni dependencias. C: `blocked_on_authoritative_read_models`; T08 parcial. Este corte no es totalmente usable ni acredita cierre.
+
+## Hallazgos y límites
+
+1. Reversibilidad: tipo cerrado PaymentReversibility y mapper único conservan originalPaymentId cuando aparece, sin atribuirle autoridad. El DTO actual omite refund→capture: captures siguen CAPTURED y refunds son filas separadas. Ante cualquier refund, todos los captures son Unknown: UI no ofrece otra reversa, store y preflight HTTP la deniegan antes del journal. No se inventa qué captura sigue reversible. T08-D debe exponer evidencia/linkage por pago para integrar la funcionalidad completa.
+2. Egreso/liquidación: no hay GET suficiente de entidad/agregado/saldo. Caja abierta + expenseId/settlementId no demuestra el efecto. Accrue, AccrueAndSettle y SettleExisting conservan ReceiptVerifiedAwaitingRefresh, claim y bloqueo; el copy explica T08-D. No se finge Resolved ni se reenvía. T08-D debe aportar read model autoritativo, fuera de este corte frontend.
+3. Execute y consult de ambas familias capturan epoch de evento, generación y actor. Defer no inicia requests de un observable viejo; filtro posterior a shareReplay valida cada entrega, incluido receipt completado. Actor 7→changed→actor 8 no recibe receipt cacheado ni provoca otro POST/GET; la señal contable se limpia.
+4. SaleAdmissionFingerprint replica `backend/src/main/kotlin/com/blackstore/application/sales/SaleCommandFingerprint.kt`: sale-admission-v1, orden contractual de campos, longitudes de bytes UTF-8, SHA-256 minúsculo, precio/descuento a dos decimales y normalización del traductor backend. Excluye commandId como el backend. Antes de prepare persiste expectedPayloadHash del payload congelado/actor y versión cerrada. Antes de resolver exige igualdad con receipt.payloadHash; hash válido ajeno va a cuarentena sin refresh. Rehidratación recalcula hash: payload alterado sintácticamente válido, versión incompatible o journal antiguo sin fingerprint se conserva y bloquea. No es firma ni defensa contra cambiar conjuntamente payload y hash; backend conserva autoridad.
+
+## Pruebas y validación
+
+Tests añadidos: dos captures/refund separado y nueva devolución durante pre-read; guard HTTP antes de journal; DOM sin reversa/copy Unknown; tres operaciones de egreso sin falso refresh; matrix execute/consult de ambas familias y subscriber tardío/defer viejo; golden vector independiente UTF-8/moneda/cambios semánticos/actor; receipt hash ajeno; payload IDB alterado preservado y prepare con hash incorrecto. Golden vector calculado con SHA-256 .NET independiente; no se afirma cross-run Kotlin.
+
+Nuevo source: typecheck/tests/build **NOT_RUN**, por instrucción del coordinador, sin npm; validación externa exact-head pendiente. Diff check sólo verifica formato. El [PASS previo 161/161/typecheck/build](CLR-T08-C-frontend-local-20261008.md) pertenece exclusivamente a `82271775df12d79554aacbfc67030db3843f1445`, no cubre este corte. Primer intento previo sandbox/GPU resuelto con launcher built-in sin cambiar source/CI; T: desmontada. npm audit 7 high preexistentes sigue pending security triage, sin audit fix.
+
+PG16, browser CLR real, crash/reinicio, CI y re-review exact-head pendientes. No servicios persistentes, push/PR ni publicación. Exclusión sólo entre tabs del mismo origen/perfil IndexedDB, no entre perfiles/dispositivos. T08-D/backend/read-models se formaliza en addendum separado por coordinador; no se amplía este corte ni se marca T08 complete.

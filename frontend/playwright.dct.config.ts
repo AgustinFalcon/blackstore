@@ -4,6 +4,7 @@ import { defineConfig } from '@playwright/test';
 // still become ready on the fixture's explicit loopback port and database.
 process.env['spring.application.json'] = JSON.stringify({ server: { port: 1 }, blackstore: { persistence: { url: 'jdbc:postgresql://127.0.0.1:1/forbidden' } } });
 process.env['JAVA_TOOL_OPTIONS'] = '-Dserver.port=2';
+const outputDir = process.env['BLACKSTORE_DCT_OUTPUT_DIR'] ?? 'work/dct-browser-results-current';
 
 export default defineConfig({
   testDir: './e2e/dct',
@@ -12,7 +13,7 @@ export default defineConfig({
   retries: 0,
   timeout: 180_000,
   expect: { timeout: 15_000 },
-  outputDir: 'work/dct-browser-results',
-  reporter: [['list'], ['json', { outputFile: 'work/dct-browser-results/results.json' }]],
+  outputDir,
+  reporter: [['list'], ['json', { outputFile: `${outputDir}/results.json` }]],
   use: { baseURL: 'http://localhost:4201', browserName: 'chromium', trace: 'off', screenshot: 'off', video: 'off' },
 });

@@ -33,8 +33,8 @@ export class DurableSaleState {
     if (!this.acceptsCommands || !sale.valid || !sale.allowedActions.includes(action)) return false;
     if (action === AllowedAction.CapturePayment) return (sale.coverage === PaymentCoverage.Partial || sale.coverage === PaymentCoverage.Unpaid) && !!sale.pending && sale.pending.cents > 0n;
     if (action === AllowedAction.Commit) return sale.coverage === PaymentCoverage.Paid && sale.pending?.cents === 0n;
-    if (action === AllowedAction.Release) return this === DurableSaleState.Reserved && sale.coverage === PaymentCoverage.Unpaid && sale.hasPaymentHistory === false;
-    if (action === AllowedAction.ReversePayment) return sale.hasPaymentHistory === true && sale.payments.some(payment => payment.status === PaymentStatus.Captured);
+    if (action === AllowedAction.Release) return sale.coverage === PaymentCoverage.Unpaid && !!sale.total && sale.pending?.cents === sale.total.cents;
+    if (action === AllowedAction.ReversePayment) return sale.hasPaymentHistory === true && sale.payments.some(payment => payment.reversibility.permitsReverse);
     return false;
   }
 }
@@ -54,11 +54,39 @@ export interface DurableSaleLine {
   readonly total: TicketMoney | null;
 }
 export interface DurableSalePayment {
+  readonly originalPaymentId: number | null;
+  readonly reversibility: PaymentReversibility;
   readonly paymentId: number;
   readonly status: PaymentStatus;
   readonly method: PaymentMethod;
   readonly amount: TicketMoney | null;
   readonly fee: TicketMoney | null;
+}
+/** Linkage is validated over the entire sale snapshot before any capture can be reversed. */
+export class PaymentReversibility {
+  static readonly Reversible = new PaymentReversibility('Puede reversarse',true);
+  static readonly NotCapture = new PaymentReversibility('No es una captura',false);
+  static readonly AlreadyRefunded = new PaymentReversibility('Captura ya reversada',false);
+  static readonly Unknown = new PaymentReversibility('Reversibilidad no comprobada',false);
+  private constructor(readonly label:string,readonly permitsReverse:boolean) {}
+  static forPayment(payment:Pick<DurableSalePayment,'paymentId'|'status'|'amount'|'method'>,payments:readonly Pick<DurableSalePayment,'paymentId'|'status'|'amount'|'method'|'originalPaymentId'>[]):PaymentReversibility {
+    if(!this.validLedger(payments))return this.Unknown;
+    if(payment.status!==PaymentStatus.Captured) return this.NotCapture;
+    return payments.some(p=>p.originalPaymentId===payment.paymentId) ? this.AlreadyRefunded : this.Reversible;
+  }
+  static validLedger(payments:readonly Pick<DurableSalePayment,'paymentId'|'status'|'amount'|'method'|'originalPaymentId'>[]):boolean {
+    if(new Set(payments.map(p=>p.paymentId)).size!==payments.length)return false;
+    const referenced=new Set<number>();
+    return payments.every(p=>{
+      if(!Number.isSafeInteger(p.paymentId) || p.paymentId<=0 || p.method===PaymentMethod.Unknown || !p.amount || p.amount.cents<=0n)return false;
+      if(p.status===PaymentStatus.Captured)return p.originalPaymentId===null;
+      if(p.status!==PaymentStatus.Refunded || !p.originalPaymentId || referenced.has(p.originalPaymentId))return false;
+      referenced.add(p.originalPaymentId);
+      const original=payments.find(c=>c.paymentId===p.originalPaymentId);
+      return !!original && original!==p && original.status===PaymentStatus.Captured && original.originalPaymentId===null &&
+        p.method!==PaymentMethod.Unknown && original.method===p.method && !!p.amount && p.amount.cents>0n && original.amount?.cents===p.amount.cents;
+    });
+  }
 }
 export interface DurableSaleDetail extends DurableSaleSummary {
   readonly pending: TicketMoney | null;

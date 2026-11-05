@@ -1,237 +1,86 @@
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController,provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { API_BASE } from '../../core/api';
-import { PaymentStatus, SaleAction, SaleStatus } from '../../core/domain/pos-types';
-import { PaymentCoverage, TicketIdentity } from '../../core/domain/ticket-transition';
-import { CounterContextService } from '../../core/services/counter-context.service';
+import { TestBed } from '@angular/core/testing';
+import { of,Subject } from 'rxjs';
 import { SaleTicketComponent } from './sale-ticket.component';
+import { CounterContextService } from '../../core/services/counter-context.service';
 import { SessionStore } from '../../core/services/session.store';
 import { authenticateTestSession } from '../../core/services/session-test-helper';
-
-describe('SaleTicketComponent guarded writes (T05/T11)', () => {
-  let component: SaleTicketComponent;
-  let http: HttpTestingController;
-  const envelope = (data: unknown) => ({ code: 200, errorCode: null, traceId: 'trace', message: null, retryable: null, data });
-  const snapshot = (identity: TicketIdentity, coverage: PaymentCoverage, pending: string, status = SaleStatus.Reserved) => envelope({
-    ...identity, status: status.wire, receipt: 'receipt', reservationRef: 'ref', evidenceValid: true, totalAmount: '18',
-    pendingAmount: pending, paymentCoverage: coverage.wire, hasPaymentHistory: coverage !== PaymentCoverage.Unpaid,
-    retired: false, blocked: false,
-  });
-
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      imports: [SaleTicketComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), {
-        provide: CounterContextService,
-        useValue: { load: () => {}, catalog: signal(null), openSession: signal({ id: 1 }), cashierId: signal(7), blockReason: () => null },
-      }],
-    });
+import { CommandRuntimeStore } from '../../core/services/command-runtime.store';
+import { CommandHttp } from '../../core/infrastructure/command-http';
+import { SaleCommand,SaleCommandKind,SaleAdmissionOutcome } from '../../core/domain/sale-command';
+import { SaleAction,SaleStatus } from '../../core/domain/pos-types';
+import { PaymentCoverage } from '../../core/domain/ticket-transition';
+import { ReversalReason } from '../../core/domain/reversal-reason';
+describe('SaleTicketComponent v2 guarded journey',()=>{
+  let component:SaleTicketComponent;let runtime:any;let api:any;let http:HttpTestingController;
+  const context={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'provisioned-device',terminalId:10};
+  beforeEach(()=>{
+    runtime={ pending:signal(null),canWrite:signal(true),context:signal(context),notice:signal('Comprobado'),
+      execute:jasmine.createSpy().and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Unknown,receipt:null})),consult:jasmine.createSpy().and.returnValue(Promise.resolve(null)) };
+    api={ticket:jasmine.createSpy().and.returnValue(of(null))};
+    TestBed.configureTestingModule({imports:[SaleTicketComponent],providers:[provideHttpClient(),provideHttpClientTesting(),
+      {provide:CommandRuntimeStore,useValue:runtime},{provide:CommandHttp,useValue:api},
+      {provide:CounterContextService,useValue:{load:()=>{},catalog:signal(null),openSession:signal({id:2,terminalId:10}),blockReason:()=>null}}]});
     authenticateTestSession(TestBed.inject(SessionStore));
-    component = TestBed.createComponent(SaleTicketComponent).componentInstance;
-    http = TestBed.inject(HttpTestingController);
+    component=TestBed.createComponent(SaleTicketComponent).componentInstance;http=TestBed.inject(HttpTestingController);
   });
-  afterEach(() => http.verify());
-
-  function finishPaidAttempt(): TicketIdentity {
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    const identity: TicketIdentity = reserve.request.body;
-    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18'));
-    http.expectOne(`${API_BASE}/payments`).flush(envelope({ ...identity, paymentId: 1, status: PaymentStatus.Captured.wire, amount: '18', feeAmount: '0.50' }));
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0'));
-    return identity;
+  afterEach(()=>http.verify());
+  it('disables reversal for invalid reasons and explains the accepted length',async()=>{
+    const fixture = TestBed.createComponent(SaleTicketComponent);
+    const ticket = fixture.componentInstance;
+    ticket.paymentId.set(17);
+    spyOn(ticket,'canFinish').and.returnValue(true);
+    for (const reason of ['', 'x', 'ok', 'x'.repeat(ReversalReason.maxLength + 1), '   ']) {
+      ticket.reversalReason = reason;
+      fixture.changeDetectorRef.markForCheck();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('input[name="reversalReason"]').closest('form').querySelector('button[type="submit"]').disabled).toBeTrue();
+      ticket.requestReverse(17);
+      expect(ticket.reversalReview()).toBeNull();
+    }
+    expect(fixture.nativeElement.querySelector('#ticket-reversal-reason-guidance').textContent).toContain(ReversalReason.guidance);
+    for (const length of [ReversalReason.minLength, ReversalReason.maxLength]) {
+      ticket.reversalReason = `  ${'x'.repeat(length)}  `;
+      fixture.changeDetectorRef.markForCheck();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(ticket.validReversalReason()).toBeTrue();
+      expect(fixture.nativeElement.querySelector('input[name="reversalReason"]').closest('form').querySelector('button[type="submit"]').disabled).toBeFalse();
+    }
+    http.expectNone(r=>r.method==='POST');
+  });
+  for(const notice of ['Comprobando evidencia','Contabilidad pausada','Contexto desconocido','Storage no confirmado','Evidencia en cuarentena']){
+    it('blocks writes and displays '+notice,()=>{
+      runtime.canWrite.set(false);runtime.notice.set(notice);component.reserve();
+      expect(component.blockReason()).toBe(notice);expect(runtime.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
+    });
   }
-
-  it('blocks a second submit before it creates UUIDs or requests and releases the guard on error', () => {
-    const uuid = spyOn(crypto, 'randomUUID').and.callThrough();
-    component.reserve();
-    const first = http.expectOne(`${API_BASE}/sales/reservations`);
-    expect(uuid.calls.count()).toBe(2); // exactly one sale identity and one operation identity
-    component.reserve();
-    component.commit();
-    component.release();
-    component.refresh();
-    expect(uuid.calls.count()).toBe(2);
-    http.expectNone(`${API_BASE}/sales/reservations`);
-    first.flush(envelope(null));
-    expect(component.busy()).toBeFalse();
-    component.reserve();
-    expect(uuid.calls.count()).toBe(4);
-    http.expectOne(`${API_BASE}/sales/reservations`).flush(envelope(null));
+  it('freezes provisioned identity and canonical fields in a Reserve command without fee',async()=>{
+    component.operationReason='  caja ajena  ';component.reserve();await Promise.resolve();
+    const command=runtime.execute.calls.mostRecent().args[0] as SaleCommand;
+    expect(command.kind).toBe(SaleCommandKind.Reserve);expect(command.identity.clientInstanceId).toBe(context.clientInstanceId);expect(command.identity.deviceId).toBe(context.deviceId);
+    expect(command.body['cashSessionId']).toBe(2);expect(command.body['reason']).toBe('caja ajena');expect(command.body['feeAmount']).toBeUndefined();
+    expect(Object.isFrozen(command.body)).toBeTrue();http.expectNone(r=>r.method==='POST');
   });
-
-  it('does not send capture for unknown, pending or evidence-free reserve', () => {
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    reserve.flush(snapshot(reserve.request.body, PaymentCoverage.Unpaid, '18', SaleStatus.PendingReservation));
-    http.expectNone(`${API_BASE}/payments`);
-    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
-    expect(component.canFinish(SaleAction.Release)).toBeFalse();
+  it('a pending admission never authorizes capture or commit and double submit retains one command',async()=>{
+    component.reserve();component.reserve();await Promise.resolve();await Promise.resolve();
+    expect(runtime.execute.calls.count()).toBe(1);expect(component.canFinish(SaleAction.Commit)).toBeFalse();expect(api.ticket).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
   });
-
-  it('cancels an asynchronous reservation before another session can continue it', fakeAsync(() => {
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    const identity: TicketIdentity = reserve.request.body;
-    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18', SaleStatus.PendingReservation));
-
-    TestBed.inject(SessionStore).changed.next();
-    tick(250);
-
-    http.expectNone(`${API_BASE}/sales/${identity.operationId}`);
-    http.expectNone(`${API_BASE}/payments`);
-    expect(component.busy()).toBeFalse();
-  }));
-
-  it('keeps immutable requested payment amounts when form edits occur during reserve', () => {
-    component.amount = 10;
-    component.secondAmount = 8;
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    component.amount = 99;
-    component.secondAmount = 99;
-    reserve.flush(snapshot(reserve.request.body, PaymentCoverage.Unpaid, '18'));
-    const capture = http.expectOne(`${API_BASE}/payments`);
-    expect(capture.request.body.amount).toBe('10.00');
-    capture.flush(envelope({ ...reserve.request.body, paymentId: 1, status: PaymentStatus.Pending.wire, amount: '10', feeAmount: '0.50' }));
-    http.expectNone(`${API_BASE}/payments`);
-    expect(component.paymentId()).toBeNull();
+  it('requires matching cash terminal before intent creation',()=>{
+    TestBed.inject(CounterContextService).openSession.set({id:2,terminalId:11,cashierId:7,status:undefined as any,openingCash:0});
+    component.reserve();expect(runtime.execute).not.toHaveBeenCalled();expect(component.message()).toContain('no coinciden');
   });
-
-  it('does not send release for a paid ticket or commit when refreshed coverage denies it', () => {
-    const identity = finishPaidAttempt();
-    expect(component.canFinish(SaleAction.Commit)).toBeTrue();
-    expect(component.canFinish(SaleAction.Release)).toBeFalse();
-    component.release();
-    http.expectNone(`${API_BASE}/sales/${identity.operationId}/release`);
-    component.commit();
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Partial, '8'));
-    http.expectNone(`${API_BASE}/sales/${identity.operationId}/commit`);
-    expect(component.busy()).toBeFalse();
-    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
+  it('accepted admission followed by an invalid GET cannot capture',async()=>{
+    runtime.execute.and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Accepted,receipt:{}}));
+    component.reserve();await Promise.resolve();await Promise.resolve();
+    expect(api.ticket.calls.count()).toBe(1);expect(runtime.execute.calls.count()).toBe(1);expect(component.canFinish(SaleAction.Commit)).toBeFalse();
   });
-
-  it('rejects a response for a different operation without setting paymentId or authorizing actions', () => {
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    reserve.flush(snapshot(reserve.request.body, PaymentCoverage.Unpaid, '18'));
-    http.expectOne(`${API_BASE}/payments`).flush(envelope({ ...reserve.request.body,
-      operationId: reserve.request.body.saleId, paymentId: 1, status: PaymentStatus.Captured.wire, amount: '18', feeAmount: '0.50' }));
-    http.expectNone(`${API_BASE}/sales/${reserve.request.body.operationId}`);
-    expect(component.paymentId()).toBeNull();
-    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
-  });
-
-  it('confirms a Paid snapshot only after refreshing and prevents another terminal write', () => {
-    const identity = finishPaidAttempt();
-    component.commit();
-    http.expectNone(`${API_BASE}/sales/${identity.operationId}/commit`);
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0'));
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}/commit`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.Committed));
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.Committed));
-    expect(component.busy()).toBeFalse();
-    component.commit();
-    component.reverse(1);
-    http.expectNone(`${API_BASE}/sales/${identity.operationId}/commit`);
-    http.expectNone(`${API_BASE}/payments/1/reversals`);
-  });
-
-  it('releases empty history but stops if the refreshed snapshot acquired payment history', () => {
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    const identity: TicketIdentity = reserve.request.body;
-    reserve.flush(envelope(null));
-    component.refresh();
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Unpaid, '18'));
-    expect(component.canFinish(SaleAction.Release)).toBeTrue();
-    component.release();
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Partial, '8'));
-    http.expectNone(`${API_BASE}/sales/${identity.operationId}/release`);
-    expect(component.canFinish(SaleAction.Release)).toBeFalse();
-  });
-
-  it('keeps the first correlated payment when the second split capture fails', () => {
-    component.amount = 10;
-    component.secondAmount = 8;
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    const identity: TicketIdentity = reserve.request.body;
-    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18'));
-    http.expectOne(`${API_BASE}/payments`).flush(envelope({
-      ...identity, paymentId: 41, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50',
-    }));
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Partial, '8'));
-    http.expectOne(`${API_BASE}/payments`).flush('failed', { status: 503, statusText: 'Unavailable' });
-
-    expect(component.paymentId()).toBe(41);
-    expect(component.canFinish(SaleAction.Reverse)).toBeTrue();
-    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
-  });
-
-  it('re-dispatches a pending terminal route only to recover its existing command', () => {
-    const identity = finishPaidAttempt();
-    component.refresh();
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.CommitPending));
-    expect(component.canFinish(SaleAction.Commit)).toBeTrue();
-
-    component.commit();
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.CommitPending));
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}/commit`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.Committed));
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Paid, '0', SaleStatus.Committed));
-    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
-  });
-
-  it('retains the first captured payment when GET fails and waits for recovery before reversal', () => {
-    component.amount = 10;
-    component.secondAmount = 8;
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    const identity: TicketIdentity = reserve.request.body;
-    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18'));
-    http.expectOne(`${API_BASE}/payments`).flush(envelope({
-      ...identity, paymentId: 41, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50',
-    }));
-    expect(component.paymentId()).toBe(41);
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush('failed', { status: 503, statusText: 'Unavailable' });
-
-    expect(component.paymentId()).toBe(41);
-    expect(component.busy()).toBeFalse();
-    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
-    expect(component.canFinish(SaleAction.Release)).toBeFalse();
-    expect(component.canFinish(SaleAction.Reverse)).toBeFalse();
-    component.reverse(41);
-    http.expectNone(`${API_BASE}/payments/41/reversals`);
-    http.expectNone(`${API_BASE}/payments`);
-
-    component.refresh();
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Partial, '8'));
-    expect(component.paymentId()).toBe(41);
-    expect(component.canFinish(SaleAction.Reverse)).toBeTrue();
-    http.expectNone(`${API_BASE}/payments`);
-  });
-
-  it('invalidates the previous actionable snapshot when the second captured payment awaits a failed GET', () => {
-    component.amount = 10;
-    component.secondAmount = 8;
-    component.reserve();
-    const reserve = http.expectOne(`${API_BASE}/sales/reservations`);
-    const identity: TicketIdentity = reserve.request.body;
-    reserve.flush(snapshot(identity, PaymentCoverage.Unpaid, '18'));
-    http.expectOne(`${API_BASE}/payments`).flush(envelope({
-      ...identity, paymentId: 41, status: PaymentStatus.Captured.wire, amount: '10', feeAmount: '0.50',
-    }));
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush(snapshot(identity, PaymentCoverage.Partial, '8'));
-    http.expectOne(`${API_BASE}/payments`).flush(envelope({
-      ...identity, paymentId: 42, status: PaymentStatus.Captured.wire, amount: '8', feeAmount: '0',
-    }));
-    http.expectOne(`${API_BASE}/sales/${identity.operationId}`).flush('failed', { status: 503, statusText: 'Unavailable' });
-
-    expect(component.paymentId()).toBe(41);
-    expect(component.canFinish(SaleAction.Reverse)).toBeFalse();
-    expect(component.canFinish(SaleAction.Commit)).toBeFalse();
-    expect(component.canFinish(SaleAction.Release)).toBeFalse();
-    http.expectNone(`${API_BASE}/payments`);
+  it('actor change masks visible attempt and ignores late accepted response',async()=>{
+    let deliver!:(value:any)=>void;runtime.execute.and.returnValue(new Promise(resolve=>deliver=resolve));
+    component.reserve();TestBed.inject(SessionStore).changed.next();deliver({outcome:SaleAdmissionOutcome.Accepted,receipt:{}});
+    await Promise.resolve();await Promise.resolve();expect(component.operationRef()).toBeNull();expect(component.paymentId()).toBeNull();expect(api.ticket).not.toHaveBeenCalled();
   });
 });
