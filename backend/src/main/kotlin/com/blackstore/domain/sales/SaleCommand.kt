@@ -24,7 +24,14 @@ sealed interface SaleCommandResult {
     data object NotFound : SaleCommandResult
     data object Unavailable : SaleCommandResult
     data object Unknown : SaleCommandResult
-    data class Rejected(val failure: SaleCommandFailure) : SaleCommandResult
+    data class Rejected(val failure: SaleCommandFailure, val lineFailures: List<SaleLineFailure> = emptyList()) : SaleCommandResult
+}
+enum class SaleLineFailureCode {
+    VariantMissing, CatalogTextInvalid, SkuMismatch, ProductNameMismatch, PriceVersionMismatch, PriceMismatch, DiscountNotAllowed, Unknown;
+    companion object { fun fromWire(raw: String?) = entries.firstOrNull { it.name == raw } ?: Unknown }
+}
+data class SaleLineFailure(val variantId: String, val code: SaleLineFailureCode) {
+    init { require(variantId.isNotEmpty() && code!=SaleLineFailureCode.Unknown) }
 }
 enum class SaleCommandFailure(val status: Int, val wire: String) {
     Validation(400,"VALIDATION"), Forbidden(403,"FORBIDDEN"), NotVisible(404,"NOT_VISIBLE"),

@@ -17,7 +17,7 @@ sealed interface RecoveryDisposition {
 }
 enum class DurableSaleState { PENDING_RESERVATION, RESERVED, PAYMENT_CAPTURED, COMMIT_PENDING, COMMITTED, RELEASE_PENDING, RELEASED, RECONCILIATION_REQUIRED, LEGACY_INCOMPLETE, UNKNOWN }
 data class CanonicalReserveLine(val variantId: String, val quantity: Int, val expectedPriceVersion: String) {
- init { require(variantId.isNotBlank() && quantity > 0 && expectedPriceVersion.isNotBlank()) }
+ init { require(variantId.isNotEmpty() && quantity > 0 && expectedPriceVersion.isNotEmpty()) }
 }
 sealed interface CanonicalCommandPayload {
  data class Reserve(val catalogVersion: String, val lines: List<CanonicalReserveLine>) : CanonicalCommandPayload {

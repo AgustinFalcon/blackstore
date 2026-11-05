@@ -32,7 +32,7 @@ class SaleV3Controller(private val service: SaleCommandApplicationService) {
             SaleCommandResult.NotFound -> SaleAdmissionV3Response(SaleAdmissionOutcomeV2.NotFound)
             SaleCommandResult.Unavailable -> SaleAdmissionV3Response(SaleAdmissionOutcomeV2.Unavailable)
             SaleCommandResult.Unknown -> SaleAdmissionV3Response(SaleAdmissionOutcomeV2.Unknown)
-            is SaleCommandResult.Rejected -> SaleAdmissionV3Response(SaleAdmissionOutcomeV2.Rejected,failure=result.failure.wire)
+            is SaleCommandResult.Rejected -> SaleAdmissionV3Response(SaleAdmissionOutcomeV2.Rejected,failure=result.failure.wire,lineFailures=result.lineFailures.map { SaleLineFailureV3Response(it.variantId,it.code) })
         }
         return ResponseEntity.status(status).header("Cache-Control","no-store").body(BaseResponse(status,request.getHeader("X-Trace-Id")?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),data,
             if(status<300) null else "Sale operation unavailable or denied",if(status<300) null else data.failure ?: data.outcome.name,if(status<300) null else false))

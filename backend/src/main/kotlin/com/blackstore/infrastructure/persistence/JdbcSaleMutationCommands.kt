@@ -216,18 +216,10 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
     private fun reserve(c: Connection, actor: AuthenticatedStaff, command: SaleCommand.ReserveMultiline): SaleSaga {
         val now=scalar(c,"SELECT clock_timestamp()") { it.getTimestamp(1).toInstant() }!!
         val snapshot=catalog.currentSnapshot() ?: reject(SaleCommandFailure.Unavailable)
-        CatalogSalePolicy().assertSaleAllowed(snapshot,now)
-        val canonical=command.lines.map { submitted ->
-            val item=snapshot.items.singleOrNull { it.rawVariantId==submitted.variantId } ?: reject(SaleCommandFailure.Validation)
-            val rawVersion=item.rawPriceVersion ?: reject(SaleCommandFailure.Validation)
-            runCatching {
-                SaleTextV2.ref(item.rawVariantId);SaleTextV2.ref(item.rawSku);SaleTextV2.ref(rawVersion);SaleTextV2.name(item.rawName)
-            }.getOrElse { reject(SaleCommandFailure.Validation) }
-            if(item.rawSku!=submitted.ticketLine.sku || SaleTextV2.name(item.rawName)!=submitted.ticketLine.productName ||
-                rawVersion!=submitted.expectedPriceVersion || item.unitPrice==null || MoneyPolicy.normalize(item.unitPrice)!=submitted.ticketLine.originalUnitPrice || submitted.ticketLine.discountAmount.signum()!=0)
-                reject(SaleCommandFailure.Validation)
-            submitted
-        }
+        CatalogSalePolicy().assertSaleAllowed(snapshot.copy(stale=snapshot.v2Stale),now)
+        val lineFailures=command.lines.mapNotNull { submitted -> validateLine(snapshot,submitted)?.let { SaleLineFailure(submitted.variantId,it) } }
+        if(lineFailures.isNotEmpty()) rejectLines(lineFailures)
+        val canonical=command.lines
         MoneyPolicy.normalize(canonical.fold(java.math.BigDecimal.ZERO) { total,line -> total+line.ticketLine.effectiveUnitPrice.multiply(line.quantity.toBigDecimal()) })
         val q=command.identity
         val remoteLines=canonical.map { ReserveLineCommand(it.variantId,it.quantity,it.expectedPriceVersion) }
@@ -316,10 +308,23 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
             c.createStatement().use { it.execute("SET LOCAL ROLE blackstore_app") };val result=block(c);c.commit();result
         } catch(e: Exception) { c.rollback();throw e }
     }
-    private class Denied(val failure: SaleCommandFailure): RuntimeException()
+    private class Denied(val failure: SaleCommandFailure,val lines: List<SaleLineFailure> = emptyList()): RuntimeException()
     private fun reject(failure: SaleCommandFailure): Nothing=throw Denied(failure)
+    private fun rejectLines(lines: List<SaleLineFailure>): Nothing=throw Denied(SaleCommandFailure.Validation,lines)
+    private fun validateLine(snapshot: CatalogSnapshot,submitted: SaleReservationLine): SaleLineFailureCode? {
+        val item=snapshot.v2Items.singleOrNull { it.rawVariantId==submitted.variantId } ?: return SaleLineFailureCode.VariantMissing
+        val rawVersion=item.rawPriceVersion ?: return SaleLineFailureCode.PriceVersionMismatch
+        if(runCatching { SaleTextV2.ref(item.rawVariantId);SaleTextV2.ref(item.rawSku);SaleTextV2.ref(rawVersion);SaleTextV2.name(item.rawName) }.isFailure)
+            return SaleLineFailureCode.CatalogTextInvalid
+        if(item.rawSku!=submitted.ticketLine.sku) return SaleLineFailureCode.SkuMismatch
+        if(SaleTextV2.name(item.rawName)!=submitted.ticketLine.productName) return SaleLineFailureCode.ProductNameMismatch
+        if(rawVersion!=submitted.expectedPriceVersion) return SaleLineFailureCode.PriceVersionMismatch
+        if(item.unitPrice==null || MoneyPolicy.normalize(item.unitPrice)!=submitted.ticketLine.originalUnitPrice) return SaleLineFailureCode.PriceMismatch
+        if(submitted.ticketLine.discountAmount.signum()!=0) return SaleLineFailureCode.DiscountNotAllowed
+        return null
+    }
     private fun safely(staff: AuthenticatedStaff,block: ()->SaleCommandResult): SaleCommandResult=try { block() }
-        catch(e: Denied) { denial(staff,e.failure);SaleCommandResult.Rejected(e.failure) }
+        catch(e: Denied) { denial(staff,e.failure);SaleCommandResult.Rejected(e.failure,e.lines) }
         catch(e: AccountingAdmissionException) { SaleCommandResult.Rejected(when(e.failure) {
             AccountingCommandFailure.NotActivated -> SaleCommandFailure.NotActivated; AccountingCommandFailure.Paused -> SaleCommandFailure.Paused; else -> SaleCommandFailure.Unavailable }) }
         catch(_: SQLException) { SaleCommandResult.Unavailable }

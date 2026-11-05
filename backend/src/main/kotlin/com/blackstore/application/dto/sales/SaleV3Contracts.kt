@@ -46,4 +46,5 @@ data class SaleAdmissionReceiptV3Response(val commandId: UUID, val kind: SaleCom
     val operationId: String, val intentId: Long, val outboxId: Long, val acceptedAt: java.time.Instant,
     val fingerprintVersion: String)
 data class SaleAdmissionV3Response(val outcome: SaleAdmissionOutcomeV2, val receipt: SaleAdmissionReceiptV3Response? = null,
-    val failure: String? = null)
+    val failure: String? = null, val lineFailures: List<SaleLineFailureV3Response> = emptyList())
+data class SaleLineFailureV3Response(val variantId: String,val code: SaleLineFailureCode)

@@ -57,30 +57,33 @@ class LoopbackCatalogAdapter(
             if (version.isEmpty()) return null
             val importedAt = instantOrNull(data.path("generatedAt")) ?: now
             val validUntil = instantOrNull(data.path("validUntil"))
-            val items =
-                data.path("items").mapNotNull { node ->
-                    if (!node.path("active").asBoolean(true)) return@mapNotNull null
+            val activeNodes=data.path("items").filter { it.path("active").asBoolean(true) }
+            fun item(node: JsonNode,legacy: Boolean): CatalogItem? {
                     val rawSku = node.path("sku").asText("")
                     val rawName = node.path("name").asText("")
                     val rawVariant = node.path("variantId").asText("")
                     val sku = rawSku.trim()
                     val name = rawName.trim()
                     val variant = rawVariant.trim()
-                    if (sku.isEmpty() || name.isEmpty() || variant.isEmpty()) return@mapNotNull null
+                    if(if(legacy) sku.isEmpty() || name.isEmpty() || variant.isEmpty() else rawSku.isEmpty() || rawName.isEmpty() || rawVariant.isEmpty()) return null
                     val rawPriceVersion = node.path("priceVersion").asText("").takeIf { it.isNotEmpty() }
                     val priceVersion = rawPriceVersion?.trim()?.ifEmpty { null }
                     val unitPrice =
                         node.path("unitPrice").takeIf { !it.isMissingNode && !it.isNull }?.decimalValue()
-                    CatalogItem(sku, name, variant, priceVersion, unitPrice, rawSku, rawName, rawVariant, rawPriceVersion)
-                }
-            val stale = validUntil != null && !validUntil.isAfter(now)
+                    return CatalogItem(sku, name, variant, priceVersion, unitPrice, rawSku, rawName, rawVariant, rawPriceVersion)
+            }
+            val items=activeNodes.mapNotNull { item(it,true) }
+            val v2Items=activeNodes.mapNotNull { item(it,false) }
+            val expired = validUntil != null && !validUntil.isAfter(now)
             return CatalogSnapshot(
                 version = version,
                 importedAt = importedAt,
                 validUntil = validUntil,
                 contract = contract,
-                stale = stale || items.isEmpty(),
+                stale = expired || items.isEmpty(),
                 items = items,
+                v2Items = v2Items,
+                v2Stale = expired || v2Items.isEmpty(),
             )
         }
 
