@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Page, Route } from '@playwright/test';
 import { test, expect, DctRuntime } from './fixtures/dct-runtime';
 import { DctResponseLoss } from './fixtures/dct-response-loss';
 import { journal } from './fixtures/dct-journal';
@@ -109,9 +109,31 @@ test('cross-tab same SID: a stale hydrated tab cannot claim another intent and G
     await expect.poll(async () => (await expenseIntent(second, commandId)).phase).toBe(JournalPhase.Resolved);
     // The late original tab must neither reopen Resolved nor resend its POST.
     await loss.lose();
-    await expect(page.getByRole('button', { name: 'Consultar recibo', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Consultar recibo', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Consultar recibo', exact: true })).toHaveCount(0);
+    const projectionUrl = `**/api/v2/expenses/commands/${commandId}/projection`;
+    let releaseProjection!: () => void;
+    let projectionObserved!: () => void;
+    const projectionGate = new Promise<void>(resolve => { releaseProjection = resolve; });
+    const projectionSeen = new Promise<void>(resolve => { projectionObserved = resolve; });
+    const holdProjection = async (route: Route) => {
+      const upstream = await route.fetch({ maxRetries: 0, maxRedirects: 0 });
+      projectionObserved();
+      await projectionGate;
+      await route.fulfill({ response: upstream });
+    };
+    await page.route(projectionUrl, holdProjection, { times: 1 });
+    try {
+      await expect(page.getByRole('button', { name: 'Consultar recibo', exact: true })).toBeEnabled();
+      await page.getByRole('button', { name: 'Consultar recibo', exact: true }).click();
+      await projectionSeen;
+      // The stale tab has verified the receipt and is waiting for its real
+      // authoritative projection. Persisted Resolved must not reopen meanwhile.
+      expect((await expenseIntent(page, commandId)).phase).toBe(JournalPhase.Resolved);
+      releaseProjection();
+      await expect(page.getByRole('button', { name: 'Consultar recibo', exact: true })).toHaveCount(0);
+    } finally {
+      releaseProjection();
+      if (!page.isClosed()) await page.unroute(projectionUrl, holdProjection);
+    }
     expect(await expenseIntent(page, commandId)).toEqual({ ...original, phase: JournalPhase.Resolved });
     expect(firstPosts).toEqual([commandId]);
     expect(secondPosts).toEqual([]);

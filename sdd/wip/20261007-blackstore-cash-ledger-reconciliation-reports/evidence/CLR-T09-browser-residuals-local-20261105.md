@@ -53,6 +53,17 @@ versiones aceptadas durables al comando terminal.
 - Recursos: cero contenedores DCT y cero listeners 8081/4201; Docker Desktop
   detenido después de validar la liberación de recursos.
 
+## Corrección de revisión exact-head
+
+Dos revisores Astra independientes coincidieron en un P2 de aceptación sobre
+`5693fc1`: la lectura final no demostraba que la pestaña tardía mantuviera
+`Resolved` durante el refresh, sólo después de terminarlo. Se retuvo la respuesta
+real de proyección de A después de `route.fetch`, se comprobó IndexedDB mientras
+el refresh seguía en vuelo y recién entonces se liberó la misma respuesta.
+`typecheck:dct` y el escenario cross-tab focal pasaron 1/1 en 28 s con teardown
+total. Como cambió el source, las aprobaciones de ese SHA no se heredan: se
+requieren dos re-reviews sobre el nuevo head y CI actualizado.
+
 ## Límite del resultado
 
 La suite certifica Browser→BlackStore, SID/CSRF/RBAC, IndexedDB, JAR y
