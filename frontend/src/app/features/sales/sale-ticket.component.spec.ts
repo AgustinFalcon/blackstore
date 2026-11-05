@@ -14,6 +14,7 @@ import { SaleAdmissionOutcome, SaleAdmissionRoute, SaleCommand } from '../../cor
 import { CommandHttp } from '../../core/infrastructure/command-http';
 import { CommandRuntimeStore } from '../../core/services/command-runtime.store';
 import { CounterContextService } from '../../core/services/counter-context.service';
+import { DurableSalesStore } from '../../core/services/durable-sales.store';
 import { SessionStore } from '../../core/services/session.store';
 import { authenticateTestSession } from '../../core/services/session-test-helper';
 import { SaleTicketComponent } from './sale-ticket.component';
@@ -120,5 +121,18 @@ describe('SaleTicketComponent explicit cart journey', () => {
         originalUnitPrice:money,priceVersion:'P1',total:money}],payments:[],allowedActions:[],valid:false,receipt:'r',reservationRef:'x',pendingCommand:null});
     expect(component.snapshot()?.evidenceValid).toBeFalse();expect(component.phase()).toBe(CartPhase.Unknown);
     component.paymentAmount='10';expect(component.canCapture()).toBeFalse();
+  });
+
+  it('adopts durable detail through the effect without tracking its internal cart writes',async()=>{
+    const fixture=TestBed.createComponent(SaleTicketComponent),tested=fixture.componentInstance,money=TicketMoney.fromDecimal('10.00')!;
+    fixture.detectChanges();await fixture.whenStable();
+    tested.requestedOperationId.set('o');TestBed.inject(DurableSalesStore).detail.set({identity:{clientInstanceId:'c',deviceId:'d',saleId:'s',operationId:'o'},
+      cashSessionId:2,cashierId:7,createdBy:7,status:DurableSaleState.Reserved,total:money,pending:money,coverage:PaymentCoverage.Unpaid,
+      hasPaymentHistory:false,lines:[{metadata:DurableLineMetadata.Complete,variantId:'v',sku:'SKU',productName:'Producto',quantity:1,
+        originalUnitPrice:money,priceVersion:'P1',total:money}],payments:[],allowedActions:[],valid:true,receipt:'r',reservationRef:'x',pendingCommand:null});
+    fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    expect(tested.phase()).toBe(CartPhase.AwaitingPayment);expect(tested.cart.lineCount()).toBe(1);
+    tested.cart.moveTo(CartPhase.Completed);tested.message.set('Pago comprobado');fixture.detectChanges();await fixture.whenStable();
+    expect(tested.phase()).toBe(CartPhase.Completed);
   });
 });

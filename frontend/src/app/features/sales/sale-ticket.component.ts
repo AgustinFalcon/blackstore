@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, ElementRef, OnInit, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, OnInit, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -25,7 +25,7 @@ import { SaleCartStore } from './sale-cart.store';
 import { AwaitReservationStep, AwaitTerminalSaleStep, CapturePaymentStep, CommitSaleStep, PrepareReservationStep,
   RefreshCoverageStep, RefreshTicketStep, TicketFlowPort, ValidateCartStep } from './ticket-steps';
 
-interface ActiveTicket { readonly identity: TicketIdentity; }
+interface ActiveTicket { readonly identity: TicketIdentity; readonly cashSessionId:number; }
 interface TicketReversalReview { readonly operationId: string; readonly paymentId: number; readonly reason: ReversalReason; }
 interface TicketPaymentRecord { readonly paymentId:number; readonly originalPaymentId:number|null; readonly status:PaymentStatus;
   readonly method:PaymentMethod; readonly amount:TicketMoney; readonly fee:TicketMoney|null; }
@@ -108,7 +108,7 @@ export class SaleTicketComponent implements OnInit {
 
   private readonly adoptDurableSale = effect(() => {
     const requested = this.requestedOperationId(), detail = this.durableSales.detail();
-    if (requested && detail?.identity.operationId === requested) this.openDurable(detail);
+    if (requested && detail?.identity.operationId === requested) untracked(()=>this.openDurable(detail));
     if (requested && this.durableSales.notice() && !this.durableSales.busy()) {
       this.cart.moveTo(CartPhase.RecoveryRequired);
       this.message.set(this.durableSales.notice());
@@ -183,7 +183,7 @@ export class SaleTicketComponent implements OnInit {
     let command: SaleCommand;
     try { command = this.prepareReservation.execute(lines,{...context,cashSessionId:Number(cashSession.id),cashTerminalId:cashSession.terminalId},this.operationReason); }
     catch (error) { this.busy.set(false); this.failDraft(this.failureMessage(error)); return; }
-    const active = Object.freeze({ identity: command.identity });
+    const active = Object.freeze({ identity: command.identity,cashSessionId:command.cashSessionId });
     this.active = active;
     this.operationRef.set(command.identity.operationId);
     this.requestedOperationId.set(command.identity.operationId);
@@ -378,7 +378,7 @@ export class SaleTicketComponent implements OnInit {
     const active = this.active;
     if (!active || !this.canFinish(action)) return;
     this.busy.set(true); this.cart.moveTo(CartPhase.AwaitingCommit);
-    this.completeSale.execute(active.identity,Number(this.counter.openSession()?.id),this.operationReason,action).pipe(
+    this.completeSale.execute(active.identity,active.cashSessionId,this.operationReason,action).pipe(
       takeUntil(this.session.changed), takeUntilDestroyed(this.destroyRef),
       finalize(() => { if (this.active === active) this.busy.set(false); }),
     ).subscribe({
@@ -444,7 +444,7 @@ export class SaleTicketComponent implements OnInit {
       blocked: !detail.valid || !completeLines,
       retired: false,
     });
-    this.active = Object.freeze({ identity: detail.identity });
+    this.active = Object.freeze({ identity: detail.identity,cashSessionId:detail.cashSessionId });
     this.operationRef.set(detail.identity.operationId);
     this.snapshot.set(snapshot);
     this.syncPaymentHistory(detail);
