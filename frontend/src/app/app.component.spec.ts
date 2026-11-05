@@ -33,6 +33,7 @@ describe('AppComponent', () => {
 
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="banner"]')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Integración StoreCore bloqueada');
   });
 

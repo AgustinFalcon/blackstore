@@ -25,7 +25,7 @@ import { StaffPermission } from './core/domain/session-types';
         </nav>
       </aside>
       <main class="main" id="pos-content" tabindex="-1">
-        <header>
+        <header role="banner">
           <h1>BlackStore POS</h1>
           @if (session.staff(); as staff) {
             <p class="role">{{ staff.displayName }} · {{ staff.role.label }}</p>
