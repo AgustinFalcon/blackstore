@@ -18,5 +18,10 @@ describe('cart domain',()=>{
     let draft=CartDraft.empty();for(let index=0;index<100;index+=1)draft=draft.add(line(`v${index}`));
     expect(()=>draft.add(line('overflow'))).toThrow();
     expect(()=>CartDraft.empty().add(line('a',2147483647)).add(line('a',1))).toThrow();
+    expect(()=>CartLine.create({variantId:'expensive',quantity:2147483647,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',
+      originalUnitPrice:'999999999999.99',discountAmount:'0.00'})).toThrowError('Total fuera de rango');
+    const maximum=CartLine.create({variantId:'maximum',quantity:1,expectedPriceVersion:'P1',sku:'MAX',productName:'Máximo',
+      originalUnitPrice:'999999999999.99',discountAmount:'0.00'});
+    expect(()=>CartDraft.empty().add(maximum).add(line('extra'))).toThrowError('Total fuera de rango');
   });
 });

@@ -70,7 +70,7 @@
                 <div class="line-product"><b>{{ line.productName }}</b><span class="sku">{{ line.sku }}</span><span>{{ formatMoney(line.originalUnitPrice.decimal) }} c/u</span></div>
                 <label class="quantity">Cantidad
                   <input type="number" min="1" max="2147483647" [value]="line.quantity"
-                    (change)="changeQuantity(line.variantId, $any($event.target).value)" [attr.aria-label]="'Cantidad de ' + line.productName" />
+                    (change)="changeQuantity(line.variantId, $any($event.target))" [attr.aria-label]="'Cantidad de ' + line.productName" />
                 </label>
                 <strong class="money subtotal">{{ formatMoney(line.subtotal.decimal) }}</strong>
                 <button type="button" class="icon-button" (click)="removeLine(line.variantId, line.productName)" [attr.aria-label]="'Quitar ' + line.productName">Quitar</button>
@@ -99,6 +99,14 @@
           <div><dt>Total comprobado</dt><dd>{{ formatMoney(snapshot()?.total?.decimal) }}</dd></div>
           <div class="pending"><dt>Saldo pendiente</dt><dd>{{ formatMoney(snapshot()?.pending?.decimal) }}</dd></div>
         </dl>
+        @if (paymentHistory().length) {
+          <section class="payment-history" aria-labelledby="payment-history-title">
+            <h4 id="payment-history-title">Historial de cobros</h4>
+            @for (payment of paymentHistory(); track payment.paymentId) {
+              <p><span>{{ payment.method.label }} · {{ payment.status.label }}</span><strong>{{ formatMoney(payment.amount.decimal) }}</strong></p>
+            }
+          </section>
+        } @else { <p class="action-help">Todavía no hay cobros registrados.</p> }
         <details><summary>Detalle técnico de la operación</summary><p class="sku">{{ operationRef() ?? 'Identidad pendiente de comprobación' }}</p></details>
       </section>
 
@@ -114,14 +122,17 @@
               @for (method of paymentMethods; track method.wire) { <option [ngValue]="method">{{ method.label }}</option> }
             </select>
             <label for="payment-amount">Importe</label>
-            <div class="amount-field"><span>$</span><input id="payment-amount" name="paymentAmount" inputmode="decimal" autocomplete="off" [(ngModel)]="paymentAmount" aria-describedby="payment-help" /></div>
+            <div class="amount-field"><span>$</span><input id="payment-amount" name="paymentAmount" inputmode="decimal" autocomplete="off"
+              [(ngModel)]="paymentAmount" (ngModelChange)="announcePaymentValidation()" [attr.aria-invalid]="paymentValidationMessage() ? 'true' : null"
+              [attr.aria-describedby]="paymentValidationMessage() ? 'payment-help payment-error' : 'payment-help'" /></div>
             <p id="payment-help" class="action-help">Podés registrar pagos parciales. Cada cobro se comprueba antes de habilitar el siguiente.</p>
+            @if (paymentValidationMessage(); as error) { <p id="payment-error" class="field-error" role="alert">{{ error }}</p> }
             <button type="submit" class="primary wide" [disabled]="!canCapture()">Registrar cobro</button>
           </form>
         } @else if (phase() === cartPhases[3]) {
           <div class="empty-state"><span class="loader"></span><b>Confirmando venta</b><p>Esperando el estado final comprobado.</p></div>
         } @else if (phase() === cartPhases[4]) {
-          <div class="success-state"><span aria-hidden="true">✓</span><h3>Venta finalizada</h3><p>La operación quedó comprobada.</p><button type="button" class="primary" (click)="startNewSale()">Iniciar nueva venta</button></div>
+          <div class="success-state"><span aria-hidden="true">✓</span><h3>{{ completedTitle() }}</h3><p>{{ completedDescription() }}</p><button type="button" class="primary" (click)="startNewSale()">Iniciar nueva venta</button></div>
         } @else if (isRecovery()) {
           <div class="recovery-state"><h3>Resultado pendiente de comprobación</h3><p>No generes otra operación. Consultá la evidencia existente.</p><button type="button" class="ghost" (click)="refresh()" [disabled]="busy()">Consultar operación</button></div>
         } @else {
@@ -129,7 +140,7 @@
           <button type="button" class="primary wide" (click)="commit()" [disabled]="!canFinish(commitAction)">Confirmar venta</button>
         }
         @if (canFinish(releaseAction)) { <button type="button" class="danger-link" (click)="requestRelease()">Liberar reserva</button> }
-        <button type="button" class="ghost wide" (click)="refresh()" [disabled]="busy() || !operationRef()">Actualizar estado</button>
+        <button type="button" class="ghost wide" (click)="refresh()" [disabled]="busy() || (!operationRef() && !requestedOperationId())">Actualizar estado</button>
       </aside>
     </div>
   }

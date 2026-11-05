@@ -2,8 +2,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { AccountingCommand } from '../../core/domain/accounting-command';
+import { CartPhase } from '../../core/domain/cart';
+import { PaymentCoverage, PaymentLedgerSemantics, TicketMoney } from '../../core/domain/ticket-transition';
+import { SaleStatus } from '../../core/domain/pos-types';
 import { ReversalReason } from '../../core/domain/reversal-reason';
 import { SaleAdmissionOutcome, SaleAdmissionRoute, SaleCommand } from '../../core/domain/sale-command';
 import { CommandHttp } from '../../core/infrastructure/command-http';
@@ -28,6 +32,7 @@ describe('SaleTicketComponent explicit cart journey', () => {
       execute: jasmine.createSpy().and.returnValue(Promise.resolve({ outcome: SaleAdmissionOutcome.Unknown, receipt: null })),
       consult: jasmine.createSpy().and.returnValue(Promise.resolve(null)) };
     TestBed.configureTestingModule({ imports: [SaleTicketComponent], providers: [provideHttpClient(), provideHttpClientTesting(),
+      provideRouter([]),
       { provide: CommandRuntimeStore, useValue: runtime },
       { provide: CommandHttp, useValue: { ticket: jasmine.createSpy().and.returnValue(of(null)) } },
       { provide: CounterContextService, useValue: { load: () => undefined, loading: signal(false), catalog,
@@ -85,5 +90,24 @@ describe('SaleTicketComponent explicit cart journey', () => {
     component.addSelected(); session.changed.next();
     expect(component.cart.lineCount()).toBe(0);
     expect(component.operationRef()).toBeNull();
+  });
+
+  it('restores an invalid visible quantity and marks its field invalid',()=>{
+    const fixture=TestBed.createComponent(SaleTicketComponent),tested=fixture.componentInstance;
+    tested.selectedSku='SKU-A';tested.addSelected();fixture.detectChanges();
+    const input=fixture.nativeElement.querySelector('.quantity input') as HTMLInputElement;
+    input.value='0';input.dispatchEvent(new Event('change'));fixture.detectChanges();
+    expect(input.value).toBe('1');expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(tested.cart.draft().lines[0].quantity).toBe(1);
+  });
+
+  it('associates concrete payment validation errors before submit',()=>{
+    component.cart.moveTo(CartPhase.AwaitingPayment);
+    component.snapshot.set(Object.freeze({identity:{clientInstanceId:'c',deviceId:'d',saleId:'s',operationId:'o'},status:SaleStatus.Reserved,
+      evidenceValid:true,receipt:'r',reservationRef:'x',total:TicketMoney.fromDecimal('10'),pending:TicketMoney.fromDecimal('10'),
+      coverage:PaymentCoverage.Unpaid,hasPaymentHistory:false,blocked:false,retired:false,ledgerSemantics:PaymentLedgerSemantics.Net}));
+    component.paymentAmount='10.001';expect(component.paymentValidationMessage()).toContain('dos decimales');
+    component.paymentAmount='11';expect(component.paymentValidationMessage()).toContain('no puede superar');
+    component.paymentAmount='10';expect(component.paymentValidationMessage()).toBeNull();
   });
 });

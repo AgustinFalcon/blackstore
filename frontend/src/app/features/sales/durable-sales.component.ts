@@ -38,7 +38,7 @@ interface DurableReleaseReview {
             <article>
               <p>{{ sale.status.label }} · caja {{ sale.cashSessionId }} · total {{ sale.total?.decimal ?? 'No comprobado' }}</p>
               <p class="sku">{{ sale.identity.operationId }}</p>
-              <button type="button" (click)="store.open(sale.identity.operationId)" [disabled]="store.busy()">Reabrir</button>
+              <a routerLink="/ticket" [queryParams]="{operationId:sale.identity.operationId}">Continuar en punto de venta</a>
             </article>
           } @empty { <p>No hay ventas visibles en esta página.</p> }
           @if (store.nextCursor(); as cursor) { <button type="button" (click)="store.list(cursor, filter)">Página siguiente</button> }
@@ -84,6 +84,7 @@ interface DurableReleaseReview {
           @if (store.can(actions.Commit)) { <button type="button" (click)="store.execute(actions.Commit, reason)">Confirmar venta</button> }
           @if (store.can(actions.Release)) { <button type="button" (click)="requestRelease()">Liberar reserva</button> }
           <button type="button" (click)="store.open(sale.identity.operationId)">Consultar estado</button>
+          <a routerLink="/ticket" [queryParams]="{operationId:sale.identity.operationId}">Continuar operación en punto de venta</a>
           <button type="button" (click)="store.close()">Cerrar detalle</button>
         </div>
       }

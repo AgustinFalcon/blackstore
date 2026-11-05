@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { CommandFailure, CommandOutcome } from '../../core/domain/accounting-command';
 import { PaymentCoverage } from '../../core/domain/ticket-transition';
@@ -34,7 +35,7 @@ describe('Explicit reserve and payment integration', () => {
       identity = next;
       return of(detail(next, accounting.execute.calls.count() ? '0.00' : '27.50', accounting.execute.calls.count() ? PaymentCoverage.Paid : PaymentCoverage.Unpaid, accounting.execute.calls.count() > 0));
     }) };
-    TestBed.configureTestingModule({ imports: [SaleTicketComponent], providers: [provideHttpClient(), provideHttpClientTesting(),
+    TestBed.configureTestingModule({ imports: [SaleTicketComponent], providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
       { provide: AccountingCommandsStore, useValue: accounting }, { provide: SaleCommandsStore, useValue: sales },
       { provide: CommandHttp, useValue: commandHttp },
       { provide: CounterContextService, useValue: { load: () => undefined, loading: signal(false),

@@ -1,7 +1,11 @@
 import { firstValueFrom, of, Subject, throwError } from 'rxjs';
-import { PaymentMethod, PaymentStatus, SaleStatus } from '../../core/domain/pos-types';
+import { PaymentMethod, PaymentStatus, SaleAction, SaleStatus } from '../../core/domain/pos-types';
 import { PaymentCoverage, TicketMoney } from '../../core/domain/ticket-transition';
-import { AwaitReservationStep, CapturePaymentStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketPaymentJourney } from './ticket-steps';
+import { CartDraft, CartLine } from '../../core/domain/cart';
+import { SaleAdmissionOutcome, SaleCommand } from '../../core/domain/sale-command';
+import { AwaitReservationStep, AwaitTerminalSaleStep, CapturePaymentStep, CommitSaleStep, PrepareReservationStep,
+  RefreshCoverageStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketPaymentJourney,
+  ValidateCartStep } from './ticket-steps';
 
 describe('TicketPaymentJourney (T02/T05)', () => {
   const identity = {
@@ -156,5 +160,45 @@ describe('TicketPaymentJourney (T02/T05)', () => {
       expect(progress).not.toHaveBeenCalled();
       expect(port.capture.calls.count()).toBe(1);
     }
+  });
+
+  it('waits for a correlated terminal read after commit admission', async () => {
+    port.refresh.and.returnValues(
+      of(snapshot('0', PaymentCoverage.Paid, SaleStatus.CommitPending)),
+      of(snapshot('0', PaymentCoverage.Paid, SaleStatus.Committed)),
+    );
+    const result = await firstValueFrom(new AwaitTerminalSaleStep(port, 3, 0).execute(identity, SaleAction.Commit));
+    expect(result.status).toBe(SaleStatus.Committed);
+    expect(port.refresh.calls.count()).toBe(2);
+  });
+
+  it('validates the entire cart before preparing one V3 reservation command',()=>{
+    const draft=CartDraft.empty().add(CartLine.create({variantId:'variant',sku:'SKU',productName:'Producto',quantity:2,
+      expectedPriceVersion:'P1',originalUnitPrice:'9.00',discountAmount:'0.00'}));
+    const lines=new ValidateCartStep().execute(draft);
+    const command=new PrepareReservationStep().execute(lines,{clientInstanceId:identity.clientInstanceId,deviceId:'terminal-1',terminalId:10,
+      cashSessionId:2,cashTerminalId:10},'venta mostrador');
+    expect(command).toEqual(jasmine.any(SaleCommand));expect(command.body['lines']).toEqual(lines);
+    expect(()=>new PrepareReservationStep().execute(lines,{clientInstanceId:identity.clientInstanceId,deviceId:'terminal-1',terminalId:10,
+      cashSessionId:2,cashTerminalId:11},'')).toThrowError('Caja y contexto POS no coinciden.');
+  });
+
+  it('refresh coverage preserves captured evidence but rejects an unconfirmed balance delta',async()=>{
+    const attempt={identity,method:PaymentMethod.Cash,amount:money('10'),fee:money('0')};
+    const captured=jasmine.createSpy('captured');
+    port.capturePayment=()=>of({paymentId:41,status:PaymentStatus.Captured,amount:money('10'),fee:money('0')});
+    port.refresh.and.returnValue(of(snapshot('18',PaymentCoverage.Unpaid)));
+    const authoritative=await firstValueFrom(new RefreshTicketStep(port).execute(identity));
+    const step=new RefreshCoverageStep(new CapturePaymentStep(port),new RefreshTicketStep(port),captured);
+    await expectAsync(firstValueFrom(step.execute(authoritative,attempt))).toBeRejected();
+    expect(captured).toHaveBeenCalled();
+  });
+
+  it('commit step revalidates policy, submits once and waits for the terminal read',async()=>{
+    port.refresh.and.returnValues(of(snapshot('0',PaymentCoverage.Paid,SaleStatus.Reserved)),of(snapshot('0',PaymentCoverage.Paid,SaleStatus.Committed)));
+    const submit=jasmine.createSpy('submit').and.returnValue(of({outcome:SaleAdmissionOutcome.Accepted,receipt:null}));
+    const refresh=new RefreshTicketStep(port),terminal=new AwaitTerminalSaleStep(port,2,0);
+    const result=await firstValueFrom(new CommitSaleStep(refresh,submit,terminal).execute(identity,2,'cierre',SaleAction.Commit));
+    expect(result.status).toBe(SaleStatus.Committed);expect(submit).toHaveBeenCalledTimes(1);
   });
 });
