@@ -3,7 +3,7 @@
 ## Fuente y alcance
 
 - Base integrada: `51f109f2c824bcfcf6f3016c90c41f4a8d123b09` (BlackStore `master`, PR #52).
-- Implementación revisable: `34ceea4bdfccb8993807db4a3e9fe3be0e5c0e9b` (`codex/blackstore-posc-t`), que incluye el núcleo `bb06433` y las correcciones de review posteriores.
+- Implementación revisable: `997c55901e5e31638dc9a40fe308b3104b654176` (`codex/blackstore-posc-t`), que incluye el núcleo `bb06433` y las correcciones de review posteriores.
 - Corte: tipos cerrados de contrato/carrito, política Unicode AdmissionV2, codecs V1/V2, rutas HTTP cerradas, journal V2 con upgrade V1, traducción de recibos/rechazos y reconstrucción durable completa.
 - No acredita UI POSC-U, PostgreSQL/browser POSC-E, StoreCore live, homologación ni publicación.
 
@@ -12,11 +12,11 @@
 Desde `frontend`:
 
 - `npm run typecheck`: PASS.
-- `npm test -- --no-progress`: PASS, 354/354 casos descubiertos y ejecutados en Chrome Headless 156.
+- `npm test -- --no-progress`: PASS, 355/355 casos descubiertos y ejecutados en Chrome Headless 156.
 - `npm run build`: PASS; bundle de producción generado.
 - `git diff --check`: PASS antes del commit.
 
-La primera invocación de Karma dentro del sandbox no compiló porque el bundler no pudo leer rutas del worktree. Se repitió fuera del sandbox con las dependencias locales restauradas por `npm ci`; allí compiló y ejecutó los 354 casos. No se contabiliza la invocación abortada como prueba.
+La primera invocación de Karma dentro del sandbox no compiló porque el bundler no pudo leer rutas del worktree. Se repitió fuera del sandbox con las dependencias locales restauradas por `npm ci`; la última ejecución compiló y ejecutó los 355 casos. No se contabiliza la invocación abortada como prueba.
 
 ## Assertions agregadas
 
@@ -30,6 +30,7 @@ La primera invocación de Karma dentro del sandbox no compiló porque el bundler
 - Commit/release V2 rehidratan referencias opacas originadas en V3, incluida la política Unicode que conserva NBSP.
 - El shape real V1 (precio original presente; variante y versión ausentes) se clasifica como histórico legible; metadata parcial o explícitamente malformada se clasifica `Unknown` y bloquea mutación.
 - Recibos V1 sólo infieren `sale-admission-v1` cuando el discriminador está ausente; una versión explícita incompatible falla cerrada.
+- La lectura durable usa la misma política Unicode AdmissionV2 para variante, versión, SKU y nombre, incluso con referencias compuestas sólo por NBSP/FEFF.
 
 ## Revisión
 
