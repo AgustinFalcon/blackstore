@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-05. Rama: `codex/blackstore-posc-u`.
 
-Corte de implementación verificado: `72ef0ef07b7ed723876739a5775c42b8ca968ba4` sobre base `dbb3c368720fe153c17be09d592ab14aadb14390`.
+Corte de implementación verificado: `2b5c3273fea23e0430dcd2992e6c2304f45edc56` sobre base `dbb3c368720fe153c17be09d592ab14aadb14390`.
 
 ## Implementación local previa a review
 
@@ -19,7 +19,7 @@ Corte de implementación verificado: `72ef0ef07b7ed723876739a5775c42b8ca968ba4` 
 ## Gates ejecutados
 
 - `npm run typecheck`: PASS.
-- `npm test`: PASS, 357/357.
+- `npm test`: PASS, 358/358.
 - `npm run build`: PASS.
 - Pruebas de integración reales con runtime, journal y HTTP: Pending→Reserved, timeout acotado, 404/null y cambio de actor conservan el claim correcto y nunca capturan automáticamente: PASS.
 - Prueba de integración de UI: reserva V3 multiline produce cero capturas automáticas; una captura aparece sólo después del gesto explícito y del refresh correlacionado: PASS.
