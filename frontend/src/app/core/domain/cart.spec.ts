@@ -13,6 +13,8 @@ describe('cart domain',()=>{
   });
   it('rejects overflow, an empty freeze and more than 100 variants',()=>{
     expect(()=>CartDraft.empty().freeze()).toThrow();
+    expect(()=>line('a',2147483648)).toThrow();
+    expect(()=>CartLine.create({variantId:' bad',quantity:1,expectedPriceVersion:'P1',sku:'SKU',productName:'Artículo',originalUnitPrice:'10.00',discountAmount:'0.00'})).toThrow();
     let draft=CartDraft.empty();for(let index=0;index<100;index+=1)draft=draft.add(line(`v${index}`));
     expect(()=>draft.add(line('overflow'))).toThrow();
     expect(()=>CartDraft.empty().add(line('a',2147483647)).add(line('a',1))).toThrow();

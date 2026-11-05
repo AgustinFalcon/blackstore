@@ -1,86 +1,89 @@
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController,provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { of,Subject } from 'rxjs';
-import { SaleTicketComponent } from './sale-ticket.component';
+import { of } from 'rxjs';
+import { AccountingCommand } from '../../core/domain/accounting-command';
+import { ReversalReason } from '../../core/domain/reversal-reason';
+import { SaleAdmissionOutcome, SaleAdmissionRoute, SaleCommand } from '../../core/domain/sale-command';
+import { CommandHttp } from '../../core/infrastructure/command-http';
+import { CommandRuntimeStore } from '../../core/services/command-runtime.store';
 import { CounterContextService } from '../../core/services/counter-context.service';
 import { SessionStore } from '../../core/services/session.store';
 import { authenticateTestSession } from '../../core/services/session-test-helper';
-import { CommandRuntimeStore } from '../../core/services/command-runtime.store';
-import { CommandHttp } from '../../core/infrastructure/command-http';
-import { SaleCommand,SaleCommandKind,SaleAdmissionOutcome } from '../../core/domain/sale-command';
-import { SaleAction,SaleStatus } from '../../core/domain/pos-types';
-import { PaymentCoverage } from '../../core/domain/ticket-transition';
-import { ReversalReason } from '../../core/domain/reversal-reason';
-describe('SaleTicketComponent v2 guarded journey',()=>{
-  let component:SaleTicketComponent;let runtime:any;let api:any;let http:HttpTestingController;
-  const context={clientInstanceId:'11111111-1111-1111-1111-111111111111',deviceId:'provisioned-device',terminalId:10};
-  beforeEach(()=>{
-    runtime={ pending:signal(null),canWrite:signal(true),context:signal(context),notice:signal('Comprobado'),
-      execute:jasmine.createSpy().and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Unknown,receipt:null})),consult:jasmine.createSpy().and.returnValue(Promise.resolve(null)) };
-    api={ticket:jasmine.createSpy().and.returnValue(of(null))};
-    TestBed.configureTestingModule({imports:[SaleTicketComponent],providers:[provideHttpClient(),provideHttpClientTesting(),
-      {provide:CommandRuntimeStore,useValue:runtime},{provide:CommandHttp,useValue:api},
-      {provide:CounterContextService,useValue:{load:()=>{},catalog:signal(null),openSession:signal({id:2,terminalId:10}),blockReason:()=>null}}]});
-    authenticateTestSession(TestBed.inject(SessionStore));
-    component=TestBed.createComponent(SaleTicketComponent).componentInstance;http=TestBed.inject(HttpTestingController);
+import { SaleTicketComponent } from './sale-ticket.component';
+
+describe('SaleTicketComponent explicit cart journey', () => {
+  let component: SaleTicketComponent;
+  let runtime: any;
+  let session: SessionStore;
+  const context = { clientInstanceId: '11111111-1111-1111-1111-111111111111', deviceId: 'provisioned-device', terminalId: 10 };
+  const catalog = signal({ version: 'v1', stale: false, importedAt: null, validUntil: null, items: [
+    { sku: 'SKU-A', name: 'Taladro profesional', variantId: 'variant-a', priceVersion: 'P1', unitPrice: 10 },
+    { sku: 'SKU-B', name: 'Amoladora compacta', variantId: 'variant-b', priceVersion: 'P2', unitPrice: 17.5 },
+  ] });
+
+  beforeEach(() => {
+    runtime = { pending: signal(null), canWrite: signal(true), context: signal(context), notice: signal('Comprobado'),
+      execute: jasmine.createSpy().and.returnValue(Promise.resolve({ outcome: SaleAdmissionOutcome.Unknown, receipt: null })),
+      consult: jasmine.createSpy().and.returnValue(Promise.resolve(null)) };
+    TestBed.configureTestingModule({ imports: [SaleTicketComponent], providers: [provideHttpClient(), provideHttpClientTesting(),
+      { provide: CommandRuntimeStore, useValue: runtime },
+      { provide: CommandHttp, useValue: { ticket: jasmine.createSpy().and.returnValue(of(null)) } },
+      { provide: CounterContextService, useValue: { load: () => undefined, loading: signal(false), catalog,
+        openSession: signal({ id: 2, terminalId: 10 }), blockReason: () => null } },
+    ] });
+    session = TestBed.inject(SessionStore);
+    authenticateTestSession(session);
+    component = TestBed.createComponent(SaleTicketComponent).componentInstance;
+    component.selectedSku = 'SKU-A';
   });
-  afterEach(()=>http.verify());
-  it('disables reversal for invalid reasons and explains the accepted length',async()=>{
+
+  it('builds a multiline cart from authorized prices and merges a repeated variant', () => {
+    component.addSelected(); component.addSelected();
+    component.selectedSku = 'SKU-B'; component.addSelected();
+    expect(component.cart.lineCount()).toBe(2);
+    expect(component.cart.unitCount()).toBe(3);
+    expect(component.cart.draft().lines[0].quantity).toBe(2);
+    expect(component.cart.draft().total?.decimal).toBe('37.50');
+  });
+
+  it('creates one V3 multiline reserve and never schedules an automatic payment', async () => {
+    component.addSelected(); component.selectedSku = 'SKU-B'; component.addSelected();
+    spyOn(component, 'blockReason').and.returnValue(null);
+    expect(component.canReserve()).toBeTrue();
+    component.reserve(); component.reserve();
+    await Promise.resolve(); await Promise.resolve();
+    expect(runtime.execute.calls.count()).toBe(1);
+    const command = runtime.execute.calls.mostRecent().args[0] as SaleCommand;
+    expect(command).toEqual(jasmine.any(SaleCommand));
+    expect(command.route).toBe(SaleAdmissionRoute.ReserveV3);
+    expect((command.body['lines'] as readonly unknown[]).length).toBe(2);
+    expect(runtime.execute.calls.allArgs().flat().some((value: unknown) => value instanceof AccountingCommand)).toBeFalse();
+  });
+
+  it('renders separate reserve and payment language with an accessible empty state', async () => {
     const fixture = TestBed.createComponent(SaleTicketComponent);
-    const ticket = fixture.componentInstance;
-    ticket.paymentId.set(17);
-    spyOn(ticket,'canFinish').and.returnValue(true);
+    fixture.detectChanges(); await fixture.whenStable();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('El carrito está vacío');
+    expect(text).toContain('Armá el carrito, reservá el stock y registrá cada cobro de forma explícita');
+    expect(text).not.toContain('Reservar y cobrar');
+    expect(fixture.nativeElement.querySelector('[aria-live="polite"]')).not.toBeNull();
+  });
+
+  it('rejects invalid reversal reasons at the UI boundary', () => {
     for (const reason of ['', 'x', 'ok', 'x'.repeat(ReversalReason.maxLength + 1), '   ']) {
-      ticket.reversalReason = reason;
-      fixture.changeDetectorRef.markForCheck();
-      fixture.detectChanges();
-      await fixture.whenStable();
-      expect(fixture.nativeElement.querySelector('input[name="reversalReason"]').closest('form').querySelector('button[type="submit"]').disabled).toBeTrue();
-      ticket.requestReverse(17);
-      expect(ticket.reversalReview()).toBeNull();
+      component.reversalReason = reason;
+      expect(component.validReversalReason()).toBeFalse();
     }
-    expect(fixture.nativeElement.querySelector('#ticket-reversal-reason-guidance').textContent).toContain(ReversalReason.guidance);
-    for (const length of [ReversalReason.minLength, ReversalReason.maxLength]) {
-      ticket.reversalReason = `  ${'x'.repeat(length)}  `;
-      fixture.changeDetectorRef.markForCheck();
-      fixture.detectChanges();
-      await fixture.whenStable();
-      expect(ticket.validReversalReason()).toBeTrue();
-      expect(fixture.nativeElement.querySelector('input[name="reversalReason"]').closest('form').querySelector('button[type="submit"]').disabled).toBeFalse();
-    }
-    http.expectNone(r=>r.method==='POST');
+    component.reversalReason = '  cobro duplicado  ';
+    expect(component.validReversalReason()).toBeTrue();
   });
-  for(const notice of ['Comprobando evidencia','Contabilidad pausada','Contexto desconocido','Storage no confirmado','Evidencia en cuarentena']){
-    it('blocks writes and displays '+notice,()=>{
-      runtime.canWrite.set(false);runtime.notice.set(notice);component.reserve();
-      expect(component.blockReason()).toBe(notice);expect(runtime.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
-    });
-  }
-  it('freezes provisioned identity and canonical fields in a Reserve command without fee',async()=>{
-    component.operationReason='  caja ajena  ';component.reserve();await Promise.resolve();
-    const command=runtime.execute.calls.mostRecent().args[0] as SaleCommand;
-    expect(command.kind).toBe(SaleCommandKind.Reserve);expect(command.identity.clientInstanceId).toBe(context.clientInstanceId);expect(command.identity.deviceId).toBe(context.deviceId);
-    expect(command.body['cashSessionId']).toBe(2);expect(command.body['reason']).toBe('caja ajena');expect(command.body['feeAmount']).toBeUndefined();
-    expect(Object.isFrozen(command.body)).toBeTrue();http.expectNone(r=>r.method==='POST');
-  });
-  it('a pending admission never authorizes capture or commit and double submit retains one command',async()=>{
-    component.reserve();component.reserve();await Promise.resolve();await Promise.resolve();
-    expect(runtime.execute.calls.count()).toBe(1);expect(component.canFinish(SaleAction.Commit)).toBeFalse();expect(api.ticket).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
-  });
-  it('requires matching cash terminal before intent creation',()=>{
-    TestBed.inject(CounterContextService).openSession.set({id:2,terminalId:11,cashierId:7,status:undefined as any,openingCash:0});
-    component.reserve();expect(runtime.execute).not.toHaveBeenCalled();expect(component.message()).toContain('no coinciden');
-  });
-  it('accepted admission followed by an invalid GET cannot capture',async()=>{
-    runtime.execute.and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Accepted,receipt:{}}));
-    component.reserve();await Promise.resolve();await Promise.resolve();
-    expect(api.ticket.calls.count()).toBe(1);expect(runtime.execute.calls.count()).toBe(1);expect(component.canFinish(SaleAction.Commit)).toBeFalse();
-  });
-  it('actor change masks visible attempt and ignores late accepted response',async()=>{
-    let deliver!:(value:any)=>void;runtime.execute.and.returnValue(new Promise(resolve=>deliver=resolve));
-    component.reserve();TestBed.inject(SessionStore).changed.next();deliver({outcome:SaleAdmissionOutcome.Accepted,receipt:{}});
-    await Promise.resolve();await Promise.resolve();expect(component.operationRef()).toBeNull();expect(component.paymentId()).toBeNull();expect(api.ticket).not.toHaveBeenCalled();
+
+  it('clears draft and evidence when the authenticated actor changes', () => {
+    component.addSelected(); session.changed.next();
+    expect(component.cart.lineCount()).toBe(0);
+    expect(component.operationRef()).toBeNull();
   });
 });

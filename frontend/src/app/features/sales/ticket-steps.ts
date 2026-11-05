@@ -28,10 +28,11 @@ export class AwaitReservationStep {
     private readonly port: TicketFlowPort,
     private readonly maxReads = 20,
     private readonly delayMs = 100,
+    private readonly semantics = PaymentLedgerSemantics.Legacy,
   ) {}
 
   execute(identity: TicketIdentity, snapshot: TicketSnapshot): Observable<TicketSnapshot> {
-    return new AwaitReservationReadStep(()=>this.port.refresh(identity).pipe(map(response=>PosWireMapper.ticket(response,identity))),
+    return new AwaitReservationReadStep(()=>this.port.refresh(identity).pipe(map(response=>PosWireMapper.ticket(response,identity,this.semantics))),
       next=>next.status===SaleStatus.Reserved && next.evidenceValid ? ReservationReadState.Reserved :
         next.status===SaleStatus.PendingReservation ? ReservationReadState.Pending : ReservationReadState.Unknown,
       ()=>true,this.maxReads,this.delayMs).execute(snapshot);

@@ -1,16 +1,16 @@
 {
   "feature": "blackstore-pos-cart-explicit-payment",
-  "status": "posc_t_review_approved_ci_pending",
-  "base_commit": "51f109f2c824bcfcf6f3016c90c41f4a8d123b09",
+  "status": "posc_u_implemented_local_review_pending",
+  "base_commit": "dbb3c368720fe153c17be09d592ab14aadb14390",
   "reviewed_design_parent_commit": "1fec3d46c21f9c87e09ccfc437dc452719bc6142",
   "document_origin_commit": "79c612c78160135df0e9011d5bcd93533d14d4e8",
   "stats": {"total": 5, "done": 3},
-  "gates": {"design": "APPROVED", "implementation": "APPROVED", "integration": "POSC_B_MERGED_POSC_T_CI_PENDING", "homologation": "BLOCKED", "publication": "NOT_RUN"},
+  "gates": {"design": "APPROVED", "implementation": "POSC_U_LOCAL_GREEN_REVIEW_PENDING", "integration": "POSC_T_MERGED_POSC_E_PENDING", "homologation": "BLOCKED", "publication": "NOT_RUN"},
   "tasks": [
     {"id": "POSC-D", "title": "SDD y revisión de contrato multiline compatible", "status": "done", "depends_on": [], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-005", "POSC-006", "POSC-007", "POSC-008"]},
     {"id": "POSC-B", "title": "Backend multiline versionado y persistencia compatible", "status": "done", "depends_on": ["POSC-D"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-005", "POSC-006", "POSC-007", "POSC-008"]},
     {"id": "POSC-T", "title": "Tipos, traductores y journal por versión", "status": "done", "depends_on": ["POSC-B"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-006", "POSC-007", "POSC-008"]},
-    {"id": "POSC-U", "title": "Carrito y cobro explícito en mostrador", "status": "planned", "depends_on": ["POSC-T"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-005"]},
+    {"id": "POSC-U", "title": "Carrito y cobro explícito en mostrador", "status": "in_progress", "depends_on": ["POSC-T"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-005"]},
     {"id": "POSC-E", "title": "PG16, browser, restart, CI y revisiones", "status": "planned", "depends_on": ["POSC-U"], "requirements": ["POSC-001", "POSC-002", "POSC-003", "POSC-004", "POSC-005", "POSC-006", "POSC-007", "POSC-008"]}
   ]
 }

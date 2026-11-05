@@ -1,5 +1,6 @@
 import { TicketMoney } from './ticket-transition';
 import { SaleReservationLineV2 } from './sale-command';
+import { SaleTextV2 } from './sale-text-v2';
 
 export class CartPhase {
   static readonly Editing=new CartPhase('Editing','Editando carrito',true);
@@ -20,9 +21,10 @@ export class CartLine {
     readonly expectedPriceVersion:string,readonly originalUnitPrice:TicketMoney,readonly discountAmount:TicketMoney){}
   static create(input:SaleReservationLineV2):CartLine {
     const price=TicketMoney.fromDecimal(input.originalUnitPrice),discount=TicketMoney.fromDecimal(input.discountAmount);
-    if(!input.variantId||!input.sku||!input.productName||!input.expectedPriceVersion||!Number.isSafeInteger(input.quantity)||input.quantity<1||
+    if(!Number.isSafeInteger(input.quantity)||input.quantity<1||input.quantity>2147483647||
       !price||price.cents<=0n||!discount||discount.cents!==0n)throw new Error('Línea de carrito inválida');
-    return new CartLine(input.variantId,input.sku,input.productName,input.quantity,input.expectedPriceVersion,price,discount);
+    return new CartLine(SaleTextV2.ref(input.variantId),SaleTextV2.ref(input.sku),SaleTextV2.name(input.productName),input.quantity,
+      SaleTextV2.ref(input.expectedPriceVersion),price,discount);
   }
   withQuantity(quantity:number):CartLine {
     if(!Number.isSafeInteger(quantity)||quantity<1||quantity>2147483647)throw new Error('Cantidad inválida');
