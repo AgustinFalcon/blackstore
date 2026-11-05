@@ -4,12 +4,12 @@ import { AccountingCommand, AccountingCommandKind, CommandOutcome, CommandReceip
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
 import { JournalEntry, JournalFamily, JournalPhase, JournalScope, sameScope } from '../domain/command-journal';
 import { PosContextState, PosExecutionContext } from '../domain/pos-execution-context';
-import { SaleAdmission, SaleAdmissionOutcome, SaleCommand,SaleCommandKind,SaleAdmissionVerification } from '../domain/sale-command';
+import { SaleAdmission, SaleAdmissionOutcome, SaleCommand,SaleCommandKind,SaleAdmissionVerification,SaleFingerprintVersion } from '../domain/sale-command';
 import { IndexedDbCommandJournal } from '../infrastructure/indexed-db-command-journal';
 import { CommandHttp } from '../infrastructure/command-http';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
 import { SessionStore } from './session.store';
-import { SaleAdmissionFingerprint } from '../infrastructure/sale-admission-fingerprint';
+import { SaleFingerprintRegistry } from '../infrastructure/sale-admission-fingerprint';
 import {FOREGROUND_REFRESH} from '../infrastructure/foreground-refresh';
 
 /** Shared coordinator: evidence is durable; a session generation only owns visible observations. */
@@ -88,9 +88,10 @@ export class CommandRuntimeStore {
       const cashSessionId = await firstValueFrom(this.api.references(command,scope.terminalId));
       if (cashSessionId === false || !this.current(epoch,generation,actor)) return unknown;
       if (body['terminalId'] != null && body['terminalId'] !== scope.terminalId) return unknown;
-      const fingerprint=command instanceof SaleCommand ? {expectedPayloadHash:await SaleAdmissionFingerprint.hash(command,actor),fingerprintVersion:SaleAdmissionFingerprint.version} : {};
+      const codec=command instanceof SaleCommand?SaleFingerprintRegistry.codec(command):null;
+      const fingerprint=command instanceof SaleCommand ? {expectedPayloadHash:await codec!.hash(command,actor),fingerprintVersion:codec!.version,admissionRoute:command.route} : {};
       if(!this.current(epoch,generation,actor))return unknown;
-      const entry: JournalEntry = Object.freeze({ version: 1, scope, family: command instanceof SaleCommand ? JournalFamily.Sale : JournalFamily.Accounting,
+      const entry: JournalEntry = Object.freeze({ version: command instanceof SaleCommand&&command.route.fingerprintVersion===SaleFingerprintVersion.AdmissionV2?2:1, scope, family: command instanceof SaleCommand ? JournalFamily.Sale : JournalFamily.Accounting,
         command, actorId: actor, cashSessionId, phase: JournalPhase.Prepared, tabId: this.tabId,...fingerprint });
       await this.journal.prepare(entry); // oncomplete, not request success, is the send barrier.
       if (!this.current(epoch,generation,actor)) return unknown;
@@ -116,8 +117,8 @@ export class CommandRuntimeStore {
   private async record(entry: JournalEntry,raw: unknown,epoch: number,generation: number,actor: number): Promise<CommandReceipt | SaleAdmission> {
     const command = entry.command; const unknown = this.unknown(command);
     if (!this.current(epoch,generation,actor) || this.pending()?.command.commandId !== command.commandId || !this.session.can(command.kind.permission)) return unknown;
-    if(command instanceof SaleCommand && (entry.fingerprintVersion!==SaleAdmissionFingerprint.version || !entry.expectedPayloadHash ||
-      await SaleAdmissionFingerprint.hash(command,entry.actorId)!==entry.expectedPayloadHash)){
+    if(command instanceof SaleCommand && (!entry.expectedPayloadHash || entry.fingerprintVersion!==command.route.fingerprintVersion || entry.admissionRoute!==command.route ||
+      await SaleFingerprintRegistry.codec(command).hash(command,entry.actorId)!==entry.expectedPayloadHash)){
       this.neutralBlock.set(true);this.notice.set('Fingerprint de evidencia local incompatible. Cuarentena; requiere conciliación.');return unknown;
     }
     if(!this.current(epoch,generation,actor))return unknown;

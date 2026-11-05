@@ -9,7 +9,7 @@ import { TestBed } from '@angular/core/testing';
 import { AccountingCoverage, CommandFailure, CommandOutcome, ExpenseOperation } from '../domain/accounting-command';
 import { ReconciliationOutcome } from '../domain/accounting-report';
 import { ACCOUNTING_API_BASE, API_BASE } from '../api';
-import { AllowedAction, DurableSaleState,PaymentReversibility } from '../domain/durable-sale';
+import { AllowedAction, DurableLineMetadata, DurableSaleState,PaymentReversibility } from '../domain/durable-sale';
 import { PaymentMethod, PaymentStatus, StaffRole } from '../domain/pos-types';
 import { PaymentCoverage } from '../domain/ticket-transition';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
@@ -26,7 +26,7 @@ const detail = (status = DurableSaleState.Reserved, coverage = PaymentCoverage.P
   pendingAmount: coverage === PaymentCoverage.Paid ? '0' : coverage === PaymentCoverage.Unpaid ? '18' : '8',
   paymentCoverage: coverage.wire, hasPaymentHistory: coverage !== PaymentCoverage.Unpaid,
   evidenceValid: true, receipt: 'receipt', reservationRef: 'reservation', blocked: false, retired: false,
-  lines: [{ sku: 'SKU', productName: 'Producto persistido', quantity: 1, totalAmount: '18' }],
+  lines: [{variantId:'variant-1',sku: 'SKU', productName: 'Producto persistido', quantity: 1,originalUnitPrice:'18',priceVersion:'P1',totalAmount: '18' }],
   payments: coverage === PaymentCoverage.Unpaid ? [] : [{ paymentId: 41, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount: coverage === PaymentCoverage.Paid ? '18' : '10', feeAmount: '0' }],
   pendingCommand: null, allowedActions: AllowedAction.values.map(action => action.wire), ...overrides });
 
@@ -48,6 +48,29 @@ describe('DurableSale closed types and DTO boundary', () => {
     for (const action of AllowedAction.values) expect(AllowedAction.fromWire(action.wire)).toBe(action);
     expect(DurableSaleState.fromWire('NEW_BACKEND_STATE')).toBe(DurableSaleState.Unknown);
     expect(AllowedAction.fromWire('UNRECOGNIZED_ACTION')).toBe(AllowedAction.Unknown);
+  });
+  it('preserves V3 opaque sale identity and complete line metadata',()=>{
+    const sale=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{saleId:'opaque-sale'})),identity.operationId)!;
+    expect(sale.identity.saleId).toBe('opaque-sale');expect(sale.lines[0].variantId).toBe('variant-1');
+    expect(sale.lines[0].originalUnitPrice?.decimal).toBe('18.00');expect(sale.lines[0].priceVersion).toBe('P1');expect(sale.valid).toBeTrue();
+  });
+  it('preserves AdmissionV2 Unicode policy across durable line refresh',()=>{
+    const exact={variantId:'\u00a0',sku:'\u00a0',productName:'\u00a0',quantity:1,originalUnitPrice:'18',priceVersion:'\u00a0',totalAmount:'18'};
+    const sale=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{lines:[exact]})),identity.operationId)!;
+    expect(sale.valid).toBeTrue();expect(sale.lines[0].metadata).toBe(DurableLineMetadata.Complete);
+    expect(sale.lines[0].variantId).toBe('\u00a0');expect(sale.lines[0].sku).toBe('\u00a0');expect(sale.lines[0].productName).toBe('\u00a0');expect(sale.lines[0].priceVersion).toBe('\u00a0');
+  });
+  it('keeps the real V1 line shape readable but rejects impossible partial metadata',()=>{
+    const legacyLine={variantId:null,sku:'SKU',productName:'Producto persistido',quantity:1,originalUnitPrice:'18',priceVersion:null,totalAmount:'18'};
+    const legacy=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{lines:[legacyLine]})),identity.operationId)!;
+    expect(legacy.valid).toBeTrue();expect(legacy.lines[0].metadata).toBe(DurableLineMetadata.LegacyV1);
+    for(const line of [{...legacyLine,variantId:'variant-1'},{...legacyLine,originalUnitPrice:null},{...legacyLine,priceVersion:'P1'}]){
+      const corrupt=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{lines:[line]})),identity.operationId)!;
+      expect(corrupt.valid).toBeFalse();expect(corrupt.lines[0].metadata).toBe(DurableLineMetadata.Unknown);
+    }
+    const malformed={variantId:42,sku:'SKU',productName:'Producto persistido',quantity:1,originalUnitPrice:'garbage',priceVersion:false,totalAmount:'18'};
+    const corrupt=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{lines:[malformed]})),identity.operationId)!;
+    expect(corrupt.valid).toBeFalse();expect(corrupt.lines[0].metadata).toBe(DurableLineMetadata.Unknown);
   });
   it('invalidates malformed lines, unknown actions, mismatched identity and evidence', () => {
     for (const overrides of [{ lines: [{ quantity: 0, totalAmount: '18' }] }, { lines: [{ quantity: 1, totalAmount: null }] },

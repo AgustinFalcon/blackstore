@@ -17,7 +17,7 @@ import { ReportFormula, ReportPeriod } from '../domain/pos-types';
 import { BaseResponse } from '../models/base-response';
 import { CapturedPayment, PaymentAttempt, PaymentCoverage, PaymentLedgerSemantics, TicketIdentity, TicketMoney, TicketSnapshot, sameTicketIdentity } from '../domain/ticket-transition';
 import { PaymentMethod } from '../domain/pos-types';
-import { AllowedAction, DurableCommandKind, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary, PaymentReversibility } from '../domain/durable-sale';
+import { AllowedAction, DurableCommandKind, DurableLineMetadata, DurableSaleDetail, DurableSalePage, DurableSaleState, DurableSaleSummary, PaymentReversibility } from '../domain/durable-sale';
 import { AccountingFormula, AccountingMetric, AccountingReport, AccountingReportRequest, CompletenessCause, CoveredValue, DataCompleteness, FormulaVersion, MetricCoverage, Reconciliation, ReconciliationOutcome, ReportFailure } from '../domain/accounting-report';
 
 import { AccountingCommand, AccountingCommandKind, AccountingCoverage, CommandFailure, CommandOutcome, CommandReceipt } from '../domain/accounting-command';
@@ -25,7 +25,8 @@ import { PosContextObservation, PosContextState } from '../domain/pos-execution-
 import { AccountingLifecycleState } from '../domain/accounting-lifecycle';
 import { ExpenseOperation } from '../domain/accounting-command';
 import { ExpenseProjectionObservation, ExpenseProjectionState, ExpensePostingKind, ExpenseFact, ExpenseSettlement, ExpensePosting } from '../domain/expense-projection';
-import { SaleAdmission, SaleAdmissionOutcome, SaleCommand, SaleCommandKind,SaleAdmissionVerification } from '../domain/sale-command';
+import { SaleAdmission, SaleAdmissionOutcome, SaleAdmissionRoute, SaleCommand, SaleCommandFailure, SaleCommandKind,SaleAdmissionVerification,SaleFingerprintVersion,SaleLineFailureCode } from '../domain/sale-command';
+import { SaleTextV2 } from '../domain/sale-text-v2';
 
 export class PosWireMapper {
   private constructor() {}
@@ -106,15 +107,30 @@ export class PosWireMapper {
     const outcome = SaleAdmissionOutcome.fromWire(data['outcome']);
     if (outcome !== SaleAdmissionOutcome.Accepted) {
       const expected = outcome === SaleAdmissionOutcome.NotFound ? 404 : outcome === SaleAdmissionOutcome.Unavailable ? 503 : null;
-      return expected === envelope['code'] && data['receipt'] === null ? { outcome, receipt: null } : unknown;
+      if(expected === envelope['code'] && data['receipt'] === null)return { outcome, receipt: null };
+      if(outcome===SaleAdmissionOutcome.Rejected&&command.route===SaleAdmissionRoute.ReserveV3&&data['receipt']===null&&[400,403,404,409,503].includes(envelope['code'] as number)){
+        const failure=SaleCommandFailure.fromWire(data['failure']);
+        if(failure===SaleCommandFailure.Unknown||failure.httpStatus!==envelope['code']||!Array.isArray(data['lineFailures']))return unknown;
+        const lineFailures=[];
+        for(const value of data['lineFailures']){
+          const line=this.record(value),code=SaleLineFailureCode.fromWire(line?.['code']);
+          if(!line||typeof line['variantId']!=='string'||code===SaleLineFailureCode.Unknown)return unknown;
+          try{lineFailures.push(Object.freeze({variantId:SaleTextV2.ref(line['variantId']),code}));}catch{return unknown;}
+        }
+        return {outcome,receipt:null,failure,lineFailures:Object.freeze(lineFailures)};
+      }
+      return unknown;
     }
-    const raw = this.record(data['receipt']); const identity = this.identity(raw); const kind = SaleCommandKind.fromWire(raw?.['kind']);
+    const raw = this.record(data['receipt']); const identity = this.identity(raw,true); const kind = SaleCommandKind.fromWire(raw?.['kind']);
+    const version=command.route===SaleAdmissionRoute.ReserveV3?SaleFingerprintVersion.fromWire(raw?.['fingerprintVersion']):
+      raw?.['fingerprintVersion']===undefined?SaleFingerprintVersion.AdmissionV1:SaleFingerprintVersion.fromWire(raw?.['fingerprintVersion']);
     if (!raw || !identity || kind === SaleCommandKind.Unknown || ![200, 202].includes(envelope['code'] as number) || data['failure'] !== null ||
       !this.uuid(raw['commandId']) || !this.positiveId(raw['actorId']) || !this.positiveId(raw['cashSessionId']) || !this.positiveId(raw['intentId']) || !this.positiveId(raw['outboxId']) ||
+      version!==command.route.fingerprintVersion||(command.route===SaleAdmissionRoute.ReserveV3&&(!Array.isArray(data['lineFailures'])||data['lineFailures'].length!==0))||
       !/^[0-9a-f]{64}$/.test(String(raw['payloadHash'])) || typeof raw['acceptedAt'] !== 'string' || !/(?:Z|[+-]\d{2}:\d{2})$/.test(raw['acceptedAt']) || !Number.isFinite(Date.parse(raw['acceptedAt']))) return unknown;
     const receipt = Object.freeze({ ...identity, kind, commandId: raw['commandId'] as string, actorId: raw['actorId'] as number,
       cashSessionId: raw['cashSessionId'] as number, payloadHash: raw['payloadHash'] as string, intentId: raw['intentId'] as number,
-      outboxId: raw['outboxId'] as number, acceptedAt: raw['acceptedAt'] });
+      outboxId: raw['outboxId'] as number, acceptedAt: raw['acceptedAt'],fingerprintVersion:version });
     if(expectedPayloadHash && command.accepts(receipt,actorId,receipt.payloadHash) && receipt.payloadHash!==expectedPayloadHash)
       return {outcome:SaleAdmissionOutcome.Unknown,receipt:null,verification:SaleAdmissionVerification.PayloadMismatch};
     return command.accepts(receipt, actorId,expectedPayloadHash) ? { outcome, receipt,verification:SaleAdmissionVerification.Verified } : unknown;
@@ -325,7 +341,7 @@ export class PosWireMapper {
 
   static ticket(response: unknown, expected: TicketIdentity, semantics = PaymentLedgerSemantics.Legacy): TicketSnapshot {
     const raw = PosWireMapper.payload(response);
-    const identity = PosWireMapper.identity(raw);
+    const identity = PosWireMapper.identity(raw,true);
     const total = TicketMoney.fromDecimal(raw?.['totalAmount']);
     const pending = TicketMoney.fromDecimal(raw?.['pendingAmount']);
     const coverage = PaymentCoverage.fromWire(raw?.['paymentCoverage']);
@@ -357,7 +373,7 @@ export class PosWireMapper {
 
   static capturedPayment(response: unknown, expected: PaymentAttempt): CapturedPayment | null {
     const raw = PosWireMapper.payload(response);
-    const identity = PosWireMapper.identity(raw);
+    const identity = PosWireMapper.identity(raw,true);
     const amount = TicketMoney.fromDecimal(raw?.['amount']);
     const fee = TicketMoney.fromDecimal(raw?.['feeAmount']);
     const paymentId = raw?.['paymentId'];
@@ -378,7 +394,7 @@ export class PosWireMapper {
 
   private static durableSummary(value: unknown): DurableSaleSummary | null {
     const raw = PosWireMapper.record(value);
-    const identity = PosWireMapper.identity(raw);
+    const identity = PosWireMapper.identity(raw,true);
     if (!raw || !identity || !PosWireMapper.positiveId(raw['cashSessionId']) || !PosWireMapper.positiveId(raw['cashierId'])) return null;
     return Object.freeze({ identity, cashSessionId: raw['cashSessionId'] as number, cashierId: raw['cashierId'] as number,
       createdBy: PosWireMapper.positiveId(raw['createdBy']) ? raw['createdBy'] as number : null,
@@ -398,8 +414,9 @@ export class PosWireMapper {
       (coverage === PaymentCoverage.Paid && pending!.cents === 0n && history === true));
     const lines = Array.isArray(raw['lines']) ? raw['lines'].map(value => {
       const line = PosWireMapper.record(value);
-      return Object.freeze({ sku: PosWireMapper.nonempty(line?.['sku']) ?? '—', productName: PosWireMapper.nonempty(line?.['productName']) ?? 'Sin descripción',
-        quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0, total: TicketMoney.fromDecimal(line?.['totalAmount']) });
+      const metadata=DurableLineMetadata.fromWire(line?.['variantId'],line?.['originalUnitPrice'],line?.['priceVersion']);
+      return Object.freeze({...metadata,sku: typeof line?.['sku']==='string'?line['sku']:'—', productName: typeof line?.['productName']==='string'?line['productName']:'Sin descripción',
+        quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0,total: TicketMoney.fromDecimal(line?.['totalAmount']) });
     }) : [];
     const paymentRows = Array.isArray(raw['payments']) ? raw['payments'].map(value => {
       const payment = PosWireMapper.record(value);
@@ -415,10 +432,13 @@ export class PosWireMapper {
     const reservationRef = PosWireMapper.nonempty(raw['reservationRef']);
     const net = payments.reduce((sum,payment) => payment.amount ? sum + (payment.status === PaymentStatus.Captured ? payment.amount.cents : payment.status === PaymentStatus.Refunded ? -payment.amount.cents : 0n) : sum,0n);
     const ledgerValid = PaymentReversibility.validLedger(payments) && !!summary.total && !!pending && net === summary.total.cents - pending.cents && (history === true ? payments.length > 0 : payments.length === 0);
+    const lineTotal=lines.reduce((sum,line)=>sum+(line.total?.cents??-1n),0n);
     const valid = summary.createdBy !== null && !!validCoverage && ledgerValid && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
       !allowedActions.includes(AllowedAction.Unknown) && Array.isArray(raw['lines']) && Array.isArray(raw['payments']) &&
-      raw['lines'].every(value => { const line = PosWireMapper.record(value); return !!PosWireMapper.nonempty(line?.['sku']) && !!PosWireMapper.nonempty(line?.['productName']); }) &&
-      lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents >= 0n) &&
+      raw['lines'].every(value => PosWireMapper.durableLineTextValid(PosWireMapper.record(value))) &&
+      lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents > 0n && line.metadata!==DurableLineMetadata.Unknown &&
+        !!line.originalUnitPrice&&line.originalUnitPrice.cents>0n&&line.total.cents<=line.originalUnitPrice.cents*BigInt(line.quantity)) &&
+      !!summary.total&&lineTotal===summary.total.cents&&
       payments.every(payment => payment.paymentId > 0 && (payment.status === PaymentStatus.Captured || payment.status === PaymentStatus.Refunded) && payment.method !== PaymentMethod.Unknown &&
         !!payment.amount && payment.amount.cents > 0n && !!payment.fee && payment.fee.cents >= 0n) &&
       new Set(payments.map(payment => payment.paymentId)).size === payments.length && command !== DurableCommandKind.Unknown && !!receipt && !!reservationRef;
@@ -445,13 +465,21 @@ export class PosWireMapper {
     return typeof raw === 'string' && raw.trim().length > 0 ? raw : null;
   }
 
-  private static identity(raw: Record<string, unknown> | null): TicketIdentity | null {
+  private static durableLineTextValid(line:Record<string,unknown>|null):boolean {
+    if(!line||typeof line['sku']!=='string'||typeof line['productName']!=='string')return false;
+    try{return SaleTextV2.ref(line['sku'])===line['sku']&&SaleTextV2.name(line['productName'])===line['productName'];}catch{return false;}
+  }
+
+  private static identity(raw: Record<string, unknown> | null,opaqueSaleId=false): TicketIdentity | null {
     const clientInstanceId = PosWireMapper.nonempty(raw?.['clientInstanceId']);
-    const deviceId = PosWireMapper.nonempty(raw?.['deviceId']);
-    const saleId = PosWireMapper.nonempty(raw?.['saleId']);
+    const deviceId = opaqueSaleId ? typeof raw?.['deviceId']==='string' ? raw['deviceId'] : null : PosWireMapper.nonempty(raw?.['deviceId']);
+    const saleId = opaqueSaleId ? typeof raw?.['saleId']==='string' ? raw['saleId'] : null : PosWireMapper.nonempty(raw?.['saleId']);
     const operationId = PosWireMapper.nonempty(raw?.['operationId']);
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return clientInstanceId && deviceId && saleId && operationId && uuid.test(clientInstanceId) && uuid.test(saleId) && uuid.test(operationId)
+    let opaqueValid=false;
+    if(opaqueSaleId)try{opaqueValid=SaleTextV2.ref(saleId??'')===saleId&&SaleTextV2.ref(deviceId??'')===deviceId;}catch{opaqueValid=false;}
+    return clientInstanceId && deviceId && saleId && operationId && uuid.test(clientInstanceId) &&
+      (opaqueSaleId ? opaqueValid : uuid.test(saleId)) && uuid.test(operationId)
       ? Object.freeze({ clientInstanceId, deviceId, saleId, operationId }) : null;
   }
 }
