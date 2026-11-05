@@ -3,7 +3,7 @@
 ## Fuente y alcance
 
 - Base integrada: `51f109f2c824bcfcf6f3016c90c41f4a8d123b09` (BlackStore `master`, PR #52).
-- Implementación revisable: `bb06433` (`codex/blackstore-posc-t`).
+- Implementación revisable: `34ceea4bdfccb8993807db4a3e9fe3be0e5c0e9b` (`codex/blackstore-posc-t`), que incluye el núcleo `bb06433` y las correcciones de review posteriores.
 - Corte: tipos cerrados de contrato/carrito, política Unicode AdmissionV2, codecs V1/V2, rutas HTTP cerradas, journal V2 con upgrade V1, traducción de recibos/rechazos y reconstrucción durable completa.
 - No acredita UI POSC-U, PostgreSQL/browser POSC-E, StoreCore live, homologación ni publicación.
 
@@ -28,7 +28,7 @@ La primera invocación de Karma dentro del sandbox no compiló porque el bundler
 - `saleId` opaco conserva correlación, líneas preservan `variantId`, `originalUnitPrice` y `priceVersion`, y la suma se coteja con el total autoritativo.
 - Versiones/códigos futuros traducen a `Unknown`; recibo V3 exige `sale-admission-v2` explícito.
 - Commit/release V2 rehidratan referencias opacas originadas en V3, incluida la política Unicode que conserva NBSP.
-- Metadata de línea V2 completamente ausente se clasifica como histórico legible; metadata parcial se clasifica `Unknown` y bloquea mutación.
+- El shape real V1 (precio original presente; variante y versión ausentes) se clasifica como histórico legible; metadata parcial o explícitamente malformada se clasifica `Unknown` y bloquea mutación.
 - Recibos V1 sólo infieren `sale-admission-v1` cuando el discriminador está ausente; una versión explícita incompatible falla cerrada.
 
 ## Revisión
