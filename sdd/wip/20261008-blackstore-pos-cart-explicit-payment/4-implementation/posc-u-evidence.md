@@ -2,7 +2,7 @@
 
 Fecha: 2026-11-05. Rama: `codex/blackstore-posc-u`.
 
-Corte de implementación verificado: `2b5c3273fea23e0430dcd2992e6c2304f45edc56` sobre base `dbb3c368720fe153c17be09d592ab14aadb14390`.
+Corte de implementación verificado: `54be9eaa13e3c3ee0376e3f61e4a59684ee84eea` sobre base `dbb3c368720fe153c17be09d592ab14aadb14390`.
 
 ## Implementación local previa a review
 
@@ -19,13 +19,17 @@ Corte de implementación verificado: `2b5c3273fea23e0430dcd2992e6c2304f45edc56` 
 ## Gates ejecutados
 
 - `npm run typecheck`: PASS.
-- `npm test`: PASS, 358/358.
+- `npm test`: PASS, 359/359.
 - `npm run build`: PASS.
+- `npm run typecheck:dct`: PASS.
 - Pruebas de integración reales con runtime, journal y HTTP: Pending→Reserved, timeout acotado, 404/null y cambio de actor conservan el claim correcto y nunca capturan automáticamente: PASS.
 - Prueba de integración de UI: reserva V3 multiline produce cero capturas automáticas; una captura aparece sólo después del gesto explícito y del refresh correlacionado: PASS.
+- DCT Chromium + backend real + PostgreSQL: carrito, reserva V3, cobros explícitos CASH/CARD, historial, reversas sucesivas y liberación final: PASS.
+- DCT de recuperación: respuesta de release perdida, backend reiniciado, worker detenido, cierre de caja bloqueado, recuperación GET-only y aplicación terminal única: PASS.
+- La reserva V3 atraviesa la misma frontera SID/CSRF que V1/V2; el interceptor elimina autoridad forjada y tiene prueba de regresión específica: PASS.
 
 ## Límites honestos
 
-- El browser real combinado con backend/PostgreSQL, restart, dos tabs y screenshots de 360/768/1280 pertenece a POSC-E y todavía no se acredita aquí.
+- La matriz visual completa con screenshots de 360/768/1280 y el recorrido cross-tab integral pertenece a POSC-E y todavía no se acredita aquí.
 - El rechazo terminal por línea no habilita editar/reintentar: el runtime actual conserva el journal en recuperación Unknown. Hasta incorporar resolución terminal durable, la UI falla cerrada y sólo permite consulta.
 - No acredita StoreCore live, stock real, Mercado Libre, fiscal, homologación ni publicación.
