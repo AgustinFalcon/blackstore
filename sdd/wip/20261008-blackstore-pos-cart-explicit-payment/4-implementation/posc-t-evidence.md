@@ -34,4 +34,4 @@ La primera invocación de Karma dentro del sandbox no compiló porque el bundler
 
 ## Revisión
 
-Bug/producto/arquitectura y seguridad Astra están pendientes sobre el SHA exacto. Esta evidencia no declara APPROVE ni cierre POSC-T hasta resolver hallazgos y repetir gates.
+Bug/producto y seguridad Astra aprobaron `7ccc2b5fb4215986f1701fcbbc31cca9661f45bd` sin hallazgos P0–P3. Seguridad ejecutó además 36 comprobaciones dinámicas sobre el SHA exacto. Esto cierra el gate de implementación POSC-T; CI e integración permanecen pendientes.
