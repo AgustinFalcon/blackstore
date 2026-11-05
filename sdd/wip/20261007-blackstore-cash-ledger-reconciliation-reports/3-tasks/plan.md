@@ -8,7 +8,8 @@ POST, cross-tab del mismo SID y RELEASE_PENDING con worker detenido/reiniciado.
 El primer run completo conservado fue 10/11; después de corregir preflight de
 precio y continuidad durable de `acceptedPriceVersions`, la matriz final pasó
 11/11 en 5,6 min con teardown total. Backend final pasó 294/294 y typecheck,
-discovery y diff-check están verdes. Faltan commit, reviews exact-head, CI y PR. Live/homologación/publicación no
+discovery y diff-check están verdes. Dos re-reviews Astra aprobaron `e3b342f`
+sin P0–P3; falta comprobación del registro documental y CI. Live/homologación/publicación no
 forman parte del corte. [Evidencia](../evidence/CLR-T09-browser-residuals-local-20261105.md).
 
 ## Corte PR #45 vigente — 2026-10-20

@@ -355,7 +355,7 @@
     {
       "id": "CLR-T09",
       "title": "Browser PG16 reinicio CI reviews exact-head y handoff",
-      "status": "implemented_local_backend294_dct11_pending_ci_exact_head_review",
+      "status": "implemented_local_backend294_dct11_astra_approve_ci_pending",
       "pr_cut": "UI_ACCEPTANCE",
       "depends_on": [
         "CLR-T08",
@@ -390,9 +390,9 @@
   "gates": {
     "design": "PASS",
     "contract_extension_design": "T08_A_DESIGN_GO_PASS",
-    "implementation": "LOCAL_BACKEND294_DCT11_TYPECHECK_DISCOVERY_DIFF_CHECK_PASS_CI_EXACT_HEAD_REVIEW_PENDING",
+    "implementation": "LOCAL_BACKEND294_DCT11_TYPECHECK_DISCOVERY_DIFF_CHECK_PASS",
     "integration": "LOCAL_PG16_BROWSER_11_OF_11_PASS_WITH_RESPONSE_LOSS_SAME_SID_CROSS_TAB_RELEASE_PENDING_AND_TEARDOWN",
-    "review": "EXACT_HEAD_PENDING_NO_HISTORICAL_APPROVAL_TRANSFER",
+    "review": "ASTRA_BUG_PRODUCT_AND_SECURITY_ARCH_APPROVE_E3B342F_NO_P0_P3_FINAL_DOCUMENTATION_CHECK_PENDING",
     "homologation": "BLOCKED",
     "publication": "NOT_RUN",
     "pos_context": "PR45_BACKEND_FRONTEND_INTEGRATED_LOCAL_BROWSER_8_OF_8_SCOPE_ONLY_CI_EXACT_HEAD_REVIEW_PENDING",
@@ -411,7 +411,7 @@
       "same_sid_cross_tab": "PASS_SINGLE_SID_MONOTONIC_JOURNAL",
       "release_pending": "PASS_WORKER_OFF_ON_RESTART_GET_ONLY_CLOSE_FENCE",
       "ci": "PENDING",
-      "exact_head_reviews": "PENDING"
+      "exact_head_reviews": "E3B342F_APPROVE_BUG_PRODUCT_AND_SECURITY_ARCH_NO_P0_P3_FINAL_DOCUMENTATION_CHECK_PENDING"
     },
     "historical": {
     "scope": "ANTECEDENTS_FROM_OTHER_SOURCES_OR_OVERLAYS_NOT_CURRENT_PR45_ACCEPTANCE",

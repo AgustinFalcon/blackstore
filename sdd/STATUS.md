@@ -7,7 +7,8 @@ Base `master c7ce4bd`, rama `codex/blackstore-clr-acceptance`: backend final
 cubiertos response-loss sin replay, cross-tab con mismo SID y RELEASE_PENDING
 con reinicio/worker/cierre bloqueado y recuperación GET-only. La evidencia de
 precio aceptada ahora atraviesa el reinicio del fixture sin fallback inventado.
-Faltan commit, reviews exact-head, CI y PR; homologación,
+Dos re-reviews Astra aprobaron `e3b342f` sin P0–P3. Falta comprobar el registro
+documental final y cerrar CI del PR #51; homologación,
 publicación y StoreCore live continúan bloqueados.
 
 ## Diseño POSC aprobado — 2026-10-20

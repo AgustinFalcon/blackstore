@@ -61,8 +61,10 @@ Dos revisores Astra independientes coincidieron en un P2 de aceptación sobre
 real de proyección de A después de `route.fetch`, se comprobó IndexedDB mientras
 el refresh seguía en vuelo y recién entonces se liberó la misma respuesta.
 `typecheck:dct` y el escenario cross-tab focal pasaron 1/1 en 28 s con teardown
-total. Como cambió el source, las aprobaciones de ese SHA no se heredan: se
-requieren dos re-reviews sobre el nuevo head y CI actualizado.
+total. Dos re-reviews Astra sobre `e3b342fc8147831c16a0ae648a6f2b16fca11484`
+aprobaron el diff acumulado sin P0–P3: bugs/producto y
+seguridad/arquitectura. El commit documental que registra las conclusiones
+requiere comprobación final propia; CI actualizado continúa pendiente.
 
 ## Límite del resultado
 
