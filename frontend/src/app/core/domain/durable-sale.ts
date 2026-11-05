@@ -1,6 +1,7 @@
 import { StaffPermission } from './session-types';
 import { PaymentMethod, PaymentStatus } from './pos-types';
 import { PaymentCoverage, TicketIdentity, TicketMoney } from './ticket-transition';
+import { SaleTextV2 } from './sale-text-v2';
 
 export class AllowedAction {
   static readonly CapturePayment = new AllowedAction('CAPTURE_PAYMENT', 'Completar pago', StaffPermission.PaymentCapture);
@@ -63,9 +64,10 @@ export class DurableLineMetadata {
   static readonly Unknown=new DurableLineMetadata('UNKNOWN','Metadatos inconsistentes');
   private constructor(readonly wire:string,readonly label:string){}
   static fromWire(rawVariantId:unknown,rawOriginalUnitPrice:unknown,rawPriceVersion:unknown):DurableLineMetadataValue {
-    const variantId=typeof rawVariantId==='string'&&rawVariantId.trim()?rawVariantId:null;
+    const ref=(raw:unknown):string|null=>{try{return typeof raw==='string'?SaleTextV2.ref(raw):null;}catch{return null;}};
+    const variantId=ref(rawVariantId);
     const originalUnitPrice=TicketMoney.fromDecimal(rawOriginalUnitPrice);
-    const priceVersion=typeof rawPriceVersion==='string'&&rawPriceVersion.trim()?rawPriceVersion:null;
+    const priceVersion=ref(rawPriceVersion);
     const metadata=variantId&&originalUnitPrice&&priceVersion?this.Complete:
       rawVariantId===null&&originalUnitPrice!==null&&rawPriceVersion===null?this.LegacyV1:this.Unknown;
     return Object.freeze({metadata,variantId,originalUnitPrice,priceVersion});

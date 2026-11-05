@@ -415,7 +415,7 @@ export class PosWireMapper {
     const lines = Array.isArray(raw['lines']) ? raw['lines'].map(value => {
       const line = PosWireMapper.record(value);
       const metadata=DurableLineMetadata.fromWire(line?.['variantId'],line?.['originalUnitPrice'],line?.['priceVersion']);
-      return Object.freeze({...metadata,sku: PosWireMapper.nonempty(line?.['sku']) ?? '—', productName: PosWireMapper.nonempty(line?.['productName']) ?? 'Sin descripción',
+      return Object.freeze({...metadata,sku: typeof line?.['sku']==='string'?line['sku']:'—', productName: typeof line?.['productName']==='string'?line['productName']:'Sin descripción',
         quantity: typeof line?.['quantity'] === 'number' ? line['quantity'] : 0,total: TicketMoney.fromDecimal(line?.['totalAmount']) });
     }) : [];
     const paymentRows = Array.isArray(raw['payments']) ? raw['payments'].map(value => {
@@ -435,7 +435,7 @@ export class PosWireMapper {
     const lineTotal=lines.reduce((sum,line)=>sum+(line.total?.cents??-1n),0n);
     const valid = summary.createdBy !== null && !!validCoverage && ledgerValid && raw['evidenceValid'] === true && raw['blocked'] === false && raw['retired'] === false &&
       !allowedActions.includes(AllowedAction.Unknown) && Array.isArray(raw['lines']) && Array.isArray(raw['payments']) &&
-      raw['lines'].every(value => { const line = PosWireMapper.record(value); return !!PosWireMapper.nonempty(line?.['sku']) && !!PosWireMapper.nonempty(line?.['productName']); }) &&
+      raw['lines'].every(value => PosWireMapper.durableLineTextValid(PosWireMapper.record(value))) &&
       lines.length > 0 && lines.every(line => line.quantity > 0 && Number.isSafeInteger(line.quantity) && !!line.total && line.total.cents > 0n && line.metadata!==DurableLineMetadata.Unknown &&
         !!line.originalUnitPrice&&line.originalUnitPrice.cents>0n&&line.total.cents<=line.originalUnitPrice.cents*BigInt(line.quantity)) &&
       !!summary.total&&lineTotal===summary.total.cents&&
@@ -463,6 +463,11 @@ export class PosWireMapper {
 
   private static nonempty(raw: unknown): string | null {
     return typeof raw === 'string' && raw.trim().length > 0 ? raw : null;
+  }
+
+  private static durableLineTextValid(line:Record<string,unknown>|null):boolean {
+    if(!line||typeof line['sku']!=='string'||typeof line['productName']!=='string')return false;
+    try{return SaleTextV2.ref(line['sku'])===line['sku']&&SaleTextV2.name(line['productName'])===line['productName'];}catch{return false;}
   }
 
   private static identity(raw: Record<string, unknown> | null,opaqueSaleId=false): TicketIdentity | null {

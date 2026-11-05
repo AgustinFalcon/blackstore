@@ -54,6 +54,12 @@ describe('DurableSale closed types and DTO boundary', () => {
     expect(sale.identity.saleId).toBe('opaque-sale');expect(sale.lines[0].variantId).toBe('variant-1');
     expect(sale.lines[0].originalUnitPrice?.decimal).toBe('18.00');expect(sale.lines[0].priceVersion).toBe('P1');expect(sale.valid).toBeTrue();
   });
+  it('preserves AdmissionV2 Unicode policy across durable line refresh',()=>{
+    const exact={variantId:'\u00a0',sku:'\u00a0',productName:'\u00a0',quantity:1,originalUnitPrice:'18',priceVersion:'\u00a0',totalAmount:'18'};
+    const sale=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{lines:[exact]})),identity.operationId)!;
+    expect(sale.valid).toBeTrue();expect(sale.lines[0].metadata).toBe(DurableLineMetadata.Complete);
+    expect(sale.lines[0].variantId).toBe('\u00a0');expect(sale.lines[0].sku).toBe('\u00a0');expect(sale.lines[0].productName).toBe('\u00a0');expect(sale.lines[0].priceVersion).toBe('\u00a0');
+  });
   it('keeps the real V1 line shape readable but rejects impossible partial metadata',()=>{
     const legacyLine={variantId:null,sku:'SKU',productName:'Producto persistido',quantity:1,originalUnitPrice:'18',priceVersion:null,totalAmount:'18'};
     const legacy=PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{lines:[legacyLine]})),identity.operationId)!;
