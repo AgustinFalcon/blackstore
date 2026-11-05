@@ -187,6 +187,8 @@ export class SaleTicketComponent implements OnInit {
     this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       const operationId = params.get('operationId');
       if (!operationId) { this.requestedOperationId.set(null); return; }
+      const rejected = this.rejectedCommand();
+      if (rejected && rejected.identity.operationId !== operationId) this.clearRejectedReview();
       this.requestedOperationId.set(operationId);
       if(this.active?.identity.operationId===operationId)return;
       this.cart.moveTo(CartPhase.AwaitingReservation);
@@ -564,9 +566,13 @@ export class SaleTicketComponent implements OnInit {
     return error instanceof Error && !(error instanceof HttpErrorResponse) ? error.message : 'No se pudo comprobar la operación. Consultá su estado.';
   }
   private clearForActorChange(): void {
-    this.rejectedCommand.set(null); this.lineFailures.set([]); this.refreshingDraft.set(false); this.retryIdentity=undefined;
+    this.clearRejectedReview();
     this.active = null; this.snapshot.set(null); this.operationRef.set(null); this.paymentId.set(null); this.paymentHistory.set([]); this.requestedOperationId.set(null);
     this.message.set(null); this.busy.set(false); this.cart.reset(); this.cancelReverse(); this.cancelRelease();
+  }
+  private clearRejectedReview():void {
+    this.rejectedCommand.set(null); this.lineFailures.set([]); this.refreshingDraft.set(false); this.retryIdentity=undefined;
+    this.active=null;this.snapshot.set(null);this.operationRef.set(null);this.cart.reset();
   }
   private focusSoon(selector: string): void { afterNextRender(() => (this.host.nativeElement.querySelector(selector) as HTMLElement | null)?.focus(), {injector:this.injector}); }
 }

@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { AccountingCommand } from '../../core/domain/accounting-command';
 import { CartPhase } from '../../core/domain/cart';
@@ -203,6 +203,19 @@ describe('SaleTicketComponent explicit cart journey', () => {
     const original=tested.cart.draft();catalog.update(value=>({...value,stale:true}));
     tested.refreshDraft();await fixture.whenStable();
     expect(tested.cart.draft()).toBe(original);expect(tested.canReserve()).toBeFalse();expect(runtime.execute.calls.count()).toBe(1);
+  });
+
+  it('clears a rejected review before opening a different operation in the same component',async()=>{
+    const fixture=TestBed.createComponent(SaleTicketComponent),tested=fixture.componentInstance;
+    fixture.autoDetectChanges();await fixture.whenStable();tested.selectedSku='SKU-A';tested.addSelected();
+    runtime.execute.and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Rejected,receipt:null,
+      resolution:SaleAdmissionResolution.TerminalLineRejection,lineFailures:[{variantId:'variant-a',code:SaleLineFailureCode.PriceMismatch}]}));
+    tested.reserve();await fixture.whenStable();expect(tested.rejectedCommand()).not.toBeNull();
+    const durable=TestBed.inject(DurableSalesStore),open=spyOn(durable,'open');
+    const nextOperation='99999999-9999-4999-8999-999999999999';
+    await TestBed.inject(Router).navigate([], {queryParams:{operationId:nextOperation}});await fixture.whenStable();
+    expect(tested.rejectedCommand()).toBeNull();expect(tested.lineFailures()).toEqual([]);expect(tested.cart.lineCount()).toBe(0);
+    expect(open).toHaveBeenCalledWith(nextOperation);
   });
 
 });

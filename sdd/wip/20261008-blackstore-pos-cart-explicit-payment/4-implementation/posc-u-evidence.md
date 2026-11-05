@@ -39,4 +39,4 @@ Corte de implementación verificado: `54be9eaa13e3c3ee0376e3f61e4a59684ee84eea` 
 - Sólo `ReserveV3 + Rejected + Validation`, con errores conocidos, no vacíos y pertenecientes a variantes del comando original, libera el claim. Timeout, 404, respuestas incompletas, códigos futuros, variantes ajenas y fallos de almacenamiento siguen bloqueados y no habilitan otro POST.
 - La pantalla reconstruye el borrador original después de reload, muestra los errores por artículo, actualiza catálogo mediante un gesto explícito y no elimina variantes ausentes silenciosamente.
 - El reintento exige otro gesto, conserva `saleId`, `clientInstanceId` y `deviceId`, y crea `commandId` y `operationId` nuevos. La cantidad inválida conserva foco en su campo.
-- Gates locales del seguimiento: `npm run typecheck` PASS; `npm test -- --no-progress` PASS, 374/374; `npm run build` PASS. La matriz browser/PG combinada permanece en POSC-E.
+- Gates locales del seguimiento: `npm run typecheck` PASS; `npm test -- --no-progress` PASS, 375/375; `npm run build` PASS. La matriz browser/PG combinada permanece en POSC-E.
