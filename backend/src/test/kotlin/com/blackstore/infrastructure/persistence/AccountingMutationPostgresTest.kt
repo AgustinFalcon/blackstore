@@ -881,7 +881,8 @@ class AccountingMutationPostgresTest {
                 com.blackstore.domain.sales.CanonicalCommandPayload.Reserve("catalog-v1", if(multiline) listOf(
                     com.blackstore.domain.sales.CanonicalReserveLine("variant-a",2,"price-a"),
                     com.blackstore.domain.sales.CanonicalReserveLine("variant-b",1,"price-b")) else listOf(
-                    com.blackstore.domain.sales.CanonicalReserveLine("SKU", 1, "price-v1"))))
+                    com.blackstore.domain.sales.CanonicalReserveLine("SKU", 1, "price-v1"))),
+                codecVersion=if(multiline) DurableCommandCodecVersion.V2 else DurableCommandCodecVersion.V1)
             val mapper = DurableCommandMapper()
             val payload = mapper.encode(command)
             c.prepareStatement("INSERT INTO storecore_outbox_commands(client_instance_id,device_id,sale_id,operation_id,operation_kind,contract_version,openapi_digest,request_hash,payload_redacted,canonical_payload,payload_hash,actor_id,cash_session_id) VALUES(?,?,?,?,'RESERVE',?, ?,?,'{}',?::jsonb,?,1,?) RETURNING id").use { s ->
@@ -930,7 +931,8 @@ class AccountingMutationPostgresTest {
         val evidence = requireNotNull(current.evidence)
         val command = OutboxCommand(identity, StoreCoreOperationKind.COMMIT,
             com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH, evidence.contractVersion, evidence.openapiDigest,
-            "c".repeat(64), reservationRef = evidence.reservationRef, payload = CanonicalCommandPayload.Terminal(evidence.reservationRef))
+            "c".repeat(64), reservationRef = evidence.reservationRef, payload = CanonicalCommandPayload.Terminal(evidence.reservationRef),
+            codecVersion=current.outbox.single { it.kind==StoreCoreOperationKind.RESERVE }.codecVersion)
         val pending = current.withCommand(command).markCommitPending()
         source.connection.use { c ->
             c.autoCommit = false

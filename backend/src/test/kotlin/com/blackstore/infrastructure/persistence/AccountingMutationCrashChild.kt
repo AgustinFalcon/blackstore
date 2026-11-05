@@ -71,7 +71,8 @@ object AccountingMutationCrashChild {
         val command = OutboxCommand(current.quadruple, StoreCoreOperationKind.COMMIT,
             com.blackstore.domain.model.StoreCoreCanonicalContract.CANONICAL_PATH,
             evidence.contractVersion, evidence.openapiDigest, "c".repeat(64), evidence.reservationRef,
-            CanonicalCommandPayload.Terminal(evidence.reservationRef))
+            CanonicalCommandPayload.Terminal(evidence.reservationRef),
+            current.outbox.single { it.kind==StoreCoreOperationKind.RESERVE }.codecVersion)
         val claim = ClaimedSaleCommand(
             requireNotNull(System.getenv("BLACKSTORE_CRASH_CLAIM_ID")).toLong(), command,
             UUID.fromString(requireNotNull(System.getenv("BLACKSTORE_CRASH_CLAIM_TOKEN"))),

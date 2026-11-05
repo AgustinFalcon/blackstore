@@ -18,13 +18,14 @@ data class SaleTerminalV2Request(val commandId: UUID,val clientInstanceId: Strin
 object SaleV2RequestTranslator {
     private fun id(raw: String): String { val parsed=UUID.fromString(raw);require(parsed.toString()==raw);return raw }
     private fun ref(raw: String): String { require(raw.isNotBlank() && raw.length<=80 && raw==raw.trim());return raw }
-    private fun identity(client: String,device: String,sale: String,operation: String)=OperationQuadruple(id(client),ref(device),ref(sale),id(operation))
+    private fun legacyIdentity(client: String,device: String,sale: String,operation: String)=OperationQuadruple(id(client),ref(device),ref(sale),id(operation))
+    private fun terminalIdentity(client: String,device: String,sale: String,operation: String)=OperationQuadruple(id(client),SaleTextV2.ref(device),SaleTextV2.ref(sale),id(operation))
     private fun reason(raw: String?): String? = raw?.trim()?.also { require(it.isNotEmpty() && it.length<=500) }
-    fun reserve(r: SaleReserveV2Request): SaleCommand.Reserve=SaleCommand.Reserve(r.commandId,identity(r.clientInstanceId,r.deviceId,r.saleId,r.operationId),r.cashSessionId,ref(r.variantId),r.quantity,ref(r.expectedPriceVersion),
+    fun reserve(r: SaleReserveV2Request): SaleCommand.Reserve=SaleCommand.Reserve(r.commandId,legacyIdentity(r.clientInstanceId,r.deviceId,r.saleId,r.operationId),r.cashSessionId,ref(r.variantId),r.quantity,ref(r.expectedPriceVersion),
         TicketLine(ref(r.sku),r.productName.trim().also { require(it.isNotEmpty() && it.length<=250) },r.quantity,MoneyPolicy.normalize(r.originalUnitPrice),MoneyPolicy.normalize(r.discountAmount)),reason(r.reason))
     fun terminal(path: String,r: SaleTerminalV2Request,kind: SaleCommandKind): SaleCommand {
         require(path==r.operationId)
-        val q=identity(r.clientInstanceId,r.deviceId,r.saleId,r.operationId)
+        val q=terminalIdentity(r.clientInstanceId,r.deviceId,r.saleId,r.operationId)
         return when(kind) { SaleCommandKind.Commit -> SaleCommand.Commit(r.commandId,q,reason(r.reason));SaleCommandKind.Release -> SaleCommand.Release(r.commandId,q,reason(r.reason));else -> throw IllegalArgumentException("unsupported command") }
     }
 }

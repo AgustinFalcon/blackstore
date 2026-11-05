@@ -36,6 +36,7 @@ data class OutboxCommand(
     val requestHash: String,
     val reservationRef: String? = null,
     val payload: CanonicalCommandPayload? = null,
+    val codecVersion: DurableCommandCodecVersion = DurableCommandCodecVersion.V1,
 )
 
 data class RemoteEvidence(

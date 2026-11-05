@@ -43,6 +43,9 @@ class SaleCommandContractTest {
         assertEquals("override",translated.reason);assertEquals(BigDecimal("10.00"),translated.line.originalUnitPrice)
         assertThrows(IllegalArgumentException::class.java) { SaleV2RequestTranslator.reserve(r.copy(clientInstanceId="bad")) }
         assertThrows(IllegalArgumentException::class.java) { SaleV2RequestTranslator.terminal("wrong",SaleTerminalV2Request(r.commandId,q.clientInstanceId,q.deviceId,q.saleId,q.operationId),SaleCommandKind.Commit) }
+        val unicode="\u00A0";val terminal=SaleV2RequestTranslator.terminal(q.operationId,SaleTerminalV2Request(r.commandId,q.clientInstanceId,unicode,unicode,q.operationId),SaleCommandKind.Commit)
+        assertEquals(unicode,terminal.identity.deviceId);assertEquals(unicode,terminal.identity.saleId)
+        assertThrows(IllegalArgumentException::class.java) { SaleV2RequestTranslator.reserve(r.copy(deviceId=unicode,saleId=unicode)) }
     }
     @Test fun feePresenceAndBrowserAuthorityAreRejectedIncludingNullAndZero() {
         val mapper=jacksonObjectMapper()

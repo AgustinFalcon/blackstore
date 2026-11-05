@@ -226,7 +226,8 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
         val ticket=canonical.map { it.ticketLine }
         val remote=OutboxCommand(q,StoreCoreOperationKind.RESERVE,path,version,digest,
             ReserveRequestFingerprint.hash(q,command.cashSessionId,remoteLines,ticket,command.reason),
-            payload=CanonicalCommandPayload.Reserve(snapshot.version,remoteLines.map { CanonicalReserveLine(it.variantId,it.quantity,it.expectedPriceVersion) }))
+            payload=CanonicalCommandPayload.Reserve(snapshot.version,remoteLines.map { CanonicalReserveLine(it.variantId,it.quantity,it.expectedPriceVersion) }),
+            codecVersion=DurableCommandCodecVersion.V2)
         val saga=SaleSaga(q,command.cashSessionId,lines=ticket,createdBy=actor.id.value).withReserveCommand(remote)
         val id=writer.insertPendingSale(c,UUID.fromString(q.clientInstanceId),q.deviceId,q.saleId,UUID.fromString(q.operationId),command.cashSessionId,actor.id.value,version,digest)
         records.insertCanonicalCommand(c,saga,remote,actor.id.value,command.reason)
@@ -248,8 +249,9 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
             scalar(c,"SELECT clock_timestamp()") { it.getTimestamp(1).toInstant() }!!)
         val evidence=saga.evidence ?: reject(SaleCommandFailure.TransitionConflict)
         if(evidence.contractVersion!=version || evidence.openapiDigest!=digest) reject(SaleCommandFailure.TransitionConflict)
+        val codec=saga.outbox.singleOrNull { it.kind==StoreCoreOperationKind.RESERVE }?.codecVersion ?: reject(SaleCommandFailure.TransitionConflict)
         val remote=OutboxCommand(saga.quadruple,kind,path,version,digest,StoreCoreRequestHash.hex(kind,saga.quadruple.operationId),
-            reservationRef=evidence.reservationRef,payload=CanonicalCommandPayload.Terminal(evidence.reservationRef))
+            reservationRef=evidence.reservationRef,payload=CanonicalCommandPayload.Terminal(evidence.reservationRef),codecVersion=codec)
         records.insertCanonicalCommand(c,saga,remote,actor.id.value,command.reason)
         c.createStatement().use { it.execute("SET LOCAL ROLE blackstore_projection_worker") }
         if(kind==StoreCoreOperationKind.COMMIT) {
@@ -319,7 +321,8 @@ class JdbcSaleMutationCommands(private val source: DataSource, private val catal
         if(item.rawSku!=submitted.ticketLine.sku) return SaleLineFailureCode.SkuMismatch
         if(SaleTextV2.name(item.rawName)!=submitted.ticketLine.productName) return SaleLineFailureCode.ProductNameMismatch
         if(rawVersion!=submitted.expectedPriceVersion) return SaleLineFailureCode.PriceVersionMismatch
-        if(item.unitPrice==null || MoneyPolicy.normalize(item.unitPrice)!=submitted.ticketLine.originalUnitPrice) return SaleLineFailureCode.PriceMismatch
+        val catalogPrice=item.unitPrice?.let { runCatching { MoneyPolicy.normalize(it) }.getOrNull() } ?: return SaleLineFailureCode.PriceMismatch
+        if(catalogPrice!=submitted.ticketLine.originalUnitPrice) return SaleLineFailureCode.PriceMismatch
         if(submitted.ticketLine.discountAmount.signum()!=0) return SaleLineFailureCode.DiscountNotAllowed
         return null
     }

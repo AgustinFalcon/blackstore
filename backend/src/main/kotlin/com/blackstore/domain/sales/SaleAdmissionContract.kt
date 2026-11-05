@@ -10,6 +10,11 @@ enum class SaleFingerprintVersion(val wire: String) {
     companion object { fun fromWire(raw: String?) = entries.firstOrNull { it.wire == raw } ?: Unknown }
 }
 
+enum class DurableCommandCodecVersion(val schema: Int) {
+    V1(1), V2(2), Unknown(0);
+    companion object { fun fromWire(raw: Int?) = entries.firstOrNull { it.schema == raw && it != Unknown } ?: Unknown }
+}
+
 enum class SaleAdmissionRoute(val path: String, val family: SaleAdmissionFamily,
     val fingerprintVersion: SaleFingerprintVersion, val kind: SaleCommandKind) {
     ReserveV2("/api/v2/sales/reservations", SaleAdmissionFamily.V2, SaleFingerprintVersion.AdmissionV1, SaleCommandKind.Reserve),

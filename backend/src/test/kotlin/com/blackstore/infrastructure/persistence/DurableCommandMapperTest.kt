@@ -30,4 +30,13 @@ class DurableCommandMapperTest {
   val encoded=mapper.encode(command);val injected=encoded.dropLast(1)+",\"token\":\"secret\"}"
   assertThrows<IllegalArgumentException> { mapper.decode(injected,mapper.hash(encoded),command.requestHash) }
  }
+ @Test fun codecV2RoundTripsUnicodeWhitespaceWithoutReinterpretingV1() {
+  val value="\u00A0";val unicode=identity.copy(deviceId=value,saleId=value)
+  val payload=CanonicalCommandPayload.Reserve("catalog",listOf(CanonicalReserveLine(value,1,value)))
+  val v1=OutboxCommand(unicode,StoreCoreOperationKind.RESERVE,"path","v","a".repeat(64),"b".repeat(64),payload=payload)
+  val encodedV1=mapper.encode(v1);assertThrows<IllegalArgumentException> { mapper.decode(encodedV1,mapper.hash(encodedV1),v1.requestHash) }
+  val v2=v1.copy(codecVersion=DurableCommandCodecVersion.V2);val encodedV2=mapper.encode(v2)
+  assertEquals(v2,mapper.decode(encodedV2,mapper.hash(encodedV2),v2.requestHash))
+  assertEquals(DurableCommandCodecVersion.V2,DurableCommandCodecVersion.fromWire(2));assertEquals(DurableCommandCodecVersion.Unknown,DurableCommandCodecVersion.fromWire(3))
+ }
 }
