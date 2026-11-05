@@ -1,5 +1,9 @@
 # Estado canónico del SDD — BlackStore
 
+## Master vigente y corte ODR — 2026-11-05
+
+`master 822c431` integra PR #56 POSC-E. Las afirmaciones históricas posteriores que todavía describen POSC-B/T/U/E o PR #51 como pendientes no gobiernan el estado ejecutable actual. El siguiente corte activo es [rutas operativas de detalle](wip/20261105-blackstore-operational-detail-routes/meta.md), frontend-only y sin nuevas integraciones live.
+
 ## Candidato CLR-T09 local — 2026-11-05
 
 Base `master c7ce4bd`, rama `codex/blackstore-clr-acceptance`: backend final

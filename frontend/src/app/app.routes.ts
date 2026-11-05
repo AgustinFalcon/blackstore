@@ -8,12 +8,20 @@ import { CatalogPanelComponent } from './features/catalog/catalog-panel.componen
 import { SaleTicketComponent } from './features/sales/sale-ticket.component';
 import { ShiftReportComponent } from './features/reports/shift-report.component';
 import { DurableSalesComponent } from './features/sales/durable-sales.component';
+import { SaleTicketSnapshotComponent } from './features/sales/sale-ticket-snapshot.component';
+import { CashPageMode } from './core/domain/cash-page-mode';
 
 export const routes: Routes = [
   { path: 'sesion', component: SessionComponent },
   { path: '', component: PosShellComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.WorkspaceRead } },
-  { path: 'caja', component: CashSessionComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.CashSessionList } },
+  { path: 'caja/cierre', component: CashSessionComponent, canActivate: [sessionGuard], data: {
+    permission: StaffPermission.CashSessionClose, cashPageMode: CashPageMode.Close.wire,
+  } },
+  { path: 'caja', component: CashSessionComponent, canActivate: [sessionGuard], data: {
+    permission: StaffPermission.CashSessionList, cashPageMode: CashPageMode.Workspace.wire,
+  } },
   { path: 'catalogo', component: CatalogPanelComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.CatalogRead } },
+  { path: 'ticket/:saleId', component: SaleTicketSnapshotComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.SaleRead } },
   { path: 'ticket', component: SaleTicketComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.SaleReserve } },
   { path: 'ventas', component: DurableSalesComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.SaleRead } },
   { path: 'reportes', component: ShiftReportComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.ShiftReportRead } },
