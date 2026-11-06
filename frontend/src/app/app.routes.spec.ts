@@ -5,6 +5,11 @@ import { SaleTicketSnapshotComponent } from './features/sales/sale-ticket-snapsh
 import { routes } from './app.routes';
 
 describe('operational routes', () => {
+  it('gives every concrete route a descriptive BlackStore title', () => {
+    for (const route of routes.filter(candidate => candidate.path !== '**')) {
+      expect(String(route.title)).toContain('BlackStore POS');
+    }
+  });
   it('exposes a guarded dedicated cash-close route with a closed page mode', () => {
     const route = routes.find(candidate => candidate.path === 'caja/cierre');
     expect(route?.component).toBe(CashSessionComponent);

@@ -1,0 +1,14 @@
+{
+  "feature": "blackstore-frontend-presentation-closure",
+  "base": "7382616c8c1ea33770b935bf4433662ba2b6536b",
+  "tasks": [
+    {"id":"BFPC-D","status":"done","title":"Reconciliar master, inventario y alcance"},
+    {"id":"BFPC-U1","status":"done","title":"Cerrar navegación accesible y presentación operativa"},
+    {"id":"BFPC-U2","status":"done","title":"Agregar descubrimiento profesional de catálogo"},
+    {"id":"BFPC-U3","status":"done","title":"Jerarquizar reportes y evidencia técnica"},
+    {"id":"BFPC-E","status":"done","title":"Ejecutar gates locales y visuales exact-head"},
+    {"id":"BFPC-CI","status":"done","title":"Hospedar gates demo y ODR"},
+    {"id":"BFPC-R","status":"pending","title":"Reviews exact-head Astra y Sol"},
+    {"id":"BFPC-M","status":"pending","title":"PR, CI, merge y post-merge"}
+  ]
+}

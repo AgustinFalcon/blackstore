@@ -1,4 +1,9 @@
 import {test,expect} from '@playwright/test';
+test('route changes update the document title and focus content without stealing focus for query changes',async({page})=>{
+ await page.goto('/demo/pos');await expect(page).toHaveTitle('Nueva venta · BlackStore Demo');await expect(page.locator('#demo-main')).toBeFocused();
+ await page.getByLabel('Buscar producto').focus();await page.getByLabel('Buscar producto').fill('Remera');await expect(page.getByLabel('Buscar producto')).toBeFocused();
+ await page.getByRole('link',{name:'Ventas',exact:true}).click();await expect(page).toHaveTitle('Ventas · BlackStore Demo');await expect(page.locator('#demo-main')).toBeFocused();
+});
 test('payment preconditions explain an empty cart and a closed cash shift',async({page})=>{
  await page.goto('/demo/pago');await expect(page.getByRole('heading',{name:'Agregá productos para cobrar'})).toBeVisible();await expect(page.getByRole('button',{name:'Confirmar cobro'})).toHaveCount(0);
  await page.getByRole('link',{name:'Escenarios',exact:true}).click();await page.getByLabel('Estado inicial').selectOption({label:'Caja cerrada'});await page.getByRole('button',{name:'Cargar escenario',exact:false}).click();await page.getByRole('button',{name:'Confirmar',exact:true}).click();await page.getByRole('link',{name:'Nueva venta',exact:true}).click();await page.locator('.product-card').first().getByRole('button',{name:'Agregar',exact:false}).click();await expect(page.getByRole('button',{name:'Continuar al pago'})).toBeDisabled();await page.evaluate(()=>{history.pushState(null,'','/demo/pago');dispatchEvent(new PopStateEvent('popstate'));});await expect(page.getByRole('heading',{name:'Abrí la caja para cobrar'})).toBeVisible();await page.getByRole('link',{name:'Abrir caja',exact:false}).click();await expect(page.getByRole('button',{name:'Abrir caja',exact:true})).toBeVisible();

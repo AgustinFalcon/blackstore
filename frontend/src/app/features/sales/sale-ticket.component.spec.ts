@@ -59,6 +59,15 @@ describe('SaleTicketComponent explicit cart journey', () => {
     expect(component.cart.draft().total?.decimal).toBe('37.50');
   });
 
+  it('filters the authorized catalogue by partial name or exact SKU without changing its identity', () => {
+    component.productSearch = 'amola';
+    expect(component.filteredCatalogItems().map(item => item.sku)).toEqual(['SKU-B']);
+    component.productSearch = 'sku-a';
+    expect(component.filteredCatalogItems().map(item => item.variantId)).toEqual(['variant-a']);
+    component.clearProductSearch();
+    expect(component.filteredCatalogItems().length).toBe(2);
+  });
+
   it('creates one V3 multiline reserve and never schedules an automatic payment', async () => {
     component.addSelected(); component.selectedSku = 'SKU-B'; component.addSelected();
     spyOn(component, 'blockReason').and.returnValue(null);

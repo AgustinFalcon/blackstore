@@ -47,12 +47,15 @@
           <div class="empty-state"><b>No hay productos disponibles</b><p>Actualizá el catálogo antes de iniciar una venta.</p></div>
         } @else {
           <form class="add-product" (ngSubmit)="addSelected()">
+            <label for="catalog-search">Buscar por nombre o SKU</label>
+            <input id="catalog-search" name="catalogSearch" type="search" [(ngModel)]="productSearch" placeholder="Ej. taladro o SKU-104" autocomplete="off" />
             <label for="catalog-product">Producto</label>
             <select id="catalog-product" name="catalogProduct" [(ngModel)]="selectedSku">
-              @for (item of counter.catalog()?.items ?? []; track item.variantId) {
+              @for (item of filteredCatalogItems(); track item.variantId) {
                 <option [value]="item.sku">{{ item.name }} · {{ item.sku }}</option>
               }
             </select>
+            @if (!filteredCatalogItems().length) { <div class="empty-search" role="status">No hay coincidencias.<button type="button" class="ghost" (click)="clearProductSearch()">Limpiar búsqueda</button></div> }
             @if (selectedItem(); as item) {
               <article class="product-preview">
                 <div class="product-icon" aria-hidden="true">{{ item.name.slice(0, 1) }}</div>

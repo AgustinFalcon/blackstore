@@ -9,19 +9,19 @@ import { TicketMoney } from '../../core/domain/ticket-transition';
       <article class="card" [attr.aria-label]="'Reporte de ' + item.period.label">
         <h3>Reporte de {{ item.period.label }} @if (item.cashSessionId) { · caja {{ item.cashSessionId }} }</h3>
         <p>{{ item.provisional ? 'Provisional al corte indicado' : 'Lectura histórica' }} · versión contable {{ item.accountingVersion }}</p>
-        <dl>
-          <dt>Desde (incluido)</dt><dd><time>{{ item.start }}</time></dd>
-          <dt>Hasta (excluido)</dt><dd><time>{{ item.endExclusive }}</time></dd>
-          <dt>Al corte / as-of</dt><dd><time>{{ item.cutoff }}</time></dd>
-          <dt>Zona efectiva</dt><dd>{{ item.zone }} · {{ item.zoneVersion }} · desde {{ item.zoneEffectiveAt }}</dd>
-          <dt>Snapshot consistente</dt><dd class="sku">{{ item.snapshot }}</dd>
-        </dl>
-        <p>Un importe no disponible significa falta de evidencia; no equivale a cero. Los importes parciales sólo incluyen fuentes acreditadas.</p>
         <dl class="metrics">
           <div class="metric"><dt>Ventas brutas reconocidas</dt><dd>{{ amount(item.grossSales) }}</dd></div>
           <div class="metric"><dt>Descuentos reconocidos</dt><dd>{{ amount(item.discounts) }}</dd></div>
           <div class="metric"><dt>{{ item.netSales.metric.label }}</dt><dd>{{ amount(item.netSales.value) }} · {{ item.netSales.coverage.state.label }}</dd></div>
         </dl>
+        <p>Un importe no disponible significa falta de evidencia; no equivale a cero. Los importes parciales sólo incluyen fuentes acreditadas.</p>
+        <details><summary>Período y evidencia técnica</summary><dl>
+          <dt>Desde (incluido)</dt><dd><time>{{ item.start }}</time></dd>
+          <dt>Hasta (excluido)</dt><dd><time>{{ item.endExclusive }}</time></dd>
+          <dt>Al corte</dt><dd><time>{{ item.cutoff }}</time></dd>
+          <dt>Zona efectiva</dt><dd>{{ item.zone }} · {{ item.zoneVersion }} · desde {{ item.zoneEffectiveAt }}</dd>
+          <dt>Snapshot consistente</dt><dd class="sku">{{ item.snapshot }}</dd>
+        </dl></details>
         <h4>Cobertura por métrica</h4>
         <ul>
           @for (row of item.coverage; track row.metric) {
