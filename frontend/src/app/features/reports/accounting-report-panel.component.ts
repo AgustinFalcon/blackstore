@@ -14,6 +14,7 @@ import { TicketMoney } from '../../core/domain/ticket-transition';
           <div class="metric"><dt>Descuentos reconocidos</dt><dd>{{ amount(item.discounts) }}</dd></div>
           <div class="metric"><dt>{{ item.netSales.metric.label }}</dt><dd>{{ amount(item.netSales.value) }} · {{ item.netSales.coverage.state.label }}</dd></div>
         </dl>
+        <p class="report-cutoff"><span>Al corte / as-of</span> · <time>{{ item.cutoff }}</time></p>
         <p>Un importe no disponible significa falta de evidencia; no equivale a cero. Los importes parciales sólo incluyen fuentes acreditadas.</p>
         <details><summary>Período y evidencia técnica</summary><dl>
           <dt>Desde (incluido)</dt><dd><time>{{ item.start }}</time></dd>

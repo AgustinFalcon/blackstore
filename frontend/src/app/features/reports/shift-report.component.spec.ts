@@ -40,6 +40,7 @@ describe('ShiftReportComponent', () => {
       Object.assign(raw.reconciliation!, { outcome: outcome.wire, declaredCash: declaration, difference, expectedCash: difference === null ? null : 65 });
       http.expectOne(request => request.url.endsWith('/reports/shift')).flush(reportEnvelope(raw)); fixture.detectChanges();
       expect(root.textContent).toContain(outcome.label); expect(root.textContent).toContain(raw.cutoff);
+      expect(Array.from(root.querySelectorAll('.report-cutoff span')).some(node => node.textContent === 'Al corte / as-of')).toBeTrue();
       expect(root.textContent).toContain('Snapshot consistente'); expect(root.textContent).toContain('no equivale a cero');
       if (difference === null) expect(root.textContent).toContain('No disponible');
     }
