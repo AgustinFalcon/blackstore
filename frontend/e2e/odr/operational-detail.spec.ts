@@ -39,6 +39,16 @@ test('dedicated cash close hides opening and expense controls on mobile', async 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test('operational route focus does not override a control reached after navigation', async ({ page }) => {
+  await page.goto('/ticket/id%3ASale%2FAa-01');
+  await page.getByRole('link', { name: 'Reportes' }).click();
+  const localDate = page.getByLabel('Fecha local');
+  await localDate.focus();
+  await expect(localDate).toBeFocused();
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(localDate).toBeFocused();
+});
+
 async function mockOperationalReads(page: Page): Promise<void> {
   await page.route('**/api/**', async route => {
     const request = route.request();

@@ -5,6 +5,7 @@ import { HealthApiService } from './core/services/health-api.service';
 import { isSuccessResponse } from './core/models/base-response';
 import { SessionStore } from './core/services/session.store';
 import { StaffPermission } from './core/domain/session-types';
+import { NavigationFocusPolicy } from './shared/navigation-focus-policy';
 
 @Component({
   selector: 'bs-root',
@@ -139,8 +140,12 @@ export class AppComponent implements OnInit {
       const path = event.urlAfterRedirects.split(/[?#]/, 1)[0];
       if (path === this.lastRoutePath) return;
       this.lastRoutePath = path;
+      const activeAtNavigation = document.activeElement;
       afterNextRender(() => {
-        if (!(document.activeElement as HTMLElement | null)?.classList.contains('skip-link')) document.getElementById('pos-content')?.focus();
+        const active = document.activeElement as HTMLElement | null;
+        if (!active?.classList.contains('skip-link') && NavigationFocusPolicy.mayFocusContent(activeAtNavigation, active, document.body)) {
+          document.getElementById('pos-content')?.focus();
+        }
       }, { injector: this.injector });
     });
     this.healthApi.getHealth().subscribe({
