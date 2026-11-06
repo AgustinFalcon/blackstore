@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnDestroy, afterNextRender, Injector } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, Subscription } from 'rxjs';
@@ -13,10 +13,11 @@ export class DemoShellComponent implements OnDestroy {
  readonly roles=DemoRole.values;
  changeRole(key:string):void{this.repo.setRole(DemoWireMapper.role(key));}
  readonly router=inject(Router);
+ private readonly injector=inject(Injector);
  readonly repo=inject(DemoRepository); readonly state=signal(this.repo.snapshot()); readonly menu=signal(false);
  private readonly unsubscribe=this.repo.subscribe(s=>this.state.set(s));
  private lastRoutePath='';
- private readonly routeNavigation:Subscription=this.router.events.pipe(filter((event):event is NavigationEnd=>event instanceof NavigationEnd)).subscribe(event=>{const path=event.urlAfterRedirects.split(/[?#]/,1)[0];if(path===this.lastRoutePath)return;this.lastRoutePath=path;this.focusContent();});
+ private readonly routeNavigation:Subscription=this.router.events.pipe(filter((event):event is NavigationEnd=>event instanceof NavigationEnd)).subscribe(event=>{const path=event.urlAfterRedirects.split(/[?#]/,1)[0];if(path===this.lastRoutePath)return;this.lastRoutePath=path;afterNextRender(()=>{if(!(document.activeElement as HTMLElement|null)?.classList.contains('skip'))this.focusContent();},{ injector: this.injector });});
  readonly navigation=[{path:'/demo',label:'Inicio',icon:'▦'},{path:'/demo/pos',label:'Nueva venta',icon:'＋'},{path:'/demo/ventas',label:'Ventas',icon:'▤'},{path:'/demo/productos',label:'Productos',icon:'◈'},{path:'/demo/inventario',label:'Inventario',icon:'▧'},{path:'/demo/clientes',label:'Clientes',icon:'◎'},{path:'/demo/caja',label:'Caja',icon:'▣'},{path:'/demo/reportes',label:'Reportes',icon:'↗'},{path:'/demo/escenarios',label:'Escenarios',icon:'⚙'}];
  focusContent():void{document.getElementById('demo-main')?.focus();}
  ngOnDestroy():void {this.unsubscribe();this.routeNavigation.unsubscribe();}

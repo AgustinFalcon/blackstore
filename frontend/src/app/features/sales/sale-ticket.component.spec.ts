@@ -73,6 +73,17 @@ describe('SaleTicketComponent explicit cart journey', () => {
     expect(component.selectedSku).toBe('SKU-A');
   });
 
+  it('fails closed when a catalogue refresh removes the filtered selection', () => {
+    component.filterCatalog('amola');
+    expect(component.selectedItem()?.sku).toBe('SKU-B');
+    catalog.set({version:'v2',stale:false,importedAt:null,validUntil:null,items:[
+      {sku:'SKU-A',name:'Taladro profesional',variantId:'variant-a',priceVersion:'P3',unitPrice:11},
+    ]});
+    TestBed.flushEffects();
+    expect(component.selectedSku).toBe('');
+    expect(component.selectedItem()).toBeNull();
+  });
+
   it('creates one V3 multiline reserve and never schedules an automatic payment', async () => {
     component.addSelected(); component.selectedSku = 'SKU-B'; component.addSelected();
     spyOn(component, 'blockReason').and.returnValue(null);
