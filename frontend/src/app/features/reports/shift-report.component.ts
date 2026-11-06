@@ -41,10 +41,10 @@ import { AccountingReportPanelComponent } from './accounting-report-panel.compon
         <h3 id="day-heading">Día</h3>
         <p class="lede">Consultá el cierre comercial de una fecha. La zona debe coincidir con la autorizada para el negocio.</p>
         <form (ngSubmit)="loadDay()">
-          <label>Fecha local <input name="localDate" type="date" [ngModel]="localDate" (ngModelChange)="localDate = $event; store.day.clear()" required aria-describedby="date-help" /><small id="date-help">Usá la fecha comercial del negocio.</small></label>
-          <label>Zona autorizada <input name="zone" list="business-zones" [ngModel]="zone" (ngModelChange)="zone = $event; store.day.clear()" placeholder="America/Argentina/Buenos_Aires" required aria-describedby="zone-help" /><small id="zone-help">Formato región/ciudad. No se toma automáticamente del dispositivo.</small></label>
+          <label>Fecha local <input name="localDate" type="date" [ngModel]="localDate" (ngModelChange)="localDate = $event; store.day.clear()" required aria-describedby="date-help" /></label><small id="date-help">Usá la fecha comercial del negocio.</small>
+          <label>Zona IANA autorizada <input name="zone" list="business-zones" [ngModel]="zone" (ngModelChange)="zone = $event; store.day.clear()" placeholder="America/Argentina/Buenos_Aires" required aria-describedby="zone-help" /></label><small id="zone-help">Formato región/ciudad. No se toma automáticamente del dispositivo.</small>
           <datalist id="business-zones"><option value="America/Argentina/Buenos_Aires"></option><option value="America/Argentina/Cordoba"></option><option value="America/Argentina/Mendoza"></option></datalist>
-          <details class="advanced"><summary>Filtros técnicos avanzados</summary><fieldset>
+          <details class="advanced" open><summary>Filtros técnicos avanzados</summary><fieldset>
             <legend>Acotar por identificadores autorizados</legend>
             <label>Terminal <input name="terminalId" type="number" min="1" step="1" [ngModel]="terminalId" (ngModelChange)="terminalId = $event; store.day.clear()" /></label>
             <label>Titular <input name="cashierId" type="number" min="1" step="1" [ngModel]="cashierId" (ngModelChange)="cashierId = $event; store.day.clear()" /></label>

@@ -30,7 +30,7 @@ interface CatalogData {
   imports: [FormsModule, RouterLink],
   template: `
     <section class="page">
-      <div class="section-heading"><div><p class="eyebrow">Operación de mostrador</p><h2>Catálogo disponible</h2><p class="lede">Consultá precios y disponibilidad antes de iniciar una venta.</p></div><a class="primary" routerLink="/ticket">Nueva venta</a></div>
+      <div class="section-heading"><div><p class="eyebrow">Operación de mostrador</p><h2>Catálogo</h2><p class="lede">Consultá precios y disponibilidad antes de iniciar una venta.</p></div><a class="primary" routerLink="/ticket">Nueva venta</a></div>
       @if (loading()) {
         <div class="card">
           <p class="skeleton" aria-hidden="true"></p>
