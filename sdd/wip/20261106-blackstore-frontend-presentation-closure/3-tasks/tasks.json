@@ -8,7 +8,7 @@
     {"id":"BFPC-U3","status":"done","title":"Jerarquizar reportes y evidencia técnica"},
     {"id":"BFPC-E","status":"done","title":"Ejecutar gates locales y visuales exact-head"},
     {"id":"BFPC-CI","status":"done","title":"Hospedar gates demo y ODR"},
-    {"id":"BFPC-R","status":"pending","title":"Reviews exact-head Astra y Sol"},
+    {"id":"BFPC-R","status":"done","title":"Reviews exact-head Astra y Sol"},
     {"id":"BFPC-M","status":"pending","title":"PR, CI, merge y post-merge"}
   ]
 }

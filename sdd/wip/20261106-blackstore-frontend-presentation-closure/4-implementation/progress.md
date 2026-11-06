@@ -21,6 +21,8 @@ Astra: sin P0/P1; demo presentable. P2: títulos/foco, descubrimiento operativo 
 - Reporte con métricas primero, evidencia técnica desplegable, fecha y zona explícitas guiadas sin inferir autorización desde el dispositivo.
 - CI `frontend-browser` instala Chromium y ejecuta `typecheck:demo`, 51 tests demo y tres ODR.
 
-Regresión local del candidato: typechecks PASS, build PASS, 398/398 Angular, 80/80 dominio demo, 51/51 Playwright demo y 3/3 ODR. Inspección visual real desktop de `/demo`: jerarquía/navegación/foco correctos. Reviews exact-head y CI hospedado pendientes.
+Regresión local del candidato: typechecks PASS, build PASS, 399/399 Angular, 80/80 dominio demo, 51/51 Playwright demo y 3/3 ODR. Inspección visual real desktop de `/demo`: jerarquía/navegación/foco correctos. CI hospedado pendiente.
 
 Primera review exact-head detectó que el job browser necesitaba compilar su propio `dist` y que una búsqueda podía conservar seleccionado un producto ya invisible. Ambos se corrigieron antes del PR; los gates y reviews deben repetirse sobre el nuevo SHA.
+
+La segunda review detectó una variante residual durante el refresco del catálogo con filtro persistente. El efecto y `selectedItem` ahora se restringen al catálogo visible y fallan cerrados; la regresión automatizada elimina el SKU filtrado durante el refresco. Astra UX/producto, Sol bugs/contratos y Sol seguridad aprobaron coordinadamente `db9ca9058320ddf498c4a94a771413e794ec12f0` sin P0–P3.
