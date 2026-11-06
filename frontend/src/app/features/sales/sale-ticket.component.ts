@@ -208,7 +208,12 @@ export class SaleTicketComponent implements OnInit {
     const items=this.counter.catalog()?.items ?? [];
     return needle ? items.filter(item=>`${item.name} ${item.sku}`.toLocaleLowerCase('es-AR').includes(needle)) : items;
   }
-  clearProductSearch():void { this.productSearch=''; }
+  filterCatalog(value:string):void {
+    this.productSearch=value;
+    const visible=this.filteredCatalogItems();
+    if (!visible.some(item=>item.sku===this.selectedSku)) this.selectedSku=visible[0]?.sku ?? '';
+  }
+  clearProductSearch():void { this.filterCatalog(''); }
   phaseReached(phase: CartPhase): boolean { return this.cartPhases.indexOf(phase) <= this.cartPhases.indexOf(this.normalizedProgressPhase()); }
 
   addSelected(): void {

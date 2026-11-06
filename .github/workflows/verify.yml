@@ -77,6 +77,9 @@ jobs:
       - name: Typecheck demo contracts
         working-directory: frontend
         run: npm run typecheck:demo
+      - name: Build browser application
+        working-directory: frontend
+        run: npm run build
       - name: Accept commercial demo
         working-directory: frontend
         run: npm run test:demo

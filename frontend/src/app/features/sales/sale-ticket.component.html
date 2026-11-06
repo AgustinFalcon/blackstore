@@ -48,7 +48,7 @@
         } @else {
           <form class="add-product" (ngSubmit)="addSelected()">
             <label for="catalog-search">Buscar por nombre o SKU</label>
-            <input id="catalog-search" name="catalogSearch" type="search" [(ngModel)]="productSearch" placeholder="Ej. taladro o SKU-104" autocomplete="off" />
+            <input id="catalog-search" name="catalogSearch" type="search" [ngModel]="productSearch" (ngModelChange)="filterCatalog($event)" placeholder="Ej. taladro o SKU-104" autocomplete="off" />
             <label for="catalog-product">Producto</label>
             <select id="catalog-product" name="catalogProduct" [(ngModel)]="selectedSku">
               @for (item of filteredCatalogItems(); track item.variantId) {

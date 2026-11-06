@@ -67,7 +67,7 @@ export class ShiftReportComponent implements OnInit, OnDestroy {
   readonly sessions = signal<CashSessionData[]>([]);
   readonly sessionsError = signal<string | null>(null);
   shiftSessionId: number | null = null;
-  localDate = new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  localDate = '';
   zone = '';
   terminalId: number | null = null;
   cashierId: number | null = null;
@@ -77,7 +77,7 @@ export class ShiftReportComponent implements OnInit, OnDestroy {
   constructor() {
     this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
       this.cancelSessions(); this.sessions.set([]); this.sessionsError.set(null); this.shiftSessionId = null;
-      this.localDate = new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); this.zone = ''; this.terminalId = null; this.cashierId = null; this.daySessionId = null;
+      this.localDate = ''; this.zone = ''; this.terminalId = null; this.cashierId = null; this.daySessionId = null;
     });
   }
   ngOnInit(): void { this.loadSessions(); }

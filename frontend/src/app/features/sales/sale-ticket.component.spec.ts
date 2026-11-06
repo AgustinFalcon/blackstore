@@ -60,12 +60,17 @@ describe('SaleTicketComponent explicit cart journey', () => {
   });
 
   it('filters the authorized catalogue by partial name or exact SKU without changing its identity', () => {
-    component.productSearch = 'amola';
+    component.filterCatalog('amola');
     expect(component.filteredCatalogItems().map(item => item.sku)).toEqual(['SKU-B']);
-    component.productSearch = 'sku-a';
+    expect(component.selectedSku).toBe('SKU-B');
+    component.filterCatalog('sku-a');
     expect(component.filteredCatalogItems().map(item => item.variantId)).toEqual(['variant-a']);
+    expect(component.selectedSku).toBe('SKU-A');
+    component.filterCatalog('ausente');
+    expect(component.selectedSku).toBe('');
     component.clearProductSearch();
     expect(component.filteredCatalogItems().length).toBe(2);
+    expect(component.selectedSku).toBe('SKU-A');
   });
 
   it('creates one V3 multiline reserve and never schedules an automatic payment', async () => {

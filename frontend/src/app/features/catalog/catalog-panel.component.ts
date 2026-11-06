@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SessionStore } from '../../core/services/session.store';
 import { API_BASE } from '../../core/api';
@@ -26,10 +27,10 @@ interface CatalogData {
 @Component({
   selector: 'bs-catalog-panel',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   template: `
     <section class="page">
-      <div class="section-heading"><div><p class="eyebrow">Operación de mostrador</p><h2>Catálogo disponible</h2><p class="lede">Consultá precios y disponibilidad antes de iniciar una venta.</p></div><a class="primary" href="/ticket">Nueva venta</a></div>
+      <div class="section-heading"><div><p class="eyebrow">Operación de mostrador</p><h2>Catálogo disponible</h2><p class="lede">Consultá precios y disponibilidad antes de iniciar una venta.</p></div><a class="primary" routerLink="/ticket">Nueva venta</a></div>
       @if (loading()) {
         <div class="card">
           <p class="skeleton" aria-hidden="true"></p>

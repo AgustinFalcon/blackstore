@@ -1,4 +1,4 @@
-import { Component, Injector, OnInit, afterNextRender, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { HealthApiService } from './core/services/health-api.service';
@@ -128,7 +128,6 @@ export class AppComponent implements OnInit {
   readonly permissions = StaffPermission;
   private readonly healthApi = inject(HealthApiService);
   private readonly router = inject(Router);
-  private readonly injector = inject(Injector);
   private lastRoutePath = '';
   readonly blocked = signal(true);
   readonly backendDown = signal(false);
@@ -139,7 +138,7 @@ export class AppComponent implements OnInit {
       const path = event.urlAfterRedirects.split(/[?#]/, 1)[0];
       if (path === this.lastRoutePath) return;
       this.lastRoutePath = path;
-      afterNextRender(() => document.getElementById('pos-content')?.focus(), {injector:this.injector});
+      document.getElementById('pos-content')?.focus();
     });
     this.healthApi.getHealth().subscribe({
       next: (response) => {
