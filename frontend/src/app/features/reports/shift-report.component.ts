@@ -39,16 +39,18 @@ import { AccountingReportPanelComponent } from './accounting-report-panel.compon
       </section>
       <section aria-labelledby="day-heading" [attr.aria-busy]="store.day.loading()">
         <h3 id="day-heading">Día</h3>
+        <p class="lede">Consultá el cierre comercial de una fecha. La zona debe coincidir con la autorizada para el negocio.</p>
         <form (ngSubmit)="loadDay()">
-          <label>Fecha local <input name="localDate" type="date" [ngModel]="localDate" (ngModelChange)="localDate = $event; store.day.clear()" required /></label>
-          <label>Zona IANA autorizada <input name="zone" [ngModel]="zone" (ngModelChange)="zone = $event; store.day.clear()" placeholder="America/Argentina/Buenos_Aires" required /></label>
-          <fieldset>
-            <legend>Filtros opcionales (el cajero es el titular de la caja)</legend>
+          <label>Fecha local <input name="localDate" type="date" [ngModel]="localDate" (ngModelChange)="localDate = $event; store.day.clear()" required aria-describedby="date-help" /></label><small id="date-help">Usá la fecha comercial del negocio.</small>
+          <label>Zona IANA autorizada <input name="zone" list="business-zones" [ngModel]="zone" (ngModelChange)="zone = $event; store.day.clear()" placeholder="America/Argentina/Buenos_Aires" required aria-describedby="zone-help" /></label><small id="zone-help">Formato región/ciudad. No se toma automáticamente del dispositivo.</small>
+          <datalist id="business-zones"><option value="America/Argentina/Buenos_Aires"></option><option value="America/Argentina/Cordoba"></option><option value="America/Argentina/Mendoza"></option></datalist>
+          <details class="advanced" open><summary>Filtros técnicos avanzados</summary><fieldset>
+            <legend>Acotar por identificadores autorizados</legend>
             <label>Terminal <input name="terminalId" type="number" min="1" step="1" [ngModel]="terminalId" (ngModelChange)="terminalId = $event; store.day.clear()" /></label>
             <label>Titular <input name="cashierId" type="number" min="1" step="1" [ngModel]="cashierId" (ngModelChange)="cashierId = $event; store.day.clear()" /></label>
             <label>Caja <input name="daySessionId" type="number" min="1" step="1" [ngModel]="daySessionId" (ngModelChange)="daySessionId = $event; store.day.clear()" /></label>
-          </fieldset>
-          <button type="submit" [disabled]="!identity.can(permissions.DailyReportRead)">Consultar día</button>
+          </fieldset></details>
+          <button type="submit" [disabled]="!identity.can(permissions.DailyReportRead) || !localDate || !zone.trim()">Consultar día</button>
         </form>
         @if (store.day.loading()) { <p role="status">Consultando día…</p> }
         @if (store.day.error(); as error) { <p role="alert">Día: {{ error.label }}</p> }

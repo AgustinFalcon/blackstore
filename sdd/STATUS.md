@@ -1,5 +1,9 @@
 # Estado canónico del SDD — BlackStore
 
+## Corte activo de cierre frontend — 2026-11-06
+
+`master 7382616` integra PR #57 ODR y PR #56 POSC-E. El corte activo es [cierre de presentación frontend](wip/20261106-blackstore-frontend-presentation-closure/meta.md): demo comercial con mocks más profesionalización de lecturas POS existentes. Storefront comprador, proveedores reales, StoreCore live, fiscal, homologación y publicación siguen fuera de alcance/bloqueados.
+
 ## Master vigente y corte ODR — 2026-11-05
 
 `master 822c431` integra PR #56 POSC-E. Las afirmaciones históricas posteriores que todavía describen POSC-B/T/U/E o PR #51 como pendientes no gobiernan el estado ejecutable actual. El siguiente corte activo es [rutas operativas de detalle](wip/20261105-blackstore-operational-detail-routes/meta.md), frontend-only y sin nuevas integraciones live.

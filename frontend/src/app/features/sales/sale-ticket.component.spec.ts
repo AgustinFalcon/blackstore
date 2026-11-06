@@ -59,6 +59,31 @@ describe('SaleTicketComponent explicit cart journey', () => {
     expect(component.cart.draft().total?.decimal).toBe('37.50');
   });
 
+  it('filters the authorized catalogue by partial name or exact SKU without changing its identity', () => {
+    component.filterCatalog('amola');
+    expect(component.filteredCatalogItems().map(item => item.sku)).toEqual(['SKU-B']);
+    expect(component.selectedSku).toBe('SKU-B');
+    component.filterCatalog('sku-a');
+    expect(component.filteredCatalogItems().map(item => item.variantId)).toEqual(['variant-a']);
+    expect(component.selectedSku).toBe('SKU-A');
+    component.filterCatalog('ausente');
+    expect(component.selectedSku).toBe('');
+    component.clearProductSearch();
+    expect(component.filteredCatalogItems().length).toBe(2);
+    expect(component.selectedSku).toBe('SKU-A');
+  });
+
+  it('fails closed when a catalogue refresh removes the filtered selection', () => {
+    component.filterCatalog('amola');
+    expect(component.selectedItem()?.sku).toBe('SKU-B');
+    catalog.set({version:'v2',stale:false,importedAt:null,validUntil:null,items:[
+      {sku:'SKU-A',name:'Taladro profesional',variantId:'variant-a',priceVersion:'P3',unitPrice:11},
+    ]});
+    TestBed.flushEffects();
+    expect(component.selectedSku).toBe('');
+    expect(component.selectedItem()).toBeNull();
+  });
+
   it('creates one V3 multiline reserve and never schedules an automatic payment', async () => {
     component.addSelected(); component.selectedSku = 'SKU-B'; component.addSelected();
     spyOn(component, 'blockReason').and.returnValue(null);

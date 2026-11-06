@@ -22,6 +22,9 @@ describe('ShiftReportComponent', () => {
     const { fixture, http, component, root } = setup();
     expect(root.querySelectorAll('label input').length).toBe(5);
     expect(root.querySelector('label select')).not.toBeNull(); expect(root.querySelector('fieldset legend')).not.toBeNull();
+    expect(Array.from(root.querySelectorAll('label')).some(label => label.textContent?.trim() === 'Fecha local')).toBeTrue();
+    expect(Array.from(root.querySelectorAll('label')).some(label => label.textContent?.trim() === 'Zona IANA autorizada')).toBeTrue();
+    expect(root.querySelector<HTMLDetailsElement>('details.advanced')?.open).toBeTrue();
     component.selectShift(12); component.loadShift(); fixture.detectChanges();
     expect(root.querySelector('[role="status"]')?.textContent).toContain('Consultando turno');
     expect(root.querySelector('[aria-labelledby="shift-heading"]')?.getAttribute('aria-busy')).toBe('true');
@@ -37,6 +40,7 @@ describe('ShiftReportComponent', () => {
       Object.assign(raw.reconciliation!, { outcome: outcome.wire, declaredCash: declaration, difference, expectedCash: difference === null ? null : 65 });
       http.expectOne(request => request.url.endsWith('/reports/shift')).flush(reportEnvelope(raw)); fixture.detectChanges();
       expect(root.textContent).toContain(outcome.label); expect(root.textContent).toContain(raw.cutoff);
+      expect(Array.from(root.querySelectorAll('.report-cutoff span')).some(node => node.textContent === 'Al corte / as-of')).toBeTrue();
       expect(root.textContent).toContain('Snapshot consistente'); expect(root.textContent).toContain('no equivale a cero');
       if (difference === null) expect(root.textContent).toContain('No disponible');
     }

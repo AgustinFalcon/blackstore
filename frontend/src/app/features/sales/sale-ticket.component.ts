@@ -72,6 +72,7 @@ export class SaleTicketComponent implements OnInit {
   private retryIdentity: TicketIdentity | undefined;
 
   selectedSku = '';
+  productSearch = '';
   operationReason = '';
   paymentMethod = PaymentMethod.Cash;
   paymentAmount = '';
@@ -108,7 +109,8 @@ export class SaleTicketComponent implements OnInit {
   private readonly completeSale = new CommitSaleStep(this.refreshStep,command=>this.sales.execute(command),this.awaitTerminal);
 
   private readonly selectFirstCatalogItem = effect(() => {
-    const items = this.counter.catalog()?.items ?? [];
+    this.counter.catalog();
+    const items = this.filteredCatalogItems();
     if (!items.some(item => item.sku === this.selectedSku)) this.selectedSku = items[0]?.sku ?? '';
   });
 
@@ -201,7 +203,18 @@ export class SaleTicketComponent implements OnInit {
   isEditing(): boolean { return this.phase() === CartPhase.Editing; }
   isPaymentPhase(): boolean { return this.phase() === CartPhase.Reserved || this.phase() === CartPhase.AwaitingPayment; }
   isRecovery(): boolean { return this.phase() === CartPhase.RecoveryRequired || this.phase() === CartPhase.Unknown; }
-  selectedItem() { return this.counter.catalog()?.items.find(item => item.sku === this.selectedSku) ?? null; }
+  selectedItem() { return this.filteredCatalogItems().find(item => item.sku === this.selectedSku) ?? null; }
+  filteredCatalogItems() {
+    const needle=this.productSearch.trim().toLocaleLowerCase('es-AR');
+    const items=this.counter.catalog()?.items ?? [];
+    return needle ? items.filter(item=>`${item.name} ${item.sku}`.toLocaleLowerCase('es-AR').includes(needle)) : items;
+  }
+  filterCatalog(value:string):void {
+    this.productSearch=value;
+    const visible=this.filteredCatalogItems();
+    if (!visible.some(item=>item.sku===this.selectedSku)) this.selectedSku=visible[0]?.sku ?? '';
+  }
+  clearProductSearch():void { this.filterCatalog(''); }
   phaseReached(phase: CartPhase): boolean { return this.cartPhases.indexOf(phase) <= this.cartPhases.indexOf(this.normalizedProgressPhase()); }
 
   addSelected(): void {

@@ -1,5 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SessionStore } from '../../core/services/session.store';
 import { API_BASE } from '../../core/api';
@@ -25,10 +27,10 @@ interface CatalogData {
 @Component({
   selector: 'bs-catalog-panel',
   standalone: true,
+  imports: [FormsModule, RouterLink],
   template: `
     <section class="page">
-      <h2>Catálogo</h2>
-      <p class="lede">Proyección de solo lectura. Si el fixture está vencido o no disponible, la venta nueva se bloquea.</p>
+      <div class="section-heading"><div><p class="eyebrow">Operación de mostrador</p><h2>Catálogo</h2><p class="lede">Consultá precios y disponibilidad antes de iniciar una venta.</p></div><a class="primary" routerLink="/ticket">Nueva venta</a></div>
       @if (loading()) {
         <div class="card">
           <p class="skeleton" aria-hidden="true"></p>
@@ -36,18 +38,24 @@ interface CatalogData {
         </div>
       }
       @if (catalog(); as item) {
-        <div class="card">
+        <div class="metrics" aria-label="Resumen del catálogo">
+          <dl class="card metric"><dt>Productos visibles</dt><dd>{{ filteredItems().length }}</dd></dl>
+          <dl class="card metric"><dt>Estado</dt><dd>{{ item.stale ? 'Requiere actualización' : 'Listo para vender' }}</dd></dl>
+          <dl class="card metric"><dt>Última actualización</dt><dd>{{ date(item.importedAt) }}</dd></dl>
+        </div>
+        <div class="card catalog-status">
           <p>
             Versión {{ item.version }}
             <span class="badge" [class.ok]="!item.stale" [class.warn]="item.stale">{{ item.stale ? 'vencido' : 'vigente' }}</span>
           </p>
-          <p>Importado {{ item.importedAt }} · vigente hasta {{ item.validUntil }}</p>
+          <p>Importado {{ date(item.importedAt) }} · vigente hasta {{ date(item.validUntil) }}</p>
           @if (item.stale) {
             <p class="error">Catálogo vencido. No inicies una venta nueva.</p>
           }
         </div>
         @if (item.items.length) {
-          <table>
+          <div class="toolbar"><label for="catalog-search">Buscar producto</label><input id="catalog-search" type="search" [(ngModel)]="query" placeholder="Nombre, SKU o variante" autocomplete="off"><span aria-live="polite">{{ filteredItems().length }} resultados</span></div>
+          <div class="table-wrap"><table>
             <thead>
               <tr>
                 <th>SKU</th>
@@ -58,17 +66,18 @@ interface CatalogData {
               </tr>
             </thead>
             <tbody>
-              @for (row of item.items; track row.sku) {
+              @for (row of filteredItems(); track row.sku) {
                 <tr>
                   <td class="sku">{{ row.sku }}</td>
                   <td>{{ row.name }}</td>
                   <td class="sku">{{ row.variantId }}</td>
                   <td class="sku">{{ row.priceVersion || 'la carga el cajero' }}</td>
-                  <td class="money">{{ row.unitPrice ?? '—' }}</td>
+                  <td class="money">{{ money(row.unitPrice) }}</td>
                 </tr>
               }
             </tbody>
-          </table>
+          </table></div>
+          @if (!filteredItems().length) { <div class="card empty"><p>No encontramos productos con “{{ query }}”.</p><button type="button" class="ghost" (click)="query = ''">Limpiar búsqueda</button></div> }
         } @else {
           <p class="empty">No hay SKUs en la proyección.</p>
         }
@@ -86,6 +95,16 @@ export class CatalogPanelComponent implements OnInit {
   readonly catalog = signal<CatalogData | null>(null);
   readonly error = signal<string | null>(null);
   readonly loading = signal(false);
+  query = '';
+  filteredItems():readonly CatalogItem[] {
+    const needle = this.query.trim().toLocaleLowerCase('es-AR');
+    const rows = this.catalog()?.items ?? [];
+    return needle ? rows.filter(row => `${row.name} ${row.sku} ${row.variantId}`.toLocaleLowerCase('es-AR').includes(needle)) : rows;
+  }
+  private readonly currency = new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS'});
+  private readonly dateTime = new Intl.DateTimeFormat('es-AR', {dateStyle:'medium', timeStyle:'short'});
+  money(value:number|null):string { return value === null ? 'No informado' : this.currency.format(value); }
+  date(value:string|null):string { if (!value) return 'No informada'; const parsed=new Date(value); return Number.isNaN(parsed.valueOf()) ? 'No informada' : this.dateTime.format(parsed); }
 
   constructor() {
     inject(SessionStore).changed.pipe(takeUntilDestroyed()).subscribe(() => {

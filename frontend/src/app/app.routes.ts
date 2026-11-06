@@ -12,18 +12,18 @@ import { SaleTicketSnapshotComponent } from './features/sales/sale-ticket-snapsh
 import { CashPageMode } from './core/domain/cash-page-mode';
 
 export const routes: Routes = [
-  { path: 'sesion', component: SessionComponent },
-  { path: '', component: PosShellComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.WorkspaceRead } },
+  { path: 'sesion', component: SessionComponent, title: 'Sesión · BlackStore POS' },
+  { path: '', component: PosShellComponent, title: 'Inicio · BlackStore POS', canActivate: [sessionGuard], data: { permission: StaffPermission.WorkspaceRead } },
   { path: 'caja/cierre', component: CashSessionComponent, canActivate: [sessionGuard], data: {
     permission: StaffPermission.CashSessionClose, cashPageMode: CashPageMode.Close.wire,
-  } },
+  }, title: 'Cerrar caja · BlackStore POS' },
   { path: 'caja', component: CashSessionComponent, canActivate: [sessionGuard], data: {
     permission: StaffPermission.CashSessionList, cashPageMode: CashPageMode.Workspace.wire,
-  } },
-  { path: 'catalogo', component: CatalogPanelComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.CatalogRead } },
-  { path: 'ticket/:saleId', component: SaleTicketSnapshotComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.SaleRead } },
-  { path: 'ticket', component: SaleTicketComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.SaleReserve } },
-  { path: 'ventas', component: DurableSalesComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.SaleRead } },
-  { path: 'reportes', component: ShiftReportComponent, canActivate: [sessionGuard], data: { permission: StaffPermission.ShiftReportRead } },
+  }, title: 'Caja · BlackStore POS' },
+  { path: 'catalogo', component: CatalogPanelComponent, title: 'Catálogo · BlackStore POS', canActivate: [sessionGuard], data: { permission: StaffPermission.CatalogRead } },
+  { path: 'ticket/:saleId', component: SaleTicketSnapshotComponent, title: 'Comprobante · BlackStore POS', canActivate: [sessionGuard], data: { permission: StaffPermission.SaleRead } },
+  { path: 'ticket', component: SaleTicketComponent, title: 'Nueva venta · BlackStore POS', canActivate: [sessionGuard], data: { permission: StaffPermission.SaleReserve } },
+  { path: 'ventas', component: DurableSalesComponent, title: 'Ventas · BlackStore POS', canActivate: [sessionGuard], data: { permission: StaffPermission.SaleRead } },
+  { path: 'reportes', component: ShiftReportComponent, title: 'Reportes · BlackStore POS', canActivate: [sessionGuard], data: { permission: StaffPermission.ShiftReportRead } },
   { path: '**', redirectTo: '' },
 ];
