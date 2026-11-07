@@ -31,3 +31,10 @@ test('dashboard today links carry the same date range and receipt download match
 test('320px reflow shows categories without clipping and production navigation fits',async({page})=>{
  await page.setViewportSize({width:320,height:800});await page.goto('/demo/pos');await expect(page.locator('.product-art small').first()).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.getByLabel('Buscar producto').fill('Remera');await expect(page.getByLabel('Buscar producto')).toHaveValue('Remera');await page.goto('/sesion');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await expect(page.locator('nav')).toBeVisible();
 });
+test('desktop demo filters keep their compact horizontal hierarchy',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});await page.goto('/demo/pos');
+ const search=await page.locator('.pos-toolbar .search').boundingBox();const category=await page.locator('.pos-toolbar label').filter({hasText:'Categoría'}).boundingBox();
+ expect(search).not.toBeNull();expect(category).not.toBeNull();expect(Math.abs(search!.y-category!.y)).toBeLessThan(8);
+ await page.goto('/demo/ventas');const from=await page.getByLabel('Desde').boundingBox();const to=await page.getByLabel('Hasta').boundingBox();
+ expect(from).not.toBeNull();expect(to).not.toBeNull();expect(Math.abs(from!.y-to!.y)).toBeLessThan(8);
+});
