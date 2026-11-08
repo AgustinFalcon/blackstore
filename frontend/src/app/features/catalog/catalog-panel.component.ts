@@ -54,7 +54,7 @@ interface CatalogData {
           }
         </div>
         @if (item.items.length) {
-          <div class="toolbar"><label for="catalog-search">Buscar producto</label><input id="catalog-search" type="search" [(ngModel)]="query" placeholder="Nombre, SKU o variante" autocomplete="off"><span aria-live="polite">{{ filteredItems().length }} resultados</span></div>
+          <div class="catalog-toolbar"><label for="catalog-search">Buscar producto</label><input id="catalog-search" type="search" [(ngModel)]="query" placeholder="Nombre, SKU o variante" autocomplete="off"><span aria-live="polite">{{ filteredItems().length }} resultados</span></div>
           <div class="table-wrap"><table>
             <thead>
               <tr>
