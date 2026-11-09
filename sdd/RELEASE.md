@@ -2,7 +2,7 @@
 
 ## Master vigente — 2026-11-09
 
-`master 2b1f60c` contiene PR #53–#60. El corte actual de calidad es [paridad de datos de superficies productivas](wip/20261109-blackstore-productive-surface-data-parity/meta.md): specs aprobados, implementación y aceptación pendientes. No existe tag, deploy, publicación ni homologación; `release/1.0` no se crea ni recibe StoreCore live hasta completar los gates externos acordados.
+`master` recibe mediante PR #61 la [paridad de datos de superficies productivas](features/20261109-blackstore-productive-surface-data-parity/meta.md), validada por Verify #107 y DCT real PostgreSQL 16/JAR/Angular. No existe tag, deploy, publicación ni homologación; `release/1.0` no se crea ni recibe StoreCore live hasta completar los gates externos acordados.
 
 **Estado:** DRAFT / `ready_for_sol_review`. `sdd-v1.0.0` es baseline documental; `blackstore-pilot` nombra el companion vivo, no un tag.
 

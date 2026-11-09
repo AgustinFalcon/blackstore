@@ -2,7 +2,7 @@
 
 ## Master vigente y corte de paridad productiva — 2026-11-09
 
-`master 2b1f60c` integra PR #53–#60: POSC-T/U/E, rechazo fail-closed, ODR, cierre final de presentación y migración de `upload-artifact` a Node.js 24. Los estados anteriores se conservan como historia, pero ya no describen el ejecutable vigente. El corte activo es [paridad de datos de superficies productivas](wip/20261109-blackstore-productive-surface-data-parity/meta.md), aprobado en specs por dos reviews GPT-6.1 Sol sin P0–P3.
+`master 2b1f60c` integra PR #53–#60: POSC-T/U/E, rechazo fail-closed, ODR, cierre final de presentación y migración de `upload-artifact` a Node.js 24. La [paridad de datos de superficies productivas](features/20261109-blackstore-productive-surface-data-parity/meta.md) se cerró en PR #61 con Verify #107 verde y reviews finales Bug/Security/UX-Producto sin P0–P3; su merge materializa el corte en `master`.
 
 La demo comercial sigue siendo fixture en memoria. En el POS, identidad/caja/ventas/ledger son autoridad BlackStore con PostgreSQL; catálogo/precio/stock siguen bajo StoreCore y el adapter por defecto permanece fixture. StoreCore live, fiscal, QR/proveedores, homologación, deploy y `release/1.0` continúan bloqueados. Una procedencia histórica no persistida se muestra `Unknown`, nunca se infiere desde el catálogo actual.
 

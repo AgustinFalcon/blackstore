@@ -1,7 +1,7 @@
 {
   "feature": "blackstore-productive-surface-data-parity",
   "base": "2b1f60c44ba50c915293f48e2a83554f9ca81943",
-  "status": "release_candidate",
+  "status": "complete",
   "tasks": [
     {"id":"BSPD-T01","status":"done","title":"Auditar master, rutas, autoridad y fuentes de datos"},
     {"id":"BSPD-T02","status":"done","title":"Aprobar specs funcional/técnico, manifest y secuencia"},
@@ -12,7 +12,7 @@
     {"id":"BSPD-T07","status":"done","title":"Profesionalizar ventas y comprobante sin expandir contratos"},
     {"id":"BSPD-T08","status":"done","title":"Profesionalizar caja y reportes sin expandir contratos"},
     {"id":"BSPD-T09","status":"done","title":"Ejecutar PostgreSQL16/JAR/Angular, reinicio y negativos"},
-    {"id":"BSPD-T10","status":"in_progress","title":"Reviews exact-head, PR, CI y merge master"}
+    {"id":"BSPD-T10","status":"done","title":"Reviews exact-head, PR, CI y merge master"}
   ],
-  "stats": {"total":10,"done":9,"in_progress":1,"pending":0}
+  "stats": {"total":10,"done":10,"in_progress":0,"pending":0}
 }

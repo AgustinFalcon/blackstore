@@ -38,3 +38,9 @@
 - Demo browser: 52/52 PASS. ODR: 4/4 PASS. DCT real: 18/18 PASS sobre PostgreSQL 16, JAR real, Angular, reinicios, SID/CSRF/roles/ownership y recuperación de respuestas.
 - Revisión final coordinada GPT-6.1 Sol: Bug APPROVE, Security APPROVE y UX/Producto APPROVE; cero hallazgos P0–P3 pendientes.
 - Recursos del DCT detenidos por teardown. El corte queda `release_candidate`; falta únicamente materializar PR, CI remoto y merge en `master`.
+
+## 2026-11-09 — cierre remoto
+
+- Commit exacto `1cecb0202abc3d1a1806dad765f4a8d9ffa376d6` publicado en PR #61.
+- GitHub Actions workflow Verify #107 (`42579748822`) terminó verde: frontend, frontend-browser, backend y dct-browser.
+- El feature queda completo y archivado; el merge de PR #61 materializa este mismo cierre en `master` sin tocar `release/1.0`.

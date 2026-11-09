@@ -2,7 +2,7 @@
 
 ## Bloqueantes
 
-- BSPD [high, implementation] [Paridad de superficies productivas](wip/20261109-blackstore-productive-surface-data-parity/meta.md): manifest por dataset, procedencia cerrada, catálogo fixture explícito y aceptación HTTP/PostgreSQL real para todos los datasets BlackStore-owned. Specs con doble GO GPT-6.1 Sol; implementación y gates pendientes.
+- BSPD [resolved] [Paridad de superficies productivas](features/20261109-blackstore-productive-surface-data-parity/meta.md): manifest por dataset, procedencia cerrada, catálogo fixture explícito y aceptación HTTP/PostgreSQL real para todos los datasets BlackStore-owned. Cerrado en PR #61 con Verify #107 y tres reviews finales aprobadas.
 
 - POSC [high, B-in-review] [Carrito y cobro explícito](wip/20261008-blackstore-pos-cart-explicit-payment/meta.md): D aprobado; B local 311/311 PASS y review pendiente; T/U/E continúan planned. No UI-only ni StoreCore/ML live.
 
