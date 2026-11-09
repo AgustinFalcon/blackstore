@@ -173,11 +173,7 @@ export class PersistenceMode {
   private constructor(readonly wire: string, readonly label: string) {}
 
   static fromWire(raw: unknown): PersistenceMode {
-    switch (raw) {
-      case 'memory': return PersistenceMode.Memory;
-      case 'postgresql': return PersistenceMode.PostgreSql;
-      default: return PersistenceMode.Unknown;
-    }
+    return [PersistenceMode.Memory, PersistenceMode.PostgreSql].find(value => value.wire === raw) ?? PersistenceMode.Unknown;
   }
 }
 

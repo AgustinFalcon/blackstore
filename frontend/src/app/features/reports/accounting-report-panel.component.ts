@@ -64,5 +64,6 @@ import { TicketMoney } from '../../core/domain/ticket-transition';
 })
 export class AccountingReportPanelComponent {
   readonly report = input.required<AccountingReport>();
-  amount(value: TicketMoney | null): string { return value?.decimal ?? 'No disponible'; }
+  private readonly currency = new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS', currencyDisplay:'code'});
+  amount(value: TicketMoney | null): string { return value === null ? 'No disponible' : this.currency.format(Number(value.decimal)); }
 }

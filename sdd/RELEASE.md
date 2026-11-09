@@ -1,5 +1,9 @@
 # BlackStore documentation baseline 1.0.0
 
+## Master vigente — 2026-11-09
+
+`master 2b1f60c` contiene PR #53–#60. El corte actual de calidad es [paridad de datos de superficies productivas](wip/20261109-blackstore-productive-surface-data-parity/meta.md): specs aprobados, implementación y aceptación pendientes. No existe tag, deploy, publicación ni homologación; `release/1.0` no se crea ni recibe StoreCore live hasta completar los gates externos acordados.
+
 **Estado:** DRAFT / `ready_for_sol_review`. `sdd-v1.0.0` es baseline documental; `blackstore-pilot` nombra el companion vivo, no un tag.
 
 | Artefacto | Qué es | Estado |

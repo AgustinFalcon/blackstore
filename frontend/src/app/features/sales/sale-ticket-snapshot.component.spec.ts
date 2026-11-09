@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { DurableSaleState } from '../../core/domain/durable-sale';
-import { PaymentCoverage } from '../../core/domain/ticket-transition';
+import { PaymentCoverage, TicketMoney } from '../../core/domain/ticket-transition';
 import { SaleSnapshotState } from '../../core/domain/sale-snapshot-state';
 import { SaleSnapshotStore } from '../../core/services/sale-snapshot.store';
 import { SaleTicketSnapshotComponent } from './sale-ticket-snapshot.component';
@@ -16,7 +16,7 @@ describe('SaleTicketSnapshotComponent', () => {
       detail: signal({
         identity: { clientInstanceId: 'client', deviceId: 'device', saleId, operationId: 'operation' },
         cashSessionId: 9, cashierId: 12, createdBy: 12, status: DurableSaleState.Committed,
-        total: null, pending: null, coverage: PaymentCoverage.Paid, hasPaymentHistory: false,
+        total: TicketMoney.fromDecimal('1234.50'), pending: null, coverage: PaymentCoverage.Paid, hasPaymentHistory: false,
         lines: [], payments: [], allowedActions: [], valid: true, receipt: 'receipt-1',
         reservationRef: 'reservation-1', pendingCommand: null,
       }),
@@ -39,7 +39,12 @@ describe('SaleTicketSnapshotComponent', () => {
 
     expect(store.loadPathSegment).toHaveBeenCalledOnceWith(`id:${saleId}`);
     expect(screen.textContent).toContain(saleId);
-    expect(screen.textContent).toContain('Snapshot durable de sólo lectura');
+    expect(screen.textContent).toContain('Comprobante operativo de sólo lectura');
+    expect(screen.textContent).toContain('ARS');
+    expect(screen.textContent).toContain('1.234,50');
+    expect(screen.textContent).toContain('FechaNo disponible');
+    expect(screen.querySelector('[data-source="UNKNOWN"]')?.textContent).toContain('Procedencia desconocida');
+    expect(Array.from(screen.querySelectorAll('details')).some(item => item.textContent?.includes('receipt-1'))).toBeTrue();
     expect(screen.textContent).toContain('Esta ruta no ofrece acciones mutantes');
     expect(Array.from(screen.querySelectorAll('button')).some(button =>
       /confirmar|reversar|liberar|cobrar/i.test(button.textContent ?? ''))).toBeFalse();

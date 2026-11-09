@@ -6,6 +6,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, concatMap, finalize, map, takeUntil, throwError } from 'rxjs';
 import { AccountingCommand, AccountingCommandKind, CommandOutcome } from '../../core/domain/accounting-command';
 import { CartDraft, CartLine, CartPhase } from '../../core/domain/cart';
+import { CatalogAcceptanceState, CatalogSource, catalogAllowsSelection, catalogIsReadable } from '../../core/domain/catalog';
 import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
 import { DurableLineMetadata, DurableSaleDetail } from '../../core/domain/durable-sale';
 import { PaymentMethod, PaymentStatus, SaleAction, SaleStatus } from '../../core/domain/pos-types';
@@ -24,6 +25,8 @@ import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.co
 import { SaleCartStore } from './sale-cart.store';
 import { AwaitReservationStep, AwaitTerminalSaleStep, CapturePaymentStep, CommitSaleStep, PrepareReservationStep,
   RefreshCoverageStep, RefreshTicketStep, ReviewRejectedDraftStep, TicketFlowPort, ValidateCartStep } from './ticket-steps';
+import { SurfaceDataSource } from '../../core/domain/data-provenance';
+import { SurfaceDataEvidenceComponent } from '../../shared/surface-data-evidence.component';
 
 interface ActiveTicket { readonly identity: TicketIdentity; readonly cashSessionId:number; }
 interface TicketReversalReview { readonly operationId: string; readonly paymentId: number; readonly reason: ReversalReason; }
@@ -32,7 +35,7 @@ interface TicketPaymentRecord { readonly paymentId:number; readonly originalPaym
 
 @Component({
   selector: 'bs-sale-ticket', standalone: true,
-  imports: [FormsModule, ConfirmationDialogComponent], providers: [SaleCartStore],
+  imports: [FormsModule, ConfirmationDialogComponent, SurfaceDataEvidenceComponent], providers: [SaleCartStore],
   templateUrl: './sale-ticket.component.html', styleUrl: './sale-ticket.component.css',
 })
 export class SaleTicketComponent implements OnInit {
@@ -40,6 +43,14 @@ export class SaleTicketComponent implements OnInit {
   readonly commands = inject(AccountingCommandsStore);
   readonly sales = inject(SaleCommandsStore);
   readonly counter = inject(CounterContextService);
+  surfaceSource(): SurfaceDataSource { return SurfaceDataSource.aggregate([
+    this.counter.readiness().source,
+    this.counter.catalog()?.source.surfaceSource ?? SurfaceDataSource.Unknown,
+  ]); }
+  surfaceDatasets() { return [
+    {id:'sale-draft', label:'Venta en curso', source:this.counter.readiness().source},
+    {id:'product-evidence', label:'Catálogo y precios', source:this.counter.catalog()?.source.surfaceSource ?? SurfaceDataSource.Unknown},
+  ] as const; }
   private readonly commandHttp = inject(CommandHttp);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -79,6 +90,9 @@ export class SaleTicketComponent implements OnInit {
   reversalReason = '';
   private active: ActiveTicket | null = null;
   readonly requestedOperationId = signal<string | null>(null);
+  readonly catalogAcceptance = signal(CatalogAcceptanceState.initial(this.counter.catalog()));
+  readonly catalogSource = CatalogSource;
+  private observedCatalogKey: string | null = null;
 
   private readonly port: TicketFlowPort = {
     reserve: () => throwError(() => new Error('La reserva se prepara mediante el comando multiline.')),
@@ -109,7 +123,12 @@ export class SaleTicketComponent implements OnInit {
   private readonly completeSale = new CommitSaleStep(this.refreshStep,command=>this.sales.execute(command),this.awaitTerminal);
 
   private readonly selectFirstCatalogItem = effect(() => {
-    this.counter.catalog();
+    const snapshot = this.counter.catalog();
+    const key = snapshot ? `${this.session.generation()}:${snapshot.source.wire}:${snapshot.version ?? ''}:${snapshot.importedAt ?? ''}` : null;
+    if (key !== this.observedCatalogKey) {
+      this.observedCatalogKey = key;
+      this.catalogAcceptance.set(CatalogAcceptanceState.initial(snapshot));
+    }
     const items = this.filteredCatalogItems();
     if (!items.some(item => item.sku === this.selectedSku)) this.selectedSku = items[0]?.sku ?? '';
   });
@@ -164,7 +183,7 @@ export class SaleTicketComponent implements OnInit {
     this.refreshingDraft.set(false);
     const command = this.rejectedCommand(), catalog = this.counter.catalog(), context = this.commands.runtime.context();
     if (!command || !context || command.identity.clientInstanceId !== context.clientInstanceId || command.identity.deviceId !== context.deviceId ||
-        this.counter.blockReason() || !catalog || catalog.stale || !catalog.items.length) {
+        this.counter.blockReason() || !catalog || !catalogAllowsSelection(catalog, this.catalogAcceptance()) || !catalog.items.length) {
       this.message.set('No pudimos comprobar el catálogo y el contexto. Conservamos el borrador original.');
       this.announcement.set(this.message()!); return;
     }
@@ -215,10 +234,22 @@ export class SaleTicketComponent implements OnInit {
     if (!visible.some(item=>item.sku===this.selectedSku)) this.selectedSku=visible[0]?.sku ?? '';
   }
   clearProductSearch():void { this.filterCatalog(''); }
+  acceptLocalCatalog(): void {
+    this.catalogAcceptance.update(current => CatalogAcceptanceState.accept(current, this.counter.catalog()));
+    this.announcement.set(this.catalogAcceptance().allowsSelection
+      ? 'Simulador local aceptado para esta sesión y versión de catálogo.'
+      : 'No se pudo aceptar el catálogo local.');
+    if (this.catalogAcceptance().allowsSelection && this.rejectedCommand()) this.finishDraftRefresh();
+  }
+  canSelectCatalog(): boolean { return catalogAllowsSelection(this.counter.catalog(), this.catalogAcceptance()); }
+  catalogIsReadableForView(): boolean { return catalogIsReadable(this.counter.catalog()); }
   phaseReached(phase: CartPhase): boolean { return this.cartPhases.indexOf(phase) <= this.cartPhases.indexOf(this.normalizedProgressPhase()); }
 
   addSelected(): void {
-    if (!this.isEditing()) return;
+    if (!this.isEditing() || !this.canSelectCatalog()) {
+      this.failDraft('Aceptá una fuente de catálogo vigente antes de agregar productos.');
+      return;
+    }
     const item = this.selectedItem();
     if (!item || item.unitPrice == null || !item.priceVersion) { this.failDraft('El artículo no tiene precio o versión autorizados. Actualizá el catálogo.'); return; }
     try {
@@ -460,10 +491,12 @@ export class SaleTicketComponent implements OnInit {
     if (this.commands.unresolved() || this.sales.unresolved()) return 'Hay un comando pendiente. Consultá su recibo antes de operar.';
     if (this.commands.blocked().blocksWrites) return this.commands.blocked().label;
     if (!this.session.can(StaffPermission.SaleReserve)) return 'Permiso insuficiente para reservar ventas.';
+    if (!this.canSelectCatalog()) return this.catalogAcceptance().label;
     return this.counter.blockReason();
   }
 
   formatMoney(raw: string | number | null | undefined): string {
+    if (raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '')) return 'No disponible';
     const amount = Number(raw);
     return Number.isFinite(amount) ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(amount) : 'No disponible';
   }

@@ -1,0 +1,19 @@
+{
+  "feature": "blackstore-productive-surface-data-parity",
+  "base": "2b1f60c44ba50c915293f48e2a83554f9ca81943",
+  "kind": "EXPECTED_CONTRACT",
+  "sourceVocabulary": ["REAL", "FIXTURE", "MIXED", "UNAVAILABLE", "BLOCKED", "UNKNOWN"],
+  "aggregationRule": "all listed datasets are required; UNKNOWN precedes UNAVAILABLE precedes BLOCKED; otherwise all REAL => REAL, all FIXTURE => FIXTURE, every remaining REAL/FIXTURE/MIXED combination => MIXED",
+  "surfaces": [
+    {"id":"BS-S01","route":"/sesion","expectedSource":"REAL","datasets":[{"id":"staff-session","owner":"BLACKSTORE_IDENTITY","expectedSource":"REAL","persistence":"POSTGRESQL_REQUIRED"}]},
+    {"id":"BS-S02","route":"/","expectedSource":"MIXED","datasets":[{"id":"workspace-context","owner":"BLACKSTORE_OPERATIONS","expectedSource":"REAL","persistence":"POSTGRESQL_REQUIRED"},{"id":"catalog-summary","owner":"STORECORE_CATALOG","expectedSource":"FIXTURE","persistence":"BLOCKED_STORECORE_LIVE"}]},
+    {"id":"BS-S03","route":"/caja","expectedSource":"REAL","datasets":[{"id":"cash-session","owner":"BLACKSTORE_ACCOUNTING","expectedSource":"REAL","persistence":"POSTGRESQL_REQUIRED"}]},
+    {"id":"BS-S04","route":"/caja/cierre","expectedSource":"REAL","datasets":[{"id":"cash-close","owner":"BLACKSTORE_ACCOUNTING","expectedSource":"REAL","persistence":"POSTGRESQL_REQUIRED"}]},
+    {"id":"BS-S05","route":"/catalogo","expectedSource":"FIXTURE","datasets":[{"id":"catalog","owner":"STORECORE_CATALOG","expectedSource":"FIXTURE","persistence":"BLOCKED_STORECORE_LIVE"}]},
+    {"id":"BS-S06","route":"/ticket","expectedSource":"MIXED","datasets":[{"id":"sale-draft","owner":"BLACKSTORE_SALES","expectedSource":"REAL","persistence":"POSTGRESQL_REQUIRED"},{"id":"product-evidence","owner":"STORECORE_CATALOG","expectedSource":"FIXTURE","persistence":"BLOCKED_STORECORE_LIVE"}]},
+    {"id":"BS-S07","route":"/ticket/:saleId","expectedSource":"UNKNOWN","datasets":[{"id":"sale-detail","owner":"BLACKSTORE_SALES","expectedSource":"REAL","persistence":"POSTGRESQL_REQUIRED"},{"id":"historical-product-provenance","owner":"STORECORE_CATALOG","expectedSource":"UNKNOWN","persistence":"NOT_RECORDED"}]},
+    {"id":"BS-S08","route":"/ventas","expectedSource":"UNKNOWN","datasets":[{"id":"sale-list","owner":"BLACKSTORE_SALES","expectedSource":"REAL","persistence":"POSTGRESQL_REQUIRED"},{"id":"historical-product-provenance","owner":"STORECORE_CATALOG","expectedSource":"UNKNOWN","persistence":"NOT_RECORDED"}]},
+    {"id":"BS-S09","route":"/reportes","expectedSource":"UNKNOWN","datasets":[{"id":"accounting-ledger","owner":"BLACKSTORE_ACCOUNTING","expectedSource":"REAL","persistence":"POSTGRESQL_REQUIRED"},{"id":"historical-product-provenance","owner":"STORECORE_CATALOG","expectedSource":"UNKNOWN","persistence":"NOT_RECORDED"}]},
+    {"id":"BS-D01","route":"/demo/**","expectedSource":"FIXTURE","datasets":[{"id":"demo-scenarios","owner":"DEMO_ONLY","expectedSource":"FIXTURE","persistence":"MEMORY_RESETTABLE"}]}
+  ]
+}

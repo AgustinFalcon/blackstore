@@ -1,36 +1,27 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SessionStore } from '../../core/services/session.store';
 import { API_BASE } from '../../core/api';
 import { BaseResponse } from '../../core/models/base-response';
-
-interface CatalogItem {
-  sku: string;
-  name: string;
-  variantId: string;
-  priceVersion: string | null;
-  unitPrice: number | null;
-}
-
-interface CatalogData {
-  version: string | null;
-  stale: boolean;
-  importedAt: string | null;
-  validUntil: string | null;
-  canonicalPath: string | null;
-  items: CatalogItem[];
-}
+import { isSuccessResponse } from '../../core/models/base-response';
+import { CatalogItem, CatalogSnapshot, CatalogSource } from '../../core/domain/catalog';
+import { CatalogSnapshotWire } from '../../core/models/catalog-wire';
+import { CatalogWireMapper } from '../../core/infrastructure/catalog-wire-mapper';
+import { Subscription } from 'rxjs';
+import { SurfaceDataSource } from '../../core/domain/data-provenance';
+import { SurfaceDataEvidenceComponent } from '../../shared/surface-data-evidence.component';
 
 @Component({
   selector: 'bs-catalog-panel',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, SurfaceDataEvidenceComponent],
   template: `
     <section class="page">
       <div class="section-heading"><div><p class="eyebrow">Operación de mostrador</p><h2>Catálogo</h2><p class="lede">Consultá precios y disponibilidad antes de iniciar una venta.</p></div><a class="primary" routerLink="/ticket">Nueva venta</a></div>
+      <bs-surface-data-evidence surfaceId="BS-S05" [source]="observedSource()" [datasets]="surfaceDatasets()" />
       @if (loading()) {
         <div class="card">
           <p class="skeleton" aria-hidden="true"></p>
@@ -40,17 +31,19 @@ interface CatalogData {
       @if (catalog(); as item) {
         <div class="metrics" aria-label="Resumen del catálogo">
           <dl class="card metric"><dt>Productos visibles</dt><dd>{{ filteredItems().length }}</dd></dl>
-          <dl class="card metric"><dt>Estado</dt><dd>{{ item.stale ? 'Requiere actualización' : 'Listo para vender' }}</dd></dl>
+          <dl class="card metric"><dt>Estado</dt><dd>{{ item.freshness.label }}</dd></dl>
           <dl class="card metric"><dt>Última actualización</dt><dd>{{ date(item.importedAt) }}</dd></dl>
         </div>
         <div class="card catalog-status">
           <p>
             Versión {{ item.version }}
-            <span class="badge" [class.ok]="!item.stale" [class.warn]="item.stale">{{ item.stale ? 'vencido' : 'vigente' }}</span>
+            <span class="badge" [class.ok]="item.freshness.allowsSelection" [class.warn]="!item.freshness.allowsSelection">{{ item.freshness.label }}</span>
           </p>
+          <p><strong>Fuente:</strong> {{ item.source.label }}</p>
+          @if (item.source === localFixture) { <p class="error">Datos de demostración local: no acreditan stock ni disponibilidad de StoreCore.</p> }
           <p>Importado {{ date(item.importedAt) }} · vigente hasta {{ date(item.validUntil) }}</p>
-          @if (item.stale) {
-            <p class="error">Catálogo vencido. No inicies una venta nueva.</p>
+          @if (!item.freshness.allowsSelection || !item.source.available) {
+            <p class="error">Catálogo sin autoridad vigente. No inicies una venta nueva.</p>
           }
         </div>
         @if (item.items.length) {
@@ -71,7 +64,7 @@ interface CatalogData {
                   <td class="sku">{{ row.sku }}</td>
                   <td>{{ row.name }}</td>
                   <td class="sku">{{ row.variantId }}</td>
-                  <td class="sku">{{ row.priceVersion || 'la carga el cajero' }}</td>
+                  <td class="sku">{{ row.priceVersion || 'No informada por catálogo' }}</td>
                   <td class="money">{{ money(row.unitPrice) }}</td>
                 </tr>
               }
@@ -90,12 +83,21 @@ interface CatalogData {
     </section>
   `,
 })
-export class CatalogPanelComponent implements OnInit {
+export class CatalogPanelComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
-  readonly catalog = signal<CatalogData | null>(null);
+  private readonly identity = inject(SessionStore);
+  private loadEpoch = 0;
+  private request: Subscription | null = null;
+  readonly catalog = signal<CatalogSnapshot | null>(null);
   readonly error = signal<string | null>(null);
   readonly loading = signal(false);
   query = '';
+  readonly localFixture = CatalogSource.LocalFixture;
+  observedSource(): SurfaceDataSource {
+    if (this.error()) return SurfaceDataSource.Unavailable;
+    return this.catalog()?.source.surfaceSource ?? SurfaceDataSource.Unknown;
+  }
+  surfaceDatasets() { return [{id:'catalog', label:'Catálogo', source:this.observedSource()}] as const; }
   filteredItems():readonly CatalogItem[] {
     const needle = this.query.trim().toLocaleLowerCase('es-AR');
     const rows = this.catalog()?.items ?? [];
@@ -107,7 +109,9 @@ export class CatalogPanelComponent implements OnInit {
   date(value:string|null):string { if (!value) return 'No informada'; const parsed=new Date(value); return Number.isNaN(parsed.valueOf()) ? 'No informada' : this.dateTime.format(parsed); }
 
   constructor() {
-    inject(SessionStore).changed.pipe(takeUntilDestroyed()).subscribe(() => {
+    this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.loadEpoch++;
+      this.request?.unsubscribe(); this.request = null;
       this.catalog.set(null); this.error.set(null); this.loading.set(false);
     });
   }
@@ -116,15 +120,27 @@ export class CatalogPanelComponent implements OnInit {
     this.load();
   }
 
+  ngOnDestroy(): void { this.loadEpoch++; this.request?.unsubscribe(); this.request = null; }
+
   load(): void {
+    const generation = this.identity.generation();
+    const epoch = ++this.loadEpoch;
+    const current = () => generation === this.identity.generation() && epoch === this.loadEpoch;
+    this.request?.unsubscribe();
+    this.catalog.set(null);
     this.loading.set(true);
     this.error.set(null);
-    this.http.get<BaseResponse<CatalogData>>(`${API_BASE}/catalog`).subscribe({
+    this.request = this.http.get<BaseResponse<CatalogSnapshotWire>>(`${API_BASE}/catalog`).subscribe({
       next: (response) => {
-        this.catalog.set(response.data);
+        if (!current()) return;
+        const snapshot = isSuccessResponse(response) ? CatalogWireMapper.snapshot(response.data) : null;
+        this.catalog.set(snapshot);
+        if (!snapshot) this.error.set('El catálogo respondió con un formato no reconocido. No inicies una venta nueva.');
         this.loading.set(false);
       },
       error: () => {
+        if (!current()) return;
+        this.catalog.set(null);
         this.error.set('Catálogo no disponible');
         this.loading.set(false);
       },

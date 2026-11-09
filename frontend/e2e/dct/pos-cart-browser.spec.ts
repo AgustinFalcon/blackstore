@@ -6,6 +6,7 @@ import { DctResponseLoss } from './fixtures/dct-response-loss';
 import { journal } from './fixtures/dct-journal';
 import { StaffSessionPage } from './pages/staff-session-page';
 import { CashSessionPage } from './pages/cash-session-page';
+import { acceptLocalCatalog } from './pages/catalog-acceptance';
 import { CartPhase } from '../../src/app/core/domain/cart';
 import { DurableSaleState } from '../../src/app/core/domain/durable-sale';
 import { JournalPhase } from '../../src/app/core/domain/command-journal';
@@ -32,6 +33,7 @@ async function openCart(runtime: DctRuntime, page: Page): Promise<void> {
   await cash.visit(runtime.terminalId);
   await cash.open('0');
   await page.goto('/ticket');
+  await acceptLocalCatalog(page);
   const product = page.getByLabel('Producto', { exact: true });
   await expect(product).toBeVisible();
   await expect.poll(() => product.locator('option').count()).toBeGreaterThanOrEqual(2);

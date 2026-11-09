@@ -3,6 +3,7 @@ package com.blackstore.infrastructure.storecore
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.port.out.storecore.CatalogItem
 import com.blackstore.domain.port.out.storecore.CatalogSnapshot
+import com.blackstore.domain.port.out.storecore.CatalogSource
 import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -31,6 +32,7 @@ class FixtureCatalogAdapter(
             validUntil = Instant.parse("2026-12-31T00:00:00Z"),
             contract = StoreCoreContractRef(canonicalPath, contractVersion),
             stale = false,
+            source = CatalogSource.LOCAL_FIXTURE,
             items =
                 listOf(
                     CatalogItem("SKU-1", "Café molido 500 g", "variant-1", "price-demo-1", BigDecimal("8490.00")),

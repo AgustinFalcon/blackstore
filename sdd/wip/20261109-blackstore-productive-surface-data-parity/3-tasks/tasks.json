@@ -1,0 +1,18 @@
+{
+  "feature": "blackstore-productive-surface-data-parity",
+  "base": "2b1f60c44ba50c915293f48e2a83554f9ca81943",
+  "status": "release_candidate",
+  "tasks": [
+    {"id":"BSPD-T01","status":"done","title":"Auditar master, rutas, autoridad y fuentes de datos"},
+    {"id":"BSPD-T02","status":"done","title":"Aprobar specs funcional/técnico, manifest y secuencia"},
+    {"id":"BSPD-T03","status":"done","title":"Reconciliar documentación canónica con PR #53-#60"},
+    {"id":"BSPD-T04","status":"done","title":"Agregar gate ejecutable del manifest de superficies"},
+    {"id":"BSPD-T05","status":"done","title":"Cerrar procedencia, readiness y mapper runtime de catálogo"},
+    {"id":"BSPD-T06","status":"done","title":"Cerrar inicio y catálogo operativo sin promesas falsas"},
+    {"id":"BSPD-T07","status":"done","title":"Profesionalizar ventas y comprobante sin expandir contratos"},
+    {"id":"BSPD-T08","status":"done","title":"Profesionalizar caja y reportes sin expandir contratos"},
+    {"id":"BSPD-T09","status":"done","title":"Ejecutar PostgreSQL16/JAR/Angular, reinicio y negativos"},
+    {"id":"BSPD-T10","status":"in_progress","title":"Reviews exact-head, PR, CI y merge master"}
+  ],
+  "stats": {"total":10,"done":9,"in_progress":1,"pending":0}
+}

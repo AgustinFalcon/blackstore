@@ -43,17 +43,16 @@ export class CashSessionPage {
     await this.page.getByRole('button', { name: 'Abrir sesión', exact: true }).click();
     const response = await pending;
     const receipt = await this.committedReceipt(response);
-    const session = this.page.getByText(/^\s*Sesión\s+\d+\s+en\s+terminal\s+\d+/);
-    await expect(session).toBeVisible();
-    const rendered = ((await session.textContent()) ?? '').replace(/\s+/g, ' ').trim();
-    const match = /^Sesión (\d+) en terminal/.exec(rendered);
-    expect(match).not.toBeNull();
-    const cashId = Number(match![1]);
-    expect(receipt.cashSessionId).toBe(cashId);
+    expect(receipt.cashSessionId).not.toBeNull();
+    const cashId = receipt.cashSessionId!;
+    await expect(this.page.getByText(`#${cashId}`, { exact: true })).toBeVisible();
+    await expect(this.page.getByRole('heading', { name: /Terminal \d+/ })).toBeVisible();
     return cashId;
   }
   async expense(amount: string, outcome = CashMutationOutcome.Applied) {
+    await this.page.getByLabel('Categoría', { exact: true }).fill('operaciones');
     await this.page.getByLabel('Gasto', { exact: true }).fill(amount);
+    await this.page.getByLabel('Motivo', { exact: true }).fill('gasto browser confirmado');
     const pending = this.response('/api/v2/expenses');
     await this.page.getByRole('button', { name: 'Registrar gasto', exact: true }).click();
     const response = await pending;

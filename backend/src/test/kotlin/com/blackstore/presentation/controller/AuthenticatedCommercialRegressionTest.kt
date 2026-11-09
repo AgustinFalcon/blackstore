@@ -90,6 +90,7 @@ class AuthenticatedCommercialRegressionTest {
             status { isOk() }
             jsonPath("$.data.stale") { value(false) }
             jsonPath("$.data.version") { value("fixture-v1") }
+            jsonPath("$.data.source") { value("LOCAL_FIXTURE") }
             jsonPath("$.data.items[0].sku") { value("SKU-1") }
             jsonPath("$.data.items[0].name") { value("Café molido 500 g") }
             jsonPath("$.data.items.length()") { value(5) }

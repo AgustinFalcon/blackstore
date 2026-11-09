@@ -13,7 +13,8 @@
     "typecheck:demo": "tsc --noEmit -p tsconfig.demo.json",
     "test:demo": "playwright test --config playwright.demo.config.ts",
     "test:odr": "playwright test --config playwright.odr.config.ts",
-    "test:demo:domain": "node e2e/demo/unit-runner.cjs"
+    "test:demo:domain": "node e2e/demo/unit-runner.cjs",
+    "verify:surface-manifest": "node scripts/verify-surface-manifest.mjs"
   },
   "dependencies": {
     "@angular/animations": "22.2.1",

@@ -45,8 +45,10 @@ describe('CashSessionComponent', () => {
     http.expectOne(`${API_BASE}/catalog`).flush(envelope({
       version: 'catalog-v1',
       stale: false,
+      source: 'LOCAL_FIXTURE',
       importedAt: null,
       validUntil: null,
+      canonicalPath: '/blackstore-integration/v1',
       items: [],
     }));
     fixture.detectChanges();
@@ -119,6 +121,10 @@ describe('CashSessionComponent journal command port',()=>{
   it('blocks action controls on runtime pause, uncertainty and quarantine',()=>{
     commands.blocked.set(CommandFailure.Paused);expect(component.canMutate()).toBeFalse();component.requestClose();component.addExpense();expect(commands.execute).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
   });
+  it('never renders absent reconciliation money as zero',()=>{
+    expect(component.formatMoney(null)).toBe('No disponible');
+    expect(component.formatMoney('')).toBe('No disponible');
+  });
 });
 function flushInitialRequests(http: HttpTestingController, status: string): void {
   http.match(`${API_BASE}/workspace`).forEach((request) => request.flush(envelope({
@@ -136,8 +142,10 @@ function flushInitialRequests(http: HttpTestingController, status: string): void
   http.expectOne(`${API_BASE}/catalog`).flush(envelope({
     version: 'catalog-v1',
     stale: false,
+    source: 'LOCAL_FIXTURE',
     importedAt: null,
     validUntil: null,
+    canonicalPath: '/blackstore-integration/v1',
     items: [],
   }));
 }

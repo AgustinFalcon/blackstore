@@ -3,47 +3,49 @@ import { RouterLink } from '@angular/router';
 import { StaffPermission } from '../../../core/domain/session-types';
 import { CounterContextService } from '../../../core/services/counter-context.service';
 import { SessionStore } from '../../../core/services/session.store';
+import { SurfaceDataEvidenceComponent } from '../../../shared/surface-data-evidence.component';
 
 @Component({
   selector: 'bs-pos-shell',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, SurfaceDataEvidenceComponent],
   template: `
     <section class="page">
-      <h2>Inicio</h2>
-      <p class="lede">Consola de mostrador. El catálogo es la proyección local. StoreCore no se llama desde el browser.</p>
+      <div class="section-heading"><div><p class="eyebrow">Operación presencial</p><h2>Panel del mostrador</h2><p class="lede">Revisá la caja y el catálogo antes de comenzar una venta.</p></div>
+        @if (!counter.blockReason()) { <a routerLink="/ticket" class="primary">Nueva venta</a> }
+      </div>
+      <bs-surface-data-evidence surfaceId="BS-S02" [source]="counter.surfaceSource()" [datasets]="surfaceDatasets()" />
       @if (counter.loading()) {
-        <p class="skeleton" aria-hidden="true"></p>
-        <p>Cargando puesto…</p>
+        <div class="card" role="status"><p class="skeleton" aria-hidden="true"></p><p>Preparando el puesto…</p></div>
       } @else {
+        <div class="metrics" aria-label="Resumen operativo">
+          <article class="card metric"><span>Caja</span>@if (counter.openSession(); as opened) { <strong>Abierta</strong><small>Terminal {{ opened.terminalId }}</small> } @else { <strong>Sin abrir</strong><small>Necesaria para vender</small> }</article>
+          <article class="card metric"><span>Catálogo</span>@if (counter.catalog(); as snapshot) { <strong>{{ snapshot.freshness.label }}</strong><small>{{ snapshot.source.label }} · {{ snapshot.items.length }} productos</small> } @else { <strong>No disponible</strong><small>Actualizá antes de vender</small> }</article>
+          <article class="card metric"><span>Operación</span><strong>{{ counter.blockReason() ? 'Requiere atención' : 'Lista' }}</strong><small>{{ counter.surfaceSource().label }}</small></article>
+        </div>
         <div class="card">
-          <p>
-            Catálogo
-            @if (counter.catalog(); as snapshot) {
-              <span class="sku">{{ snapshot.version }}</span>
-              <span class="badge" [class.ok]="!snapshot.stale" [class.warn]="snapshot.stale">{{ snapshot.stale ? 'vencido' : 'vigente' }}</span>
-            } @else {
-              <span class="badge warn">no disponible</span>
-            }
-          </p>
           @if (counter.openSession(); as session) {
-            <p>Caja abierta · sesión <span class="sku">{{ session.id }}</span> · terminal {{ session.terminalId }}</p>
+            <p><b>Caja lista para operar</b> · terminal {{ session.terminalId }}</p>
           } @else {
-            <p class="empty">No hay sesión de caja abierta.</p>
+            <p class="empty">Abrí una caja para iniciar ventas y registrar movimientos.</p>
           }
-          <p>Persistencia <span class="sku">{{ counter.persistence().label }}</span></p>
           @if (counter.blockReason(); as reason) {
             <p class="banner warn" role="status">{{ reason }}</p>
           }
-          <p class="actions">
-            <a routerLink="/caja" class="primary">Caja</a>
-            <a routerLink="/ticket" class="ghost">Ticket</a>
-            @if (session.can(permissions.SaleRead)) { <a routerLink="/ventas" class="ghost">Reabrir venta</a> }
-            <a routerLink="/catalogo" class="ghost">Catálogo</a>
+          <nav class="actions" aria-label="Accesos operativos">
+            <a routerLink="/caja" class="primary">Gestionar caja</a>
+            <a routerLink="/ticket" class="ghost">Nueva venta</a>
+            @if (session.can(permissions.SaleRead)) { <a routerLink="/ventas" class="ghost">Ventas existentes</a> }
+            <a routerLink="/catalogo" class="ghost">Consultar catálogo</a>
             @if (session.can(permissions.ShiftReportRead)) {
-              <a routerLink="/reportes" class="ghost">Reportes</a>
+              <a routerLink="/reportes" class="ghost">Ver reportes</a>
             }
-          </p>
+          </nav>
+          <details class="advanced"><summary>Información técnica del puesto</summary>
+            <p>Persistencia: {{ counter.persistence().label }} · {{ counter.readiness().label }}</p>
+            <p>Procedencia agregada: {{ counter.surfaceSource().label }}</p>
+            @if (counter.catalog(); as snapshot) { <p>Catálogo {{ snapshot.version ?? 'sin versión' }} · {{ snapshot.source.label }}</p> }
+          </details>
         </div>
       }
     </section>
@@ -68,6 +70,10 @@ export class PosShellComponent implements OnInit {
   readonly counter = inject(CounterContextService);
   readonly session = inject(SessionStore);
   readonly permissions = StaffPermission;
+  surfaceDatasets() { return [
+    {id:'workspace-context', label:'Puesto y persistencia', source:this.counter.readiness().source},
+    {id:'catalog-summary', label:'Catálogo', source:this.counter.catalog()?.source.surfaceSource ?? this.counter.surfaceSource()},
+  ] as const; }
 
   ngOnInit(): void {
     this.counter.load();

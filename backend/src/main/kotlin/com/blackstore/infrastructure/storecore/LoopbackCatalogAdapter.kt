@@ -6,6 +6,7 @@ import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.port.out.storecore.CatalogItem
 import com.blackstore.domain.port.out.storecore.CatalogSnapshot
+import com.blackstore.domain.port.out.storecore.CatalogSource
 import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -81,6 +82,7 @@ class LoopbackCatalogAdapter(
                 validUntil = validUntil,
                 contract = contract,
                 stale = expired || items.isEmpty(),
+                source = CatalogSource.STORECORE_LIVE,
                 items = items,
                 v2Items = v2Items,
                 v2Stale = expired || v2Items.isEmpty(),

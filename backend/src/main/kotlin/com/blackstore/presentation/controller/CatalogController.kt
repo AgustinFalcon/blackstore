@@ -2,6 +2,7 @@ package com.blackstore.presentation.controller
 
 import com.blackstore.application.dto.response.BaseResponse
 import com.blackstore.domain.port.out.storecore.CatalogItem
+import com.blackstore.domain.port.out.storecore.CatalogSource
 import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import com.blackstore.infrastructure.exception.GlobalExceptionHandler
 import jakarta.servlet.http.HttpServletRequest
@@ -30,6 +31,7 @@ class CatalogController(
                 importedAt = snapshot?.importedAt,
                 validUntil = snapshot?.validUntil,
                 stale = snapshot?.stale ?: true,
+                source = snapshot?.source ?: CatalogSource.UNAVAILABLE,
                 canonicalPath = snapshot?.contract?.canonicalPath,
                 items = snapshot?.items ?: emptyList(),
             )
@@ -46,6 +48,7 @@ data class CatalogResponse(
     val importedAt: Instant?,
     val validUntil: Instant?,
     val stale: Boolean,
+    val source: CatalogSource,
     val canonicalPath: String?,
     val items: List<CatalogItem> = emptyList(),
 )

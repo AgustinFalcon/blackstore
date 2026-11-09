@@ -5,6 +5,7 @@ import { DctResponseLoss } from './fixtures/dct-response-loss';
 import { journal } from './fixtures/dct-journal';
 import { StaffSessionPage } from './pages/staff-session-page';
 import { CashSessionPage } from './pages/cash-session-page';
+import { acceptLocalCatalog } from './pages/catalog-acceptance';
 import { StaffRole } from '../../src/app/core/domain/pos-types';
 import { JournalPhase } from '../../src/app/core/domain/command-journal';
 import { SaleAdmissionRoute, SaleCommandFailure } from '../../src/app/core/domain/sale-command';
@@ -14,6 +15,7 @@ const reservePath = SaleAdmissionRoute.ReserveV3.wire;
 
 async function draft(page: Page) {
   await page.goto('/ticket');
+  await acceptLocalCatalog(page);
   await page.getByRole('button', { name: 'Agregar al carrito', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Reservar productos', exact: true })).toBeEnabled();
 }

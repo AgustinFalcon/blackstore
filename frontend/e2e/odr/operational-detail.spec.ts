@@ -13,6 +13,8 @@ test('opaque ticket deep link survives reload and remains read-only', async ({ p
   await page.goto('/ticket/id%3ASale%2FAa-01');
   await expect(page.getByRole('heading', { name: 'Detalle de venta' })).toBeVisible();
   await expect(page.getByText('Evidencia comprobada')).toBeVisible();
+  await expect(page.getByText(`Venta ${saleId}`, { exact: true })).toBeVisible();
+  await page.getByText('Evidencia técnica de la operación').click();
   await expect(page.getByText(saleId, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /confirmar|cobrar|reversar|liberar/i })).toHaveCount(0);
 
