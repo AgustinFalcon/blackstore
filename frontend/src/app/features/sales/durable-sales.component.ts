@@ -8,6 +8,9 @@ import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
 import { ReversalReason } from '../../core/domain/reversal-reason';
 import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
 import { SaleRouteId } from '../../core/domain/sale-snapshot-state';
+import { SurfaceDataSource } from '../../core/domain/data-provenance';
+import { SalePresentation } from './sale-presentation';
+import { SurfaceDataEvidenceComponent } from '../../shared/surface-data-evidence.component';
 
 interface DurableReversalReview {
   readonly operationId: string;
@@ -21,12 +24,17 @@ interface DurableReleaseReview {
 }
 
 @Component({
-  selector: 'bs-durable-sales', standalone: true, imports: [FormsModule, RouterLink, ConfirmationDialogComponent],
+  selector: 'bs-durable-sales', standalone: true, imports: [FormsModule, RouterLink, ConfirmationDialogComponent, SurfaceDataEvidenceComponent],
   template: `
     <section class="page">
-      <h2>Ventas existentes</h2>
-      <p class="lede">Consultá y reabrí una operación con su identidad original. El simulador local sigue sin habilitar integraciones live.</p>
-      <a routerLink="/ticket">Iniciar nueva venta</a>
+      <div class="section-heading"><div><p class="eyebrow">Actividad comercial</p><h2>Ventas existentes</h2>
+      <p class="lede">Consultá tus ventas, revisá los cobros y continuá las operaciones pendientes.</p></div>
+      <a class="primary" routerLink="/ticket">Iniciar nueva venta</a></div>
+      <bs-surface-data-evidence surfaceId="BS-S08" [source]="surfaceSource()" [datasets]="surfaceDatasets()" />
+      <div class="card" aria-label="Procedencia de las ventas">
+        <p><strong>Registro BlackStore:</strong> <span class="badge" [attr.data-source]="store.listSource().wire">{{ store.listSource().label }}</span></p>
+        <p><strong>Origen histórico del producto:</strong> <span class="badge warn" [attr.data-source]="historicalSource.wire">{{ historicalSource.label }}</span>. La operación conserva sus importes; su origen de catálogo no fue registrado.</p>
+      </div>
       <div class="card">
         <label>Estado <select [(ngModel)]="filter" (ngModelChange)="store.list(null, filter)">
           <option [ngValue]="null">Todos</option>
@@ -36,9 +44,10 @@ interface DurableReleaseReview {
         @if (store.loadingList()) { <p role="status">Consultando ventas…</p> }
         @else {
           @for (sale of store.items(); track sale.identity.operationId) {
-            <article>
-              <p>{{ sale.status.label }} · caja {{ sale.cashSessionId }} · total {{ sale.total?.decimal ?? 'No comprobado' }}</p>
-              <p class="sku">{{ sale.identity.operationId }}</p>
+            <article class="sale-row">
+              <div class="section-heading"><h3>{{ sale.status.label }}</h3><strong class="money">{{ formatAmount(sale.total) }}</strong></div>
+              <p>Caja {{ sale.cashSessionId }} · Fecha: No disponible</p>
+              <details><summary>Identidad de la venta</summary><p class="sku">{{ sale.identity.operationId }}</p></details>
               <a routerLink="/ticket" [queryParams]="{operationId:sale.identity.operationId}">Continuar en punto de venta</a>
               <a [routerLink]="['/ticket', ticketPathSegment(sale.identity.saleId)]">Ver ticket</a>
             </article>
@@ -59,21 +68,27 @@ interface DurableReleaseReview {
       @if (store.busy()) { <p role="status">Comprobando operación…</p> }
       @if (store.detail(); as sale) {
         <div class="card">
-          <h3>{{ sale.status.label }}</h3>
-          <p>{{ sale.coverage.label }} · total {{ sale.total?.decimal ?? 'No comprobado' }} · saldo {{ sale.pending?.decimal ?? 'No comprobado' }}</p>
-          <p>Caja {{ sale.cashSessionId }} · responsable de caja {{ sale.cashierId }} · actor histórico {{ sale.createdBy ?? 'No comprobado' }}</p>
-          <p>Cliente <span class="sku">{{ sale.identity.clientInstanceId }}</span> · dispositivo {{ sale.identity.deviceId }}</p>
-          <p>Venta <span class="sku">{{ sale.identity.saleId }}</span> · operación {{ sale.identity.operationId }}</p>
-          <p>Evidencia local · receipt {{ sale.receipt ?? 'No disponible' }} · reserva {{ sale.reservationRef ?? 'No disponible' }}</p>
+          <div class="section-heading"><h3>{{ sale.status.label }}</h3><span class="badge">{{ sale.coverage.label }}</span></div>
+          <p><strong>Lectura de la operación:</strong> <span class="badge" [attr.data-source]="store.detailSource().wire">{{ store.detailSource().label }}</span></p>
+          <dl class="metrics"><div class="metric"><dt>Total</dt><dd>{{ formatAmount(sale.total) }}</dd></div><div class="metric"><dt>Saldo pendiente</dt><dd>{{ formatAmount(sale.pending) }}</dd></div><div class="metric"><dt>Fecha</dt><dd>No disponible</dd></div></dl>
+          <h4>Artículos</h4>
+          @for (line of sale.lines; track $index) { <p><strong>{{ line.quantity }} × {{ line.productName }}</strong> · {{ formatAmount(line.total) }} <small class="sku">{{ line.sku }}</small></p> }
+          @empty { <p>No hay artículos disponibles en esta lectura.</p> }
+          <h4>Pagos registrados</h4>
           @if (sale.pendingCommand; as command) { <p>{{ command.label }}. Consultá el estado; el recovery durable lo administra el backend.</p> }
-          @for (line of sale.lines; track $index) { <p>{{ line.sku }} · {{ line.productName }} · {{ line.quantity }} · {{ line.total?.decimal ?? 'No comprobado' }}</p> }
           @for (payment of sale.payments; track payment.paymentId) {
-            <p>Pago {{ payment.paymentId }} · {{ payment.method.label }} · {{ payment.status.label }} · {{ payment.amount?.decimal ?? 'No comprobado' }} · comisión {{ payment.fee?.decimal ?? 'No comprobado' }}</p>
+            <p><strong>{{ payment.method.label }} · {{ formatAmount(payment.amount) }}</strong> · {{ payment.status.label }} · comisión {{ formatAmount(payment.fee) }}</p>
             <p>{{ payment.reversibility.label }}. Tras una devolución, las nuevas reversas requieren evidencia por pago del backend.</p>
             @if (payment.reversibility.permitsReverse && store.can(actions.ReversePayment)) {
               <button type="button" (click)="requestReverse(payment.paymentId)" [disabled]="!validReversalReason()">Reversar pago {{ payment.paymentId }}</button>
             }
-          }
+          } @empty { <p>No hay pagos registrados.</p> }
+          <details><summary>Evidencia técnica de la operación</summary>
+            <p>Caja {{ sale.cashSessionId }} · responsable de caja {{ sale.cashierId }} · actor histórico {{ sale.createdBy ?? 'No disponible' }}</p>
+            <p>Cliente técnico <span class="sku">{{ sale.identity.clientInstanceId }}</span> · dispositivo {{ sale.identity.deviceId }}</p>
+            <p>Venta <span class="sku">{{ sale.identity.saleId }}</span> · operación {{ sale.identity.operationId }}</p>
+            <p>Recibo {{ sale.receipt ?? 'No disponible' }} · reserva {{ sale.reservationRef ?? 'No disponible' }}</p>
+          </details>
           @if (!sale.status.acceptsCommands || !sale.valid) { <p role="status">Sólo consulta. Reintentá consultar o solicitá reconciliación a una persona autorizada.</p> }
           <label>Motivo de operación <input [(ngModel)]="reason" aria-describedby="durable-reversal-reason-guidance" /></label>
           <p id="durable-reversal-reason-guidance">Para reversar un pago: {{ reversalReasonGuidance }}</p>
@@ -101,8 +116,23 @@ interface DurableReleaseReview {
         (confirmed)="confirmRelease()" (cancelled)="cancelRelease()" />
     </section>
   `,
+  styles: [`
+    .sale-row { padding: 1rem 0; border-top: 1px solid var(--bs-line); }
+    .sale-row a { display: inline-flex; margin: .5rem 1rem .25rem 0; }
+    .sale-row h3 { margin: 0; }
+    details { margin: .75rem 0; }
+    details .sku { overflow-wrap: anywhere; }
+    @media (max-width: 480px) { .section-heading { flex-direction: column; } }
+  `],
 })
 export class DurableSalesComponent implements OnInit {
+  readonly historicalSource = SurfaceDataSource.Unknown;
+  surfaceSource(): SurfaceDataSource { return SurfaceDataSource.aggregate([this.store.listSource(), this.historicalSource]); }
+  surfaceDatasets() { return [
+    {id:'sale-list', label:'Listado de ventas', source:this.store.listSource()},
+    {id:'historical-product-provenance', label:'Origen histórico del producto', source:this.historicalSource},
+  ] as const; }
+  readonly formatAmount = SalePresentation.amount.bind(SalePresentation);
   ticketPathSegment(raw: string): string { return SaleRouteId.fromWire(raw)?.pathSegment ?? 'id:'; }
   readonly store = inject(DurableSalesStore);
   readonly actions = AllowedAction;

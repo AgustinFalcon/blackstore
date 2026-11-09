@@ -6,6 +6,7 @@ import {provideRouter} from '@angular/router';
 import {Subject} from 'rxjs';
 import {API_BASE,ACCOUNTING_API_BASE} from '../../core/api';
 import {AccountingLifecycleState} from '../../core/domain/accounting-lifecycle';
+import {CatalogFreshness,CatalogSource} from '../../core/domain/catalog';
 import {JournalEntry,JournalPhase} from '../../core/domain/command-journal';
 import {AllowedAction,DurableSaleState} from '../../core/domain/durable-sale';
 import {PosContextState} from '../../core/domain/pos-execution-context';
@@ -13,6 +14,7 @@ import {CashSessionStatus,PaymentMethod,PaymentStatus} from '../../core/domain/p
 import {SaleAdmissionOutcome,SaleCommandKind,SaleFingerprintVersion} from '../../core/domain/sale-command';
 import {SessionState} from '../../core/domain/session-types';
 import {PaymentCoverage} from '../../core/domain/ticket-transition';
+import {PersistenceReadiness} from '../../core/domain/data-provenance';
 import {FOREGROUND_REFRESH} from '../../core/infrastructure/foreground-refresh';
 import {IndexedDbCommandJournal} from '../../core/infrastructure/indexed-db-command-journal';
 import {SaleAdmissionV2Fingerprint} from '../../core/infrastructure/sale-admission-fingerprint';
@@ -58,9 +60,9 @@ describe('V3 asynchronous reserve retains its durable claim',()=>{
     TestBed.configureTestingModule({imports:[SaleTicketComponent],providers:[provideZoneChangeDetection({eventCoalescing:true}),
       provideHttpClient(),provideHttpClientTesting(),provideRouter([]),{provide:SessionStore,useValue:session},
       {provide:IndexedDbCommandJournal,useValue:journal},{provide:FOREGROUND_REFRESH,useValue:{subscribe:()=>()=>{}}},
-      {provide:CounterContextService,useValue:{load:()=>undefined,loading:signal(false),catalog:signal({version:'v1',stale:false,
-        importedAt:null,validUntil:null,items:[{sku:'SKU',name:'Producto',variantId:'variant',priceVersion:'P1',unitPrice:18}]}),
-        openSession:signal({id:2,terminalId:10}),blockReason:()=>null}}]});
+      {provide:CounterContextService,useValue:{load:()=>undefined,loading:signal(false),catalog:signal({version:'v1',source:CatalogSource.StoreCoreLive,
+        freshness:CatalogFreshness.Current,importedAt:null,validUntil:null,canonicalPath:null,items:[{sku:'SKU',name:'Producto',variantId:'variant',priceVersion:'P1',unitPrice:18}]}),
+        readiness:signal(PersistenceReadiness.Durable),openSession:signal({id:2,terminalId:10}),blockReason:()=>null}}]});
     http=TestBed.inject(HttpTestingController);runtime=TestBed.inject(CommandRuntimeStore);fixture=TestBed.createComponent(SaleTicketComponent);
     component=fixture.componentInstance;component.selectedSku='SKU';component.addSelected();fixture.detectChanges();contextReads();
     expect(runtime.hydrated()).toBeTrue();http.verify();

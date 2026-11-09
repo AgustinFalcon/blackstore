@@ -12,6 +12,13 @@ interface StoreCoreCatalogPort {
     fun currentSnapshot(): CatalogSnapshot?
 }
 
+enum class CatalogSource {
+    STORECORE_LIVE,
+    LOCAL_FIXTURE,
+    UNAVAILABLE,
+    UNKNOWN,
+}
+
 data class CatalogSnapshot(
     val version: String,
     val importedAt: Instant,
@@ -21,6 +28,7 @@ data class CatalogSnapshot(
     val items: List<CatalogItem> = emptyList(),
     val v2Items: List<CatalogItem> = items,
     val v2Stale: Boolean = stale,
+    val source: CatalogSource = CatalogSource.UNKNOWN,
 )
 
 data class CatalogItem(

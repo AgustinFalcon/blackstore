@@ -3,6 +3,7 @@ import { test, expect, DctRuntime } from './fixtures/dct-runtime';
 import { DctResponseLoss } from './fixtures/dct-response-loss';
 import { journal } from './fixtures/dct-journal';
 import { CashSessionPage } from './pages/cash-session-page';
+import { acceptLocalCatalog } from './pages/catalog-acceptance';
 import { StaffSessionPage } from './pages/staff-session-page';
 import { AccountingCommandKind, CommandFailure, CommandOutcome } from '../../src/app/core/domain/accounting-command';
 import { JournalFamily, JournalPhase } from '../../src/app/core/domain/command-journal';
@@ -50,7 +51,9 @@ test('response-loss: reload recovers the original committed expense by GET witho
   const loss = new DctResponseLoss(page, '**/api/v2/expenses');
   await loss.install();
   try {
+    await page.getByLabel('Categoría', { exact: true }).fill('operaciones');
     await page.getByLabel('Gasto', { exact: true }).fill('7.25');
+    await page.getByLabel('Motivo', { exact: true }).fill('recuperación browser');
     await page.getByRole('button', { name: 'Registrar gasto', exact: true }).click();
     const body = await loss.admitted;
     const commandId = String(body['commandId']);
@@ -88,9 +91,13 @@ test('cross-tab same SID: a stale hydrated tab cannot claim another intent and G
   try {
     await new CashSessionPage(second).visit(runtime.terminalId);
     await expect(second.getByRole('button', { name: 'Registrar gasto', exact: true })).toBeEnabled();
+    await second.getByLabel('Categoría', { exact: true }).fill('operaciones');
     await second.getByLabel('Gasto', { exact: true }).fill('9');
+    await second.getByLabel('Motivo', { exact: true }).fill('segunda pestaña browser');
     await loss.install();
+    await page.getByLabel('Categoría', { exact: true }).fill('operaciones');
     await page.getByLabel('Gasto', { exact: true }).fill('7.25');
+    await page.getByLabel('Motivo', { exact: true }).fill('primera pestaña browser');
     await page.getByRole('button', { name: 'Registrar gasto', exact: true }).click();
     const commandId = String((await loss.admitted)['commandId']);
     const original = await expenseIntent(page, commandId);
@@ -148,6 +155,7 @@ test('RELEASE_PENDING: lost response survives reload and stopped worker, blocks 
   await cash.visit(runtime.terminalId);
   const cashId = await cash.open('0');
   await page.goto('/ticket');
+  await acceptLocalCatalog(page);
   await expect(page.getByLabel('Producto', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Agregar al carrito', exact: true }).click();
   const reserveRequest = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/v3/sales/reservations'));

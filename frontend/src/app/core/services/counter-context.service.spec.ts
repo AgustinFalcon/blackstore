@@ -48,8 +48,14 @@ describe('CounterContextService', () => {
 
     expect(service.openSession()?.id).toBe(5);
     expect(service.openSession()?.status.isOpen).toBeTrue();
-    expect(service.persistence().label).toBe('memoria local');
+    expect(service.persistence().label).toBe('PostgreSQL');
     expect(service.blockReason()).toBeNull();
+  });
+
+  it('does not declare a memory or unknown workspace ready for productive sales', () => {
+    service.load();
+    flushLoad(http, 'OPEN', 'memory');
+    expect(service.blockReason()).toContain('persistencia durable');
   });
 
   it('does not treat an unknown cash state as an open session', () => {
@@ -61,8 +67,8 @@ describe('CounterContextService', () => {
   });
 });
 
-function flushLoad(http: HttpTestingController, status: string): void {
-  http.expectOne(`${API_BASE}/workspace`).flush(envelope({ terminalId: 10, cashierId: 7, persistence: 'memory' }));
+function flushLoad(http: HttpTestingController, status: string, persistence = 'postgresql'): void {
+  http.expectOne(`${API_BASE}/workspace`).flush(envelope({ terminalId: 10, cashierId: 7, persistence }));
   http.expectOne(`${API_BASE}/cash-sessions`).flush(envelope([
     { id: 5, terminalId: 10, cashierId: 7, status, openingCash: 100 },
   ]));
@@ -71,6 +77,8 @@ function flushLoad(http: HttpTestingController, status: string): void {
     stale: false,
     importedAt: null,
     validUntil: null,
+    canonicalPath: '/blackstore-integration/v1',
+    source: 'LOCAL_FIXTURE',
     items: [{ sku: 'SKU-1', name: 'Producto', variantId: '1', priceVersion: 'price-v1', unitPrice: 10 }],
   }));
 }

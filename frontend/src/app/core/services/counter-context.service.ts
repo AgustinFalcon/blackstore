@@ -7,22 +7,10 @@ import { PersistenceMode } from '../domain/pos-types';
 import { PosWireMapper } from '../infrastructure/pos-wire-mapper';
 import { BaseResponse, isSuccessResponse } from '../models/base-response';
 import { CashSessionData, CashSessionWire, WorkspaceWire } from '../models/pos-models';
-
-export interface CatalogItem {
-  sku: string;
-  name: string;
-  variantId: string;
-  priceVersion?: string | null;
-  unitPrice?: number | null;
-}
-
-export interface CatalogSnapshot {
-  version: string | null;
-  stale: boolean;
-  importedAt: string | null;
-  validUntil: string | null;
-  items: CatalogItem[];
-}
+import { CatalogSnapshot, CatalogSource, catalogIsReadable } from '../domain/catalog';
+import { CatalogSnapshotWire } from '../models/catalog-wire';
+import { CatalogWireMapper } from '../infrastructure/catalog-wire-mapper';
+import { PersistenceReadiness, SurfaceDataSource } from '../domain/data-provenance';
 
 @Injectable({ providedIn: 'root' })
 export class CounterContextService {
@@ -44,13 +32,21 @@ export class CounterContextService {
   readonly openSession = signal<CashSessionData | null>(null);
   readonly cashierId = computed(() => this.identity.staff()?.id ?? null);
   readonly persistence = signal(PersistenceMode.Unknown);
+  readonly readiness = computed(() => PersistenceReadiness.fromWire(this.persistence().wire));
+  readonly surfaceSource = computed(() => SurfaceDataSource.aggregate([
+    this.readiness().source,
+    this.catalog()?.source.surfaceSource ?? SurfaceDataSource.Unknown,
+  ]));
 
   readonly blockReason = computed(() => {
     if (this.loading()) return 'Comprobando caja y catálogo…';
     if (this.catalogError()) return this.catalogError();
+    if (!this.readiness().productionReady) return 'El puesto no tiene persistencia durable comprobada. No inicies una venta nueva.';
     const snapshot = this.catalog();
-    if (!snapshot || snapshot.stale || snapshot.items.length === 0) {
-      return 'Catálogo vencido o vacío. No inicies una venta nueva.';
+    if (!catalogIsReadable(snapshot)) {
+      return snapshot?.source === CatalogSource.LocalFixture
+        ? 'Catálogo local vencido o vacío. No inicies una venta nueva.'
+        : 'Catálogo sin autoridad disponible. No inicies una venta nueva.';
     }
     if (!this.openSession()) return 'No hay sesión de caja abierta.';
     return null;
@@ -98,10 +94,10 @@ export class CounterContextService {
       },
     });
 
-    this.http.get<BaseResponse<CatalogSnapshot>>(`${API_BASE}/catalog`).subscribe({
+    this.http.get<BaseResponse<CatalogSnapshotWire>>(`${API_BASE}/catalog`).subscribe({
       next: (response) => {
         if (!current()) return;
-        this.catalog.set(isSuccessResponse(response) ? response.data : null);
+        this.catalog.set(isSuccessResponse(response) ? CatalogWireMapper.snapshot(response.data) : null);
         if (!this.catalog()) this.catalogError.set('Catálogo no disponible. No inicies una venta nueva.');
         finish();
       },

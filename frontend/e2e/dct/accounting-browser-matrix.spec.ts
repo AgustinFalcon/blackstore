@@ -2,6 +2,7 @@ import { Page } from '@playwright/test';
 import { test, expect } from './fixtures/dct-runtime';
 import { StaffSessionPage } from './pages/staff-session-page';
 import { CashSessionPage } from './pages/cash-session-page';
+import { acceptLocalCatalog } from './pages/catalog-acceptance';
 import { AccountingLifecycleState } from '../../src/app/core/domain/accounting-lifecycle';
 import { CommandFailure, CommandOutcome, ExpenseOperation } from '../../src/app/core/domain/accounting-command';
 import { AccountingMetric, CompletenessCause, DataCompleteness, ReconciliationOutcome } from '../../src/app/core/domain/accounting-report';
@@ -65,6 +66,7 @@ test('browser matrix: partial capture, split CASH/CARD, component reversals and 
   await page.goto('/catalogo');
   await expect(page.getByRole('heading', { name: 'Catálogo', exact: true })).toBeVisible();
   await page.goto('/ticket');
+  await acceptLocalCatalog(page);
   await expect(page.getByLabel('Producto', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Agregar al carrito', exact: true }).click();
   const reserve = page.getByRole('button', { name: 'Reservar productos', exact: true });
@@ -187,6 +189,7 @@ test('browser matrix: accrual settlement, all reconciliation outcomes, SHIFT/DAY
   const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: zone }).format(new Date());
   await page.getByLabel('Fecha local', { exact: true }).fill(localDate);
   await page.getByLabel('Zona IANA autorizada', { exact: true }).fill(zone);
+  await page.getByText('Filtros técnicos avanzados', { exact: true }).click();
   await page.getByLabel('Terminal', { exact: true }).fill(String(terminal));
   await page.getByLabel('Titular', { exact: true }).fill(String(cashier.id));
   await page.getByRole('button', { name: 'Consultar día', exact: true }).click();
@@ -197,13 +200,13 @@ test('browser matrix: accrual settlement, all reconciliation outcomes, SHIFT/DAY
   await expect(day.getByText(CompletenessCause.BeforeActivation.label, { exact: false }).first()).toBeVisible();
   const cashMovements = day.getByRole('region', { name: `Movimientos en ${PaymentMethod.Cash.label}` });
   const paidExpenses = cashMovements.locator('.metric').filter({ hasText: AccountingMetric.ExpensesPaid.label });
-  await expect(paidExpenses.locator('dd')).toContainText('10.00');
-  await expect(day).not.toContainText('70.00');
+  await expect(paidExpenses.locator('dd')).toContainText(/ARS\s*10,00/);
+  await expect(day).not.toContainText(/ARS\s*70,00/);
 
   await page.getByLabel('Terminal', { exact: true }).fill(String(emptyTerminal));
   await page.getByRole('button', { name: 'Consultar día', exact: true }).click();
   await expect(day).toBeVisible();
-  await expect(day).not.toContainText('10.00');
+  await expect(day).not.toContainText(/ARS\s*10,00/);
 
   await page.route('**/api/v2/reports/shift?*', async route => {
     const response = await route.fetch();

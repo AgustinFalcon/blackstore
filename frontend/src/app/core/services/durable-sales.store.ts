@@ -13,6 +13,7 @@ import { SessionStore } from './session.store';
 import { SaleCommandsStore } from './sale-commands.store';
 import { SaleCommand, SaleCommandKind, SaleAdmissionOutcome } from '../domain/sale-command';
 import { ReversalReason } from '../domain/reversal-reason';
+import { SurfaceDataSource } from '../domain/data-provenance';
 
 /** Read-only entry point: opening an existing identity cannot reserve or capture. */
 export class OpenExistingSale {
@@ -33,6 +34,8 @@ export class DurableSalesStore {
   readonly nextCursor = signal<string | null>(null);
   readonly detail = signal<DurableSaleDetail | null>(null);
   readonly loadingList = signal(false);
+  readonly listSource = signal(SurfaceDataSource.Unknown);
+  readonly detailSource = signal(SurfaceDataSource.Unknown);
   readonly busy = signal(false);
   readonly notice = signal<string | null>(null);
   private readonly opening = new OpenExistingSale(operationId => this.read(operationId));
@@ -42,6 +45,7 @@ export class DurableSalesStore {
       ++this.generation; ++this.listGeneration; ++this.detailGeneration;
       this.items.set([]); this.detail.set(null); this.nextCursor.set(null);
       this.loadingList.set(false); this.busy.set(false); this.notice.set(null);
+      this.listSource.set(SurfaceDataSource.Unknown); this.detailSource.set(SurfaceDataSource.Unknown);
     });
   }
 
@@ -49,7 +53,7 @@ export class DurableSalesStore {
     if (!this.session.can(StaffPermission.SaleRead)) return;
     const generation = this.generation;
     const request = ++this.listGeneration;
-    this.loadingList.set(true); this.notice.set(null);
+    this.loadingList.set(true); this.notice.set(null); this.listSource.set(SurfaceDataSource.Unknown);
     let params = new HttpParams().set('limit', 20);
     if (cursor) params = params.set('cursor', cursor);
     if (state && state !== DurableSaleState.Unknown) params = params.set('state', state.wire);
@@ -58,12 +62,14 @@ export class DurableSalesStore {
         if (generation !== this.generation || request !== this.listGeneration) return;
         const page = PosWireMapper.durablePage(response);
         this.items.set(page?.items ?? []); this.nextCursor.set(page?.nextCursor ?? null); this.loadingList.set(false);
+        this.listSource.set(page ? SurfaceDataSource.Real : SurfaceDataSource.Unavailable);
         if (!page) this.notice.set('No se pudo comprobar la lista. Reintentá la consulta.');
       },
       error: () => {
         if (generation !== this.generation || request !== this.listGeneration) return;
         this.items.set([]); this.nextCursor.set(null); this.loadingList.set(false);
         this.notice.set('Ventas no disponibles. Reintentá la consulta.');
+        this.listSource.set(SurfaceDataSource.Unavailable);
       },
     });
   }
@@ -72,14 +78,14 @@ export class DurableSalesStore {
     if (!this.session.can(StaffPermission.SaleRead) || this.busy()) return;
     const generation = this.generation;
     const request = ++this.detailGeneration;
-    this.detail.set(null); this.notice.set(null); this.busy.set(true);
+    this.detail.set(null); this.notice.set(null); this.busy.set(true); this.detailSource.set(SurfaceDataSource.Unknown);
     this.opening.execute(operationId).subscribe({
-      next: detail => { if (generation === this.generation && request === this.detailGeneration) { this.detail.set(detail); this.busy.set(false); } },
-      error: () => { if (generation === this.generation && request === this.detailGeneration) { this.busy.set(false); this.notice.set('No se pudo comprobar la venta o no tenés acceso. Reintentá la consulta.'); } },
+      next: detail => { if (generation === this.generation && request === this.detailGeneration) { this.detail.set(detail); this.detailSource.set(SurfaceDataSource.Real); this.busy.set(false); } },
+      error: () => { if (generation === this.generation && request === this.detailGeneration) { this.busy.set(false); this.detailSource.set(SurfaceDataSource.Unavailable); this.notice.set('No se pudo comprobar la venta o no tenés acceso. Reintentá la consulta.'); } },
     });
   }
 
-  close(): void { if (!this.busy()) { ++this.detailGeneration; this.detail.set(null); this.notice.set(null); } }
+  close(): void { if (!this.busy()) { ++this.detailGeneration; this.detail.set(null); this.detailSource.set(SurfaceDataSource.Unknown); this.notice.set(null); } }
   can(action: AllowedAction): boolean {
     const detail = this.detail();
     return !this.busy() && !this.commands.unresolved() && !this.commands.blocked().blocksWrites && !!detail && this.session.can(action.permission) && detail.status.permits(action, detail);
@@ -94,7 +100,7 @@ export class DurableSalesStore {
     if (action === AllowedAction.ReversePayment && (!reversalReason || !original.payments.some(payment => payment.paymentId === paymentId && payment.reversibility.permitsReverse))) return;
     const generation = this.generation;
     const request = ++this.detailGeneration;
-    this.busy.set(true); this.detail.set(null); this.notice.set(null);
+    this.busy.set(true); this.detail.set(null); this.detailSource.set(SurfaceDataSource.Unknown); this.notice.set(null);
     const active = () => generation === this.generation && request === this.detailGeneration && this.session.can(action.permission);
     this.read(original.identity.operationId).pipe(concatMap(current => {
       if (!active() || !sameTicketIdentity(current.identity, original.identity) || !current.status.permits(action, current)) return throwError(() => new Error('Acción no disponible'));
@@ -124,15 +130,15 @@ export class DurableSalesStore {
       }
       return mutation.pipe(concatMap(() => active() ? this.read(current.identity.operationId) : throwError(() => new Error('Sesión cambió'))));
     })).subscribe({
-      next: detail => { if (active()) { this.detail.set(detail); this.busy.set(false); } },
-      error: () => { if (generation === this.generation && request === this.detailGeneration) { this.busy.set(false); this.notice.set('No se pudo confirmar la operación. Consultá la venta antes de continuar.'); } },
+      next: detail => { if (active()) { this.detail.set(detail); this.detailSource.set(SurfaceDataSource.Real); this.busy.set(false); } },
+      error: () => { if (generation === this.generation && request === this.detailGeneration) { this.busy.set(false); this.detailSource.set(SurfaceDataSource.Unavailable); this.notice.set('No se pudo confirmar la operación. Consultá la venta antes de continuar.'); } },
     });
   }
 
   consultReceipt(): void {
     if (this.busy()) return;
     const generation = this.generation;
-    this.busy.set(true);
+    this.busy.set(true); this.detailSource.set(SurfaceDataSource.Unknown);
     if (this.sales.unresolved()) {
       this.sales.consult().subscribe(result => {
         if (generation !== this.generation) return;

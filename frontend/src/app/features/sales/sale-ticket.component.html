@@ -1,4 +1,5 @@
 <section class="page pos" [attr.aria-busy]="busy()">
+  <bs-surface-data-evidence surfaceId="BS-S06" [source]="surfaceSource()" [datasets]="surfaceDatasets()" />
   <header class="pos-header">
     <div>
       <p class="eyebrow">Punto de venta</p>
@@ -31,6 +32,11 @@
       <button type="button" class="primary" (click)="refreshDraft()" [disabled]="busy() || refreshingDraft()">
         {{ refreshingDraft() ? 'Actualizando catálogo…' : 'Actualizar catálogo y revisar borrador' }}
       </button>
+      @if (counter.catalog()?.source === catalogSource.LocalFixture && !catalogAcceptance().allowsSelection && catalogIsReadableForView()) {
+        <div class="banner warn"><p>La versión actual del simulador requiere una nueva aceptación antes de revisar precios.</p>
+          <button type="button" class="ghost" (click)="acceptLocalCatalog()">Aceptar simulador para esta venta</button>
+        </div>
+      }
     </section>
   }
 
@@ -39,8 +45,17 @@
       <section class="card catalog-panel" aria-labelledby="catalog-title">
         <div class="section-heading">
           <div><p class="eyebrow">1 · Catálogo</p><h3 id="catalog-title">Agregar productos</h3></div>
-          <span class="status-dot">Stock a confirmar</span>
+          <span class="status-dot">{{ counter.catalog()?.source?.label ?? 'Fuente no comprobada' }}</span>
         </div>
+        @if (counter.catalog()?.source === catalogSource.LocalFixture) {
+          <div class="banner warn" role="status">
+            <b>Simulador local</b>
+            <p>Estos productos y precios son de demostración. No acreditan stock de StoreCore.</p>
+            @if (!catalogAcceptance().allowsSelection) {
+              <button type="button" class="ghost" (click)="acceptLocalCatalog()">Aceptar simulador para esta venta</button>
+            } @else { <span class="badge info">Aceptado para esta sesión</span> }
+          </div>
+        }
         @if (counter.loading()) {
           <div class="empty-state" role="status"><span class="loader"></span><b>Cargando catálogo…</b><p>Estamos comprobando precios y versiones autorizadas.</p></div>
         } @else if ((counter.catalog()?.items?.length ?? 0) === 0) {
@@ -50,7 +65,7 @@
             <label for="catalog-search">Buscar por nombre o SKU</label>
             <input id="catalog-search" name="catalogSearch" type="search" [ngModel]="productSearch" (ngModelChange)="filterCatalog($event)" placeholder="Ej. taladro o SKU-104" autocomplete="off" />
             <label for="catalog-product">Producto</label>
-            <select id="catalog-product" name="catalogProduct" [(ngModel)]="selectedSku">
+            <select id="catalog-product" name="catalogProduct" [(ngModel)]="selectedSku" [disabled]="!canSelectCatalog()">
               @for (item of filteredCatalogItems(); track item.variantId) {
                 <option [value]="item.sku">{{ item.name }} · {{ item.sku }}</option>
               }
@@ -63,10 +78,10 @@
                 <strong class="money">{{ formatMoney(item.unitPrice) }}</strong>
               </article>
             }
-            <button type="submit" class="primary wide" [disabled]="!selectedItem() || selectedItem()?.unitPrice == null">Agregar al carrito</button>
+            <button type="submit" class="primary wide" [disabled]="!canSelectCatalog() || !selectedItem() || selectedItem()?.unitPrice == null">Agregar al carrito</button>
           </form>
         }
-        <p class="catalog-note">El precio proviene del catálogo autorizado. La disponibilidad final se valida al reservar.</p>
+        <p class="catalog-note">La fuente y vigencia deben estar aceptadas. La disponibilidad final sólo se valida al reservar contra una integración habilitada.</p>
       </section>
 
       <section class="card cart-panel" aria-labelledby="cart-title">

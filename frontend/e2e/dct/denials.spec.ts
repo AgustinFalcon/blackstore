@@ -99,7 +99,9 @@ test('denials: real authority/CSRF/unknown method and stale UI conflict never cr
     });
     const refreshed = page.waitForResponse(r => r.url().endsWith('/api/v1/cash-sessions') && r.request().method() === 'GET');
     // Fresh reference GET prevents sending a stale mutation against a closed box.
+    await page.getByLabel('Categoría', { exact: true }).fill('operaciones');
     await page.getByLabel('Gasto', { exact: true }).fill('7.25');
+    await page.getByLabel('Motivo', { exact: true }).fill('denegación browser');
     await page.getByRole('button', { name: 'Registrar gasto', exact: true }).click();
     expect((await refreshed).status()).toBe(200);
     await expect(page.getByText(CommandFailure.Unknown.label, { exact: true }).first()).toBeVisible();

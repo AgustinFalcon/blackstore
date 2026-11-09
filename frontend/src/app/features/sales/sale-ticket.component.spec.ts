@@ -6,6 +6,8 @@ import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { AccountingCommand } from '../../core/domain/accounting-command';
 import { CartPhase } from '../../core/domain/cart';
+import { CatalogFreshness, CatalogSource } from '../../core/domain/catalog';
+import { PersistenceReadiness } from '../../core/domain/data-provenance';
 import { DurableLineMetadata, DurableSaleState } from '../../core/domain/durable-sale';
 import { PaymentCoverage, PaymentLedgerSemantics, TicketMoney } from '../../core/domain/ticket-transition';
 import { SaleStatus } from '../../core/domain/pos-types';
@@ -24,13 +26,13 @@ describe('SaleTicketComponent explicit cart journey', () => {
   let runtime: any;
   let session: SessionStore;
   const context = { clientInstanceId: '11111111-1111-1111-1111-111111111111', deviceId: 'provisioned-device', terminalId: 10 };
-  const catalog = signal({ version: 'v1', stale: false, importedAt: null, validUntil: null, items: [
+  const catalog = signal({ version: 'v1', source: CatalogSource.StoreCoreLive, freshness: CatalogFreshness.Current, importedAt: null, validUntil: null, canonicalPath: null, items: [
     { sku: 'SKU-A', name: 'Taladro profesional', variantId: 'variant-a', priceVersion: 'P1', unitPrice: 10 },
     { sku: 'SKU-B', name: 'Amoladora compacta', variantId: 'variant-b', priceVersion: 'P2', unitPrice: 17.5 },
   ] });
 
   beforeEach(() => {
-    catalog.set({ version:'v1',stale:false,importedAt:null,validUntil:null,items:[
+    catalog.set({ version:'v1',source:CatalogSource.StoreCoreLive,freshness:CatalogFreshness.Current,importedAt:null,validUntil:null,canonicalPath:null,items:[
       {sku:'SKU-A',name:'Taladro profesional',variantId:'variant-a',priceVersion:'P1',unitPrice:10},
       {sku:'SKU-B',name:'Amoladora compacta',variantId:'variant-b',priceVersion:'P2',unitPrice:17.5},
     ]});
@@ -42,7 +44,7 @@ describe('SaleTicketComponent explicit cart journey', () => {
       { provide: CommandRuntimeStore, useValue: runtime },
       { provide: CommandHttp, useValue: { ticket: jasmine.createSpy().and.returnValue(of(null)) } },
       { provide: CounterContextService, useValue: { load: () => undefined, loading: signal(false), catalog,
-        openSession: signal({ id: 2, terminalId: 10 }), blockReason: () => null } },
+        openSession: signal({ id: 2, terminalId: 10 }), blockReason: () => null, readiness: signal(PersistenceReadiness.Durable) } },
     ] });
     session = TestBed.inject(SessionStore);
     authenticateTestSession(session);
@@ -73,10 +75,33 @@ describe('SaleTicketComponent explicit cart journey', () => {
     expect(component.selectedSku).toBe('SKU-A');
   });
 
+  it('blocks selection for unknown or stale catalogs and requires fixture acceptance per version', () => {
+    catalog.update(value => ({...value, source: CatalogSource.Unknown}));
+    TestBed.flushEffects();
+    component.addSelected();
+    expect(component.cart.lineCount()).toBe(0);
+
+    catalog.update(value => ({...value, source: CatalogSource.LocalFixture, freshness: CatalogFreshness.Current, version:'fixture-v1'}));
+    TestBed.flushEffects();
+    expect(component.canSelectCatalog()).toBeFalse();
+    component.acceptLocalCatalog();
+    expect(component.canSelectCatalog()).toBeTrue();
+    component.addSelected();
+    expect(component.cart.lineCount()).toBe(1);
+
+    catalog.update(value => ({...value, version:'fixture-v2'}));
+    TestBed.flushEffects();
+    expect(component.canSelectCatalog()).toBeFalse();
+    catalog.update(value => ({...value, freshness:CatalogFreshness.Stale}));
+    TestBed.flushEffects();
+    component.addSelected();
+    expect(component.cart.lineCount()).toBe(1);
+  });
+
   it('fails closed when a catalogue refresh removes the filtered selection', () => {
     component.filterCatalog('amola');
     expect(component.selectedItem()?.sku).toBe('SKU-B');
-    catalog.set({version:'v2',stale:false,importedAt:null,validUntil:null,items:[
+    catalog.set({version:'v2',source:CatalogSource.StoreCoreLive,freshness:CatalogFreshness.Current,importedAt:null,validUntil:null,canonicalPath:null,items:[
       {sku:'SKU-A',name:'Taladro profesional',variantId:'variant-a',priceVersion:'P3',unitPrice:11},
     ]});
     TestBed.flushEffects();
@@ -214,20 +239,30 @@ describe('SaleTicketComponent explicit cart journey', () => {
     component.refreshDraft();expect(component.refreshingDraft()).toBeFalse();expect(component.cart.draft()).toBe(original);
   });
 
-  it('restores the original rejection by operation identity and keeps stale refresh blocked',async()=>{
+  it('restores a rejected draft and requires acceptance of the refreshed fixture version',async()=>{
     const fixture=TestBed.createComponent(SaleTicketComponent),tested=fixture.componentInstance;
-    fixture.autoDetectChanges();await fixture.whenStable();tested.selectedSku='SKU-A';tested.addSelected();
+    fixture.detectChanges();
+    tested.selectedSku='SKU-A';tested.addSelected();
     runtime.execute.and.returnValue(Promise.resolve({outcome:SaleAdmissionOutcome.Rejected,receipt:null,
       resolution:SaleAdmissionResolution.TerminalLineRejection,lineFailures:[{variantId:'variant-a',code:SaleLineFailureCode.PriceMismatch}]}));
-    tested.reserve();await fixture.whenStable();const command=runtime.execute.calls.mostRecent().args[0] as SaleCommand;
+    tested.reserve();await Promise.resolve();await Promise.resolve();const command=runtime.execute.calls.mostRecent().args[0] as SaleCommand;
     tested.rejectedCommand.set(null);tested.cart.reset();
+    tested.requestedOperationId.set(command.identity.operationId);
     runtime.rejected.set([{command,rejection:{outcome:SaleAdmissionOutcome.Rejected,receipt:null,
       lineFailures:[{variantId:'variant-a',code:SaleLineFailureCode.PriceMismatch}]}}]);
-    await fixture.whenStable();
+    fixture.detectChanges();
     expect(command.body['lines']).toEqual(tested.cart.draft().freeze());expect(tested.phase()).toBe(CartPhase.RecoveryRequired);
-    const original=tested.cart.draft();catalog.update(value=>({...value,stale:true}));
-    tested.refreshDraft();await fixture.whenStable();
-    expect(tested.cart.draft()).toBe(original);expect(tested.canReserve()).toBeFalse();expect(runtime.execute.calls.count()).toBe(1);
+    const original=tested.cart.draft();catalog.update(value=>({...value,source:CatalogSource.LocalFixture,version:'fixture-v2',freshness:CatalogFreshness.Current}));
+    fixture.detectChanges();
+    tested.refreshDraft();fixture.detectChanges();
+    expect(tested.cart.draft()).toBe(original);expect(tested.canReserve()).toBeFalse();expect(tested.phase()).toBe(CartPhase.RecoveryRequired);
+    tested.acceptLocalCatalog();
+    expect(tested.phase()).toBe(CartPhase.Editing);expect(tested.canSelectCatalog()).toBeTrue();expect(runtime.execute.calls.count()).toBe(1);
+  });
+
+  it('never formats missing money as zero',()=>{
+    expect(component.formatMoney(null)).toBe('No disponible');
+    expect(component.formatMoney('')).toBe('No disponible');
   });
 
   it('clears a rejected review before opening a different operation in the same component',async()=>{

@@ -5,12 +5,14 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { CommandFailure, CommandOutcome } from '../../core/domain/accounting-command';
+import { CatalogFreshness, CatalogSource } from '../../core/domain/catalog';
 import { PaymentCoverage } from '../../core/domain/ticket-transition';
 import { PaymentStatus, SaleStatus } from '../../core/domain/pos-types';
 import { SaleAdmissionOutcome } from '../../core/domain/sale-command';
 import { CommandHttp } from '../../core/infrastructure/command-http';
 import { AccountingCommandsStore } from '../../core/services/accounting-commands.store';
 import { CounterContextService } from '../../core/services/counter-context.service';
+import { PersistenceReadiness } from '../../core/domain/data-provenance';
 import { SaleCommandsStore } from '../../core/services/sale-commands.store';
 import { SessionStore } from '../../core/services/session.store';
 import { authenticateTestSession } from '../../core/services/session-test-helper';
@@ -39,7 +41,8 @@ describe('Explicit reserve and payment integration', () => {
       { provide: AccountingCommandsStore, useValue: accounting }, { provide: SaleCommandsStore, useValue: sales },
       { provide: CommandHttp, useValue: commandHttp },
       { provide: CounterContextService, useValue: { load: () => undefined, loading: signal(false),
-        catalog: signal({ version: 'v1', stale: false, importedAt: null, validUntil: null, items: [
+        readiness: signal(PersistenceReadiness.Durable),
+        catalog: signal({ version: 'v1', source: CatalogSource.StoreCoreLive, freshness: CatalogFreshness.Current, importedAt: null, validUntil: null, canonicalPath: null, items: [
           { sku: 'A', name: 'Taladro', variantId: 'variant-a', priceVersion: 'P1', unitPrice: 10 },
           { sku: 'B', name: 'Amoladora', variantId: 'variant-b', priceVersion: 'P1', unitPrice: 17.5 },
         ] }), openSession: signal({ id: 2, terminalId: 10 }), blockReason: () => null } },

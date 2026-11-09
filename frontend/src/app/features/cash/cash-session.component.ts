@@ -18,6 +18,8 @@ import { ConfirmationPhase } from '../../core/domain/confirmation-phase';
 import { TicketMoney } from '../../core/domain/ticket-transition';
 import { ConfirmationDialogComponent } from '../../shared/confirmation-dialog.component';
 import { CashPageMode } from '../../core/domain/cash-page-mode';
+import { PersistenceReadiness, SurfaceDataSource } from '../../core/domain/data-provenance';
+import { SurfaceDataEvidenceComponent } from '../../shared/surface-data-evidence.component';
 
 interface CashCloseReview {
   readonly cashSessionId: number;
@@ -28,7 +30,7 @@ interface CashCloseReview {
 @Component({
   selector: 'bs-cash-session',
   standalone: true,
-  imports: [FormsModule, RouterLink, ConfirmationDialogComponent],
+  imports: [FormsModule, RouterLink, ConfirmationDialogComponent, SurfaceDataEvidenceComponent],
   template: `
     <section class="page">
       <div class="section-heading">
@@ -39,6 +41,7 @@ interface CashCloseReview {
       <p class="lede">{{ pageMode === pageModes.Close
         ? 'Revisá la caja seleccionada y confirmá el declarado con un motivo auditable. El cierre es append-only.'
         : 'Una sesión abierta por terminal. El cierre queda auditado y no edita la apertura.' }}</p>
+      <bs-surface-data-evidence [surfaceId]="surfaceId()" [source]="observedSource()" [datasets]="surfaceDatasets()" />
       <label>Caja visible
         <select name="selectedSession" [ngModel]="session()?.id ?? null" (ngModelChange)="selectSession($event)">
           <option [ngValue]="null">Seleccioná una caja o ingresá terminal y cajero</option>
@@ -65,10 +68,12 @@ interface CashCloseReview {
       }
       @if (session(); as opened) {
         <div class="card">
-          <p>
-            Sesión {{ opened.id }} en terminal {{ opened.terminalId }}
-            <span class="badge" [class.ok]="opened.status.isOpen" [class.info]="opened.status.isClosed">{{ opened.status.label }}</span>
-          </p>
+          <div class="section-heading"><div><p class="eyebrow">Caja seleccionada</p><h3>Terminal {{ opened.terminalId }}</h3></div><span class="badge" [class.ok]="opened.status.isOpen" [class.info]="opened.status.isClosed">{{ opened.status.label }}</span></div>
+          <div class="metrics" aria-label="Resumen de caja">
+            <dl class="metric"><dt>Fondo inicial</dt><dd>{{ formatMoney(opened.openingCash) }}</dd></dl>
+            <dl class="metric"><dt>Responsable</dt><dd>Cajero {{ opened.cashierId }}</dd></dl>
+            <dl class="metric"><dt>Referencia</dt><dd>#{{ opened.id }}</dd></dl>
+          </div>
           @if (selection().state.permitsMutation && identity.can(permissions.CashSessionClose)) {
             <form (ngSubmit)="requestClose()">
               <label>Declarado <input name="declared" type="number" [(ngModel)]="declared" min="0" required /></label>
@@ -103,7 +108,7 @@ interface CashCloseReview {
       <button type="button" (click)="commands.runtime.refresh()" [disabled]="mutationPending()">Comprobar contexto y evidencia</button>
       @if (commands.receipt()?.closeSnapshot; as snapshot) {
         <p>Arqueo de caja {{ commands.receipt()?.cashSessionId }}: {{ snapshot.outcome.label }} · {{ snapshot.coverage.label }}.
-        Esperado {{ snapshot.expected?.decimal ?? 'no disponible' }} · declarado {{ snapshot.declared.decimal }} · diferencia {{ snapshot.difference?.decimal ?? 'no disponible' }}</p>
+        Esperado {{ formatMoney(snapshot.expected?.decimal) }} · declarado {{ formatMoney(snapshot.declared.decimal) }} · diferencia {{ formatMoney(snapshot.difference?.decimal) }}</p>
       }
       @if (error()) {
         <div class="retry-row">
@@ -135,9 +140,9 @@ export class CashSessionComponent {
   openingCash = 0;
   readonly persistence = signal(PersistenceMode.Unknown);
   readonly loading = signal(true);
-  expenseCategory = 'insumos';
-  expenseAmount = 2;
-  expenseReason = 'bolsas';
+  expenseCategory = '';
+  expenseAmount: number | null = null;
+  expenseReason = '';
   declared: number | null = null;
   closeReason = '';
   readonly closePhase = signal(ConfirmationPhase.Idle);
@@ -152,6 +157,17 @@ export class CashSessionComponent {
   readonly outcome = signal(CashMutationOutcome.Applied);
   readonly mutationPending = signal(false);
   private reloadEpoch = 0;
+  surfaceId(): string { return this.pageMode === CashPageMode.Close ? 'BS-S04' : 'BS-S03'; }
+  observedSource(): SurfaceDataSource {
+    if (this.error()) return SurfaceDataSource.Unavailable;
+    if (this.loading()) return SurfaceDataSource.Unknown;
+    return PersistenceReadiness.fromWire(this.persistence().wire).source;
+  }
+  surfaceDatasets() { return [{
+    id:this.pageMode === CashPageMode.Close ? 'cash-close' : 'cash-session',
+    label:this.pageMode === CashPageMode.Close ? 'Cierre de caja' : 'Sesión de caja',
+    source:this.observedSource(),
+  }] as const; }
 
   constructor() {
     this.identity.changed.pipe(takeUntilDestroyed()).subscribe(() => {
@@ -266,6 +282,14 @@ export class CashSessionComponent {
     else { this.outcome.set(CashMutationOutcome.Unknown); this.error.set(receipt.failure.label || receipt.outcome.label); }
   }
   canAssignOther(): boolean { return this.identity.staff()?.role.canAssignCashier ?? false; }
+
+  formatMoney(raw: string | number | null | undefined): string {
+    if (raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '')) return 'No disponible';
+    const value = Number(raw);
+    return Number.isFinite(value)
+      ? new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS'}).format(value)
+      : 'No disponible';
+  }
 
   canOpen(): boolean {
     return this.canMutate() && CashSessionSelection.canOpen(this.visibleSessions(), this.identity.staff(), this.terminalId, this.cashierId)
