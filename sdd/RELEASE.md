@@ -2,7 +2,7 @@
 
 ## Master vigente — 2026-11-09
 
-`master` recibe mediante PR #61 la [paridad de datos de superficies productivas](features/20261109-blackstore-productive-surface-data-parity/meta.md), validada por Verify #107 y DCT real PostgreSQL 16/JAR/Angular. No existe tag, deploy, publicación ni homologación; `release/1.0` no se crea ni recibe StoreCore live hasta completar los gates externos acordados.
+`master 40c2880` contiene PR #61 y la [paridad de datos de superficies productivas](features/20261109-blackstore-productive-surface-data-parity/meta.md), validada por Verify exact-head #109 y DCT real PostgreSQL 16/JAR/Angular 18/18. No existe tag, deploy, publicación ni homologación; `release/1.0` no se crea ni recibe StoreCore live hasta completar los gates externos acordados.
 
 **Estado:** DRAFT / `ready_for_sol_review`. `sdd-v1.0.0` es baseline documental; `blackstore-pilot` nombra el companion vivo, no un tag.
 
@@ -15,9 +15,9 @@
 
 ## Antes de GitHub / release
 
-Corte DCT integrado: [PR #26](https://github.com/AgustinFalcon/blackstore/pull/26) MERGED, head caab0a9 y merge master a9887a3; dual exact-head GPT-6.1 Sol APPROVED. [CI PR 37634224683](https://github.com/AgustinFalcon/blackstore/actions/runs/37634224683) y [CI postmerge master 37634797108](https://github.com/AgustinFalcon/blackstore/actions/runs/37634797108) verdes (postmerge frontend 34 s/backend 3 min 43 s). Regresión local final 153 tests/39 suites/0 failures/errors/skips, seis clases Docker-only excluidas, PG18 local y teardown PASS. PostgreSQL 16 y browser real con reinicio DCT pendientes; Integration PARTIAL. El merge y CI no homologan el producto. Sin archivo del WIP, /sdd.finish, tag, deploy ni publicación.
+El corte DCT histórico de PR #26 quedó supersedido por la aceptación de PR #61: PostgreSQL 16, backend JAR real, Angular, reinicio durable, autorización y recuperación 18/18; Verify #109 verde. El merge y CI no homologan el adapter StoreCore live, facturación, transportistas ni proveedores de pago. No existe tag, deploy ni publicación.
 
-El WIP [durable-cash-transaction-boundary](wip/20261006-durable-cash-transaction-boundary/meta.md) es una corrección core local mergeada con aceptación residual; no cambia la baseline, no crea tag ni habilita publicación. Transacciones, crash y concurrencia PG18 cuentan con evidencia local; reviews exactas y CI están aprobados. La aceptación integral todavía requiere PG16 y browser real con reinicio DCT. No acredita libro de caja, arqueo, reportes ni homologación StoreCore/fiscal. Decisión inicial: sin cambio de schema ni migración; rollback preserva historia y detiene escrituras si se vuelve a la versión con la brecha.
+El WIP histórico [durable-cash-transaction-boundary](wip/20261006-durable-cash-transaction-boundary/meta.md) documenta la corrección core local que originalmente quedó con aceptación residual. Ese pendiente fue supersedido por PR #61: PostgreSQL 16, browser real y reinicio DCT ya están aceptados. El antecedente no cambia la baseline, no crea tag ni habilita publicación, y tampoco acredita homologación StoreCore/fiscal. Decisión inicial preservada: sin cambio de schema ni migración; rollback conserva historia y detiene escrituras si se vuelve a la versión con la brecha.
 
 - [ ] Sol aprueba specs, modelo y tasks.
 - [ ] StoreCore `storecore-pos-integration-contract-v1` con Sol GO (hoy **WIP no approved**).
