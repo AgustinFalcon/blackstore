@@ -1,0 +1,10 @@
+{
+  "feature": "blackstore-canonical-state-reconciliation",
+  "status": "complete",
+  "tasks": [
+    {"id":"BSCR-T01","status":"done","title":"Verificar master, PR y CI exact-head"},
+    {"id":"BSCR-T02","status":"done","title":"Reconciliar STATUS, BACKLOG y RELEASE"},
+    {"id":"BSCR-T03","status":"done","title":"Validar enlaces y doble review documental","evidence":"Enlaces relativos, JSON y diff check PASS; doble review GPT-6.1 Sol APPROVE tras corregir contradicción RELEASE, precisión route.fulfill, rango POSC y taxonomía."}
+  ],
+  "stats":{"total":3,"done":3,"in_progress":0,"pending":0}
+}
