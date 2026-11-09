@@ -21,5 +21,5 @@
 
 - Commit funcional: `1cecb0202abc3d1a1806dad765f4a8d9ffa376d6`.
 - Pull request: #61.
-- Workflow: Verify #107, run `42579748822`, verde.
+- Workflow del commit funcional: Verify #107, run `42579748822`, verde; el head de archivo repite los required checks.
 - Revisiones: Bug, Security y UX/Producto aprobadas sin P0–P3.

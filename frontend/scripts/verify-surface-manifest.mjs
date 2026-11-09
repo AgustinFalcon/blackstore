@@ -1,10 +1,17 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = resolve(frontendRoot, '..');
-const manifestPath = resolve(repoRoot, 'sdd/wip/20261109-blackstore-productive-surface-data-parity/1-functional/surface-data-manifest.json');
+const manifestCandidates = [
+  'sdd/features/20261109-blackstore-productive-surface-data-parity/1-functional/surface-data-manifest.json',
+  'sdd/wip/20261109-blackstore-productive-surface-data-parity/1-functional/surface-data-manifest.json',
+].map(path => resolve(repoRoot, path)).filter(existsSync);
+if (manifestCandidates.length !== 1) {
+  throw new Error(`[surface-manifest] expected exactly one archived or active manifest, found ${manifestCandidates.length}`);
+}
+const [manifestPath] = manifestCandidates;
 const routesPath = resolve(frontendRoot, 'src/app/app.routes.ts');
 const demoBootstrapPath = resolve(frontendRoot, 'src/app/demo.bootstrap.ts');
 

@@ -22,10 +22,11 @@
 - Readiness no durable bloquea operación y comunica la causa.
 - UX/Producto final: APPROVE, cero P0–P3.
 
-## CI exact-head
+## CI del commit funcional
 
 - PR #61 sobre commit `1cecb0202abc3d1a1806dad765f4a8d9ffa376d6`.
 - GitHub Actions Verify #107: cuatro jobs verdes.
 - Bug Review final: APPROVE, cero P0–P3.
+- El archivo SDD mueve el manifest a `features`; el gate resuelve exactamente una ubicación activa o archivada y se revalida sobre el head final antes del merge.
 
 **Veredicto:** APPROVED para archivo SDD y merge a `master`.

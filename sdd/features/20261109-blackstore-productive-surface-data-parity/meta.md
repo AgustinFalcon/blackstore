@@ -3,7 +3,7 @@
 - **Feature:** `blackstore-productive-surface-data-parity`
 - **Base:** `master` `2b1f60c44ba50c915293f48e2a83554f9ca81943`
 - **Estado:** `complete`
-- **Cierre:** PR #61, workflow Verify #107 verde, reviews Bug/Security/UX-Producto APPROVE.
+- **Cierre:** PR #61; commit funcional validado por Verify #107 y reviews Bug/Security/UX-Producto APPROVE. El archivo SDD queda sujeto a los required checks del head final.
 - **Objetivo:** distinguir y cerrar la cobertura de datos del POS operativo sin presentar la demo como backend productivo ni duplicar autoridad de StoreCore.
 - **Superficies:** `/sesion`, `/`, `/caja`, `/caja/cierre`, `/catalogo`, `/ticket`, `/ticket/:saleId`, `/ventas`, `/reportes`.
 - **Demo:** `/demo/**` permanece simulación reiniciable en memoria, claramente rotulada.
