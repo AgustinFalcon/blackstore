@@ -1,0 +1,14 @@
+{
+  "feature": "20261109-blackstore-sales-operation-selection",
+  "status": "complete",
+  "stats": { "total": 7, "done": 7, "in_progress": 0, "pending": 0 },
+  "tasks": [
+    { "id": "BSOS-T01", "title": "Create reviewed SDD and backlog traceability", "status": "done", "requirements": ["BSOS-F01", "BSOS-F02", "BSOS-F03", "BSOS-F04", "BSOS-F05", "BSOS-F06", "BSOS-F07", "BSOS-F08"] },
+    { "id": "BSOS-T02", "title": "Implement closed route selection and phase domain types", "status": "done", "requirements": ["BSOS-F02", "BSOS-F04"] },
+    { "id": "BSOS-T03", "title": "Implement isolated selection read, supersession, retry and invalidation", "status": "done", "requirements": ["BSOS-F02", "BSOS-F03", "BSOS-F04"] },
+    { "id": "BSOS-T04", "title": "Implement URL selector, panel states, honest feedback, validation and focus", "status": "done", "requirements": ["BSOS-F01", "BSOS-F02", "BSOS-F05", "BSOS-F06", "BSOS-F07", "BSOS-F08"] },
+    { "id": "BSOS-T05", "title": "Add domain, store and component regression coverage", "status": "done", "requirements": ["BSOS-F01", "BSOS-F02", "BSOS-F03", "BSOS-F04", "BSOS-F05", "BSOS-F06"] },
+    { "id": "BSOS-T06", "title": "Run browser responsive accessibility and real-boundary acceptance", "status": "done", "requirements": ["BSOS-F01", "BSOS-F02", "BSOS-F03", "BSOS-F04", "BSOS-F07", "BSOS-F08"] },
+    { "id": "BSOS-T07", "title": "Run full gates, independent reviews, archive and exact-head merge", "status": "done", "requirements": ["BSOS-F01", "BSOS-F02", "BSOS-F03", "BSOS-F04", "BSOS-F05", "BSOS-F06", "BSOS-F07", "BSOS-F08"] }
+  ]
+}

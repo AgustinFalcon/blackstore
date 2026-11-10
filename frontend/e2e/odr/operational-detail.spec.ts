@@ -51,6 +51,83 @@ test('operational route focus does not override a control reached after navigati
   await expect(localDate).toBeFocused();
 });
 
+for (const width of [320, 390, 1440]) {
+  test(`fresh sales list selects an operation by URL with keyboard at ${width}px`, async ({ page }) => {
+    const writes: string[] = [];
+    page.on('request', request => { if (request.method() !== 'GET') writes.push(`${request.method()} ${request.url()}`); });
+    await page.setViewportSize({ width, height: 820 });
+    await page.goto('/ventas');
+    const selector = page.getByRole('button', { name: 'Ver operaciones' });
+    await selector.focus(); await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`/ventas\\?operationId=${operationId}$`));
+    await expect(page.getByRole('heading', { name: 'Operaciones de la venta' })).toBeFocused();
+    await expect(page.getByText(`Operación seleccionada: ${operationId}`)).toBeVisible();
+    await expect(page.getByText('1 × Artículo', { exact: true })).toBeVisible();
+    await expect(page.locator('.selection-status')).toContainText('Venta comprobada');
+    if (width === 320) {
+      for (const control of ['Consultar estado', 'Cerrar detalle']) {
+        const box = await page.getByRole('button', { name: control }).boundingBox();
+        expect(box?.height).toBeGreaterThanOrEqual(44);
+      }
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.reload();
+    await expect(page.getByText(`Operación seleccionada: ${operationId}`)).toBeVisible();
+    expect(writes).toEqual([]);
+  });
+}
+
+test('failed selected read retains identity, retries the same GET and closes back to the list', async ({ page }) => {
+  let attempts = 0;
+  await page.route(`**/api/v1/sales/operations/${operationId}`, async route => {
+    attempts += 1;
+    if (attempts === 1) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    return json(route, envelope(detail()));
+  });
+  await page.goto(`/ventas?operationId=${operationId}`);
+  await expect(page.getByRole('alert')).toContainText('No se pudo comprobar la venta seleccionada');
+  await expect(page.getByText(`Operación seleccionada: ${operationId}`)).toBeVisible();
+  await page.getByRole('button', { name: 'Reintentar venta' }).click();
+  await expect(page.getByText('1 × Artículo', { exact: true })).toBeVisible();
+  expect(attempts).toBe(2);
+  await page.getByRole('button', { name: 'Cerrar detalle' }).click();
+  await expect(page).toHaveURL(/\/ventas$/);
+  await expect(page.getByRole('button', { name: 'Ver operaciones' })).toBeFocused();
+});
+
+test('loading selection can close, ignores its late response and browser history restores intent', async ({ page }) => {
+  let release: (() => void) | null = null;
+  let delayNext = true;
+  await page.route(`**/api/v1/sales/operations/${operationId}`, async route => {
+    if (delayNext) { delayNext = false; await new Promise<void>(resolve => { release = resolve; }); }
+    await json(route, envelope(detail()));
+  });
+  await page.goto('/ventas');
+  await page.getByRole('button', { name: 'Ver operaciones' }).click();
+  await expect(page.getByText('Comprobando la venta seleccionada…')).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await expect(page).toHaveURL(/\/ventas$/);
+  release?.();
+  await expect(page.getByRole('heading', { name: 'Operaciones de la venta' })).toHaveCount(0);
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/ventas\\?operationId=${operationId}$`));
+  await expect(page.getByText(`Operación seleccionada: ${operationId}`)).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/ventas$/);
+  await page.goForward();
+  await expect(page).toHaveURL(new RegExp(`/ventas\\?operationId=${operationId}$`));
+});
+
+test('malformed or duplicate selected operation fails closed without detail HTTP', async ({ page }) => {
+  let detailReads = 0;
+  page.on('request', request => { if (request.url().includes('/sales/operations/')) detailReads += 1; });
+  await page.goto('/ventas?operationId=invalid');
+  await expect(page.getByRole('alert')).toContainText('La selección de venta no es válida');
+  await page.goto(`/ventas?operationId=${operationId}&operationId=${operationId}`);
+  await expect(page.getByRole('alert')).toContainText('La selección de venta no es válida');
+  expect(detailReads).toBe(0);
+});
+
 async function mockOperationalReads(page: Page): Promise<void> {
   await page.route('**/api/**', async route => {
     const request = route.request();

@@ -17,6 +17,8 @@
 
 ## Cortes integrados y aceptación residual
 
+- BSOS [ready] `blackstore-sales-operation-selection`: selección explícita y durable de una venta desde `/ventas`, panel operativo accesible con fases cerradas, retry honesto y navegación GET-only; frontend-only, sin reabrir POSC/DCT/ODR ni agregar endpoints. Implementación, gates locales y reviews completos; pendiente sólo PR/CI exact-head.
+
 - Frontend POSC/ODR [integrado] PR #53–#59 incorporan POSC-T/U/E, rechazo fail-closed, detalle operativo y cierre final de presentación. PR #60 migra `upload-artifact` a Node.js 24. Estos merges no acreditan StoreCore live, fiscal, homologación ni deploy.
 
 - TODO-000 [integrado] Identidad staff local fail-closed incorporada por PR #24 (`4055b28`); WIP `20261006-blackstore-staff-identity` documenta aceptación browser/PostgreSQL, sesión opaca, cookie/CSRF y RBAC/ownership. No equivale a homologación.
