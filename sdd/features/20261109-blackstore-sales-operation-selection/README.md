@@ -19,5 +19,6 @@ Este feature permite abrir de forma explícita y durable las operaciones de cual
 - DCT real: 18/18 con PostgreSQL 16, JAR real y Angular; recursos descartados tras cada escenario.
 - Backend, `bootJar`, build, typechecks y manifest: PASS.
 - Reviews GPT-6.1 Sol de UX/Producto, Código/Arquitectura y Seguridad: APPROVE, cero P0–P3.
+- PR #63: Verify #42725213277 con `frontend`, `frontend-browser`, `backend` y `dct-browser` verdes; squash merge `76fd688` a `master`.
 
 El alcance sigue siendo frontend productivo sobre APIs existentes. StoreCore live, fiscal, QR, proveedores y despliegue permanecen fuera de este corte.
