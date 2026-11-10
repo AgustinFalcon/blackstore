@@ -17,7 +17,7 @@
 
 ## Cortes integrados y aceptación residual
 
-- BSOS [ready] `blackstore-sales-operation-selection`: selección explícita y durable de una venta desde `/ventas`, panel operativo accesible con fases cerradas, retry honesto y navegación GET-only; frontend-only, sin reabrir POSC/DCT/ODR ni agregar endpoints. Implementación, gates locales y reviews completos; pendiente sólo PR/CI exact-head.
+- BSOS [integrado] [Selección operativa de ventas](features/20261109-blackstore-sales-operation-selection/meta.md): selección explícita y durable desde `/ventas`, panel accesible con fases cerradas, retry honesto y navegación GET-only. Cerrado en PR #63, Verify #42725213277 y merge `76fd688`; frontend-only, sin endpoints ni homologaciones nuevas.
 
 - Frontend POSC/ODR [integrado] PR #53–#59 incorporan POSC-T/U/E, rechazo fail-closed, detalle operativo y cierre final de presentación. PR #60 migra `upload-artifact` a Node.js 24. Estos merges no acreditan StoreCore live, fiscal, homologación ni deploy.
 

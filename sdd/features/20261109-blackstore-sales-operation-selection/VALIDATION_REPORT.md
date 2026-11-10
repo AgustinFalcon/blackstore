@@ -22,6 +22,13 @@ Fecha: 2026-11-09
 - Security: APPROVE.
 - Hallazgos pendientes P0–P3: 0.
 
+## Integración
+
+- PR: #63.
+- Head validado: `94a1abd53d52d88a0de0f0c9304e59746ca1a0ee`.
+- Verify exact-head: #42725213277, cuatro jobs SUCCESS.
+- Merge a `master`: `76fd68875daa45145c62e702086f37cf6a1ffcf5`.
+
 ## Recursos
 
 La DCT registró teardown PASS para cada contenedor PostgreSQL, cada JAR y cada servidor Angular. No se dejó infraestructura de prueba en ejecución.
