@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { AccountingCommandsStore } from './accounting-commands.store';
 import { SaleCommandsStore } from './sale-commands.store';
 import { SaleCommandKind,SaleAdmissionOutcome } from '../domain/sale-command';
@@ -17,6 +17,7 @@ import { commandEnvelope } from '../infrastructure/accounting-command-test-helpe
 import { DurableSalesStore } from './durable-sales.store';
 import { SessionStore } from './session.store';
 import { authenticateTestSession } from './session-test-helper';
+import { OperationId, SaleSelectionPhase } from '../domain/sale-operation-selection';
 
 const identity = { clientInstanceId: '11111111-1111-1111-1111-111111111111', deviceId: 'counter',
   saleId: '22222222-2222-2222-2222-222222222222', operationId: '33333333-3333-3333-3333-333333333333' };
@@ -104,6 +105,74 @@ describe('DurableSalesStore v2 existing sale entry',()=>{
   };
   it('opens existing identity through GET only without manufacturing a sale',()=>{
     const uuid=spyOn(crypto,'randomUUID').and.callThrough();open();expect(store.detail()?.identity).toEqual(identity);expect(uuid).not.toHaveBeenCalled();http.expectNone(r=>r.method==='POST');
+  });
+  it('selects a routed operation with GET only and retains identity for retry after failure',()=>{
+    const operationId=OperationId.fromWire(identity.operationId)!;
+    store.selectOperation(operationId);
+    expect(store.selectionPhase()).toBe(SaleSelectionPhase.Loading);
+    expect(store.selectedOperationId()?.wire).toBe(identity.operationId);
+    http.expectOne(url).flush('unavailable',{status:503,statusText:'Unavailable'});
+    expect(store.selectionPhase()).toBe(SaleSelectionPhase.Unavailable);
+    expect(store.selectedOperationId()).toBe(operationId);
+    expect(store.detail()).toBeNull();
+    store.retrySelection();http.expectOne(url).flush(envelope(detail()));
+    expect(store.selectionPhase()).toBe(SaleSelectionPhase.Ready);
+    expect(store.detail()?.identity.operationId).toBe(identity.operationId);
+    http.expectNone(request=>request.method==='POST');
+  });
+  it('lets a newer routed selection supersede a late response and close invalidates the read',()=>{
+    const first=OperationId.fromWire(identity.operationId)!;
+    const secondRaw='44444444-4444-4444-4444-444444444444';
+    const second=OperationId.fromWire(secondRaw)!;
+    store.selectOperation(first);const requestA=http.expectOne(url);
+    store.selectOperation(second);const requestB=http.expectOne(`${API_BASE}/sales/operations/${secondRaw}`);
+    requestA.flush(envelope(detail()));
+    expect(store.detail()).toBeNull();expect(store.selectedOperationId()).toBe(second);
+    requestB.flush(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{operationId:secondRaw})));
+    expect(store.detail()?.identity.operationId).toBe(secondRaw);
+    store.selectOperation(first);const closing=http.expectOne(url);store.clearSelection();closing.flush(envelope(detail()));
+    expect(store.selectionPhase()).toBe(SaleSelectionPhase.Idle);expect(store.detail()).toBeNull();
+  });
+  it('prevents a late legacy open from replacing the routed selection identity',()=>{
+    const secondRaw='44444444-4444-4444-4444-444444444444';
+    store.open(identity.operationId);const legacy=http.expectOne(url);
+    store.selectOperation(OperationId.fromWire(secondRaw)!);const selected=http.expectOne(`${API_BASE}/sales/operations/${secondRaw}`);
+    selected.flush(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{operationId:secondRaw})));
+    expect(store.detail()?.identity.operationId).toBe(secondRaw);expect(store.busy()).toBeFalse();
+    legacy.flush(envelope(detail()));
+    expect(store.detail()?.identity.operationId).toBe(secondRaw);expect(store.selectedOperationId()?.wire).toBe(secondRaw);
+    expect(store.can(AllowedAction.CapturePayment)).toBeTrue();
+  });
+  it('refreshes a ready selection and invalidates an in-flight read when the route is left',()=>{
+    const operationId=OperationId.fromWire(identity.operationId)!;
+    store.selectOperation(operationId);http.expectOne(url).flush(envelope(detail()));
+    store.refreshSelection();const refresh=http.expectOne(url);expect(store.selectionPhase()).toBe(SaleSelectionPhase.Loading);
+    refresh.flush(envelope(detail()));expect(store.selectionPhase()).toBe(SaleSelectionPhase.Ready);
+    store.selectOperation(operationId);const leaving=http.expectOne(url);store.leaveSelection();leaving.flush(envelope(detail()));
+    expect(store.selectionPhase()).toBe(SaleSelectionPhase.Idle);expect(store.detail()).toBeNull();
+  });
+  for (const journal of ['accounting','sales'] as const) {
+    it(`does not let a late ${journal} receipt erase a newer routed selection`,()=>{
+      const receipt=new Subject<any>();
+      if(journal==='accounting'){accounting.unresolved.set({});accounting.consult.and.returnValue(receipt);}
+      else{sales.unresolved.set({});sales.consult.and.returnValue(receipt);}
+      store.selectOperation(OperationId.fromWire(identity.operationId)!);http.expectOne(url).flush(envelope(detail()));
+      store.consultReceipt();
+      const secondRaw='44444444-4444-4444-4444-444444444444';
+      store.selectOperation(OperationId.fromWire(secondRaw)!);
+      http.expectOne(`${API_BASE}/sales/operations/${secondRaw}`).flush(envelope(detail(DurableSaleState.Reserved,PaymentCoverage.Partial,{operationId:secondRaw})));
+      if(journal==='accounting')receipt.next(PosWireMapper.commandReceipt(null,''));
+      else receipt.next({outcome:SaleAdmissionOutcome.Unknown,receipt:null});
+      receipt.complete();
+      expect(store.detail()?.identity.operationId).toBe(secondRaw);expect(store.selectionPhase()).toBe(SaleSelectionPhase.Ready);
+      expect(store.busy()).toBeFalse();
+    });
+  }
+  it('rejects invalid route selection without HTTP and clears it on actor change',()=>{
+    store.rejectSelection();expect(store.selectionPhase()).toBe(SaleSelectionPhase.Unknown);http.expectNone(request=>request.url.includes('/sales/operations/'));
+    store.selectOperation(OperationId.fromWire(identity.operationId)!);const request=http.expectOne(url);
+    TestBed.inject(SessionStore).changed.next();request.flush(envelope(detail()));
+    expect(store.selectionPhase()).toBe(SaleSelectionPhase.Idle);expect(store.selectedOperationId()).toBeNull();expect(store.detail()).toBeNull();
   });
   it('isolates late list and detail responses after identity changes',()=>{
     store.open(identity.operationId);const request=http.expectOne(url);TestBed.inject(SessionStore).changed.next();request.flush(envelope(detail()));expect(store.detail()).toBeNull();
