@@ -8,10 +8,11 @@ quedó archivada en
 `sdd/features/20261109-blackstore-sales-operation-selection/`: la UI no infiere
 silenciosamente una operación ambigua y conserva autoridad cerrada del backend.
 
-Verify post-merge de `master` `42728119683` terminó verde. No existen PRs
-abiertos al 2026-11-11. Este bloque prevalece sobre las secciones históricas que
-todavía describen POSC, CLR, DCT, ODR o paridad de superficies como pendientes
-del core local.
+Verify post-merge de `master` `42728119683` terminó verde. Al iniciar esta
+reconciliación no existían PRs abiertos; actualmente sólo está abierto el PR
+documental #65 de esta misma reconciliación, sin PRs funcionales pendientes del
+core local. Este bloque prevalece sobre las secciones históricas que todavía
+describen POSC, CLR, DCT, ODR o paridad de superficies como pendientes.
 
 La autoridad de catálogo, precio y stock continúa en StoreCore y el adapter
 predeterminado permanece fixture/fail-closed. StoreCore live, fiscal/ARCA,
