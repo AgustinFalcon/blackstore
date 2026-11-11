@@ -1,5 +1,24 @@
 # Estado canónico del SDD — BlackStore
 
+## Master vigente y selección durable de operaciones — 2026-11-11
+
+`master 367121871cc114ad214e236e499b2cb3683ca5b2` integra PR #63 y el
+close-out documental PR #64. La selección durable de una operación de venta
+quedó archivada en
+`sdd/features/20261109-blackstore-sales-operation-selection/`: la UI no infiere
+silenciosamente una operación ambigua y conserva autoridad cerrada del backend.
+
+Verify post-merge de `master` `42728119683` terminó verde. Al iniciar esta
+reconciliación no existían PRs abiertos; actualmente sólo está abierto el PR
+documental #65 de esta misma reconciliación, sin PRs funcionales pendientes del
+core local. Este bloque prevalece sobre las secciones históricas que todavía
+describen POSC, CLR, DCT, ODR o paridad de superficies como pendientes.
+
+La autoridad de catálogo, precio y stock continúa en StoreCore y el adapter
+predeterminado permanece fixture/fail-closed. StoreCore live, fiscal/ARCA,
+Correo Argentino, QR/proveedores, homologación, deploy y `release/1.0` no están
+acreditados por este cierre.
+
 ## Master vigente y corte de paridad productiva — 2026-11-09
 
 `master 40c2880` integra PR #53–#61. La [paridad de datos de superficies productivas](features/20261109-blackstore-productive-surface-data-parity/meta.md) se cerró en PR #61; Verify exact-head #109 (`42581477663`) dejó verdes frontend, frontend-browser, backend y DCT, y las reviews finales Bug/Security/UX-Producto aprobaron sin P0–P3. Este bloque prevalece sobre toda sección histórica posterior que aún describa POSC, ODR, presentación, caja/reportes o DCT como pendientes.
