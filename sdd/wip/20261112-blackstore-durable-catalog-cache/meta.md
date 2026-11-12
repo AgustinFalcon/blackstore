@@ -1,8 +1,9 @@
 # BlackStore durable catalog cache
 
-Estado: `implemented_local_gates_and_reviews_passed_pr_pending`.
+Estado: `merged_local_complete_external_activation_blocked`.
 
-Base: `10a7862e7a38d8b8bb4b305ae0a847afee4f57cc` (`origin/master`).
+Base: `10a7862e7a38d8b8bb4b305ae0a847afee4f57cc`; PR #66 integrado en
+`master 1f16522e78e7f7f04374ae1b58bcb2b92fa24e94`.
 
 Objetivo: reemplazar el último catálogo operativo puramente efímero por una
 proyección durable de snapshots válidos recibidos desde StoreCore, sin activar

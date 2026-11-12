@@ -2,6 +2,7 @@ import { StaffPermission } from './session-types';
 import { PaymentMethod, PaymentStatus } from './pos-types';
 import { PaymentCoverage, TicketIdentity, TicketMoney } from './ticket-transition';
 import { SaleTextV2 } from './sale-text-v2';
+import { RecordedInstant } from './recorded-instant';
 
 export class AllowedAction {
   static readonly CapturePayment = new AllowedAction('CAPTURE_PAYMENT', 'Completar pago', StaffPermission.PaymentCapture);
@@ -47,6 +48,8 @@ export interface DurableSaleSummary {
   readonly createdBy: number | null;
   readonly status: DurableSaleState;
   readonly total: TicketMoney | null;
+  readonly createdAt: RecordedInstant;
+  readonly updatedAt: RecordedInstant;
 }
 export interface DurableSaleLine {
   readonly metadata:DurableLineMetadata;
@@ -87,6 +90,7 @@ export interface DurableSalePayment {
   readonly method: PaymentMethod;
   readonly amount: TicketMoney | null;
   readonly fee: TicketMoney | null;
+  readonly createdAt: RecordedInstant;
 }
 /** Linkage is validated over the entire sale snapshot before any capture can be reversed. */
 export class PaymentReversibility {

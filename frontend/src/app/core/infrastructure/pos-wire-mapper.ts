@@ -27,6 +27,7 @@ import { ExpenseOperation } from '../domain/accounting-command';
 import { ExpenseProjectionObservation, ExpenseProjectionState, ExpensePostingKind, ExpenseFact, ExpenseSettlement, ExpensePosting } from '../domain/expense-projection';
 import { SaleAdmission, SaleAdmissionOutcome, SaleAdmissionRoute, SaleCommand, SaleCommandFailure, SaleCommandKind,SaleAdmissionVerification,SaleFingerprintVersion,SaleLineFailureCode } from '../domain/sale-command';
 import { SaleTextV2 } from '../domain/sale-text-v2';
+import { RecordedInstant } from '../domain/recorded-instant';
 
 export class PosWireMapper {
   private constructor() {}
@@ -398,7 +399,8 @@ export class PosWireMapper {
     if (!raw || !identity || !PosWireMapper.positiveId(raw['cashSessionId']) || !PosWireMapper.positiveId(raw['cashierId'])) return null;
     return Object.freeze({ identity, cashSessionId: raw['cashSessionId'] as number, cashierId: raw['cashierId'] as number,
       createdBy: PosWireMapper.positiveId(raw['createdBy']) ? raw['createdBy'] as number : null,
-      status: DurableSaleState.fromWire(raw['status']), total: TicketMoney.fromDecimal(raw['totalAmount']) });
+      status: DurableSaleState.fromWire(raw['status']), total: TicketMoney.fromDecimal(raw['totalAmount']),
+      createdAt: RecordedInstant.fromWire(raw['saleCreatedAt']), updatedAt: RecordedInstant.fromWire(raw['saleUpdatedAt']) });
   }
 
   static durableDetail(response: unknown, operationId: string): DurableSaleDetail | null {
@@ -423,7 +425,8 @@ export class PosWireMapper {
       return Object.freeze({ paymentId: PosWireMapper.positiveId(payment?.['paymentId']) ? payment!['paymentId'] as number : 0,
         status: PaymentStatus.fromWire(payment?.['status']), method: PaymentMethod.fromWire(payment?.['method']),
         originalPaymentId: payment?.['originalPaymentId']===null ? null : PosWireMapper.positiveId(payment?.['originalPaymentId']) ? payment!['originalPaymentId'] as number : 0,
-        amount: TicketMoney.fromDecimal(payment?.['amount']), fee: TicketMoney.fromDecimal(payment?.['feeAmount']) });
+        amount: TicketMoney.fromDecimal(payment?.['amount']), fee: TicketMoney.fromDecimal(payment?.['feeAmount']),
+        createdAt: RecordedInstant.fromWire(payment?.['createdAt']) });
     }) : [];
     const payments = paymentRows.map(payment=>Object.freeze({...payment,reversibility:PaymentReversibility.forPayment(payment,paymentRows)}));
     const allowedActions = Array.isArray(raw['allowedActions']) ? raw['allowedActions'].map(AllowedAction.fromWire) : [AllowedAction.Unknown];

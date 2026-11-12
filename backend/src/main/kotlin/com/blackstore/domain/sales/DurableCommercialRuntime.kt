@@ -27,6 +27,15 @@ sealed interface CanonicalCommandPayload {
   init { require(reservationRef.isNotBlank()) }
  }
 }
-data class StoredSale(val saga: SaleSaga, val version: Long, val state: DurableSaleState, val projectionId: Long)
+sealed interface SaleTemporalEvidence {
+ data class Known(val createdAt: Instant, val updatedAt: Instant) : SaleTemporalEvidence
+ data object Unknown : SaleTemporalEvidence
+ companion object {
+  fun fromPersistence(createdAt: Instant, updatedAt: Instant): SaleTemporalEvidence =
+   if (updatedAt.isBefore(createdAt)) Unknown else Known(createdAt, updatedAt)
+ }
+}
+data class StoredSale(val saga: SaleSaga, val version: Long, val state: DurableSaleState, val projectionId: Long,
+ val temporalEvidence: SaleTemporalEvidence = SaleTemporalEvidence.Unknown)
 data class ClaimedSaleCommand(val id: Long, val command: OutboxCommand, val claimToken: UUID, val claimEpoch: Long,
  val uncertain: Boolean, val attempts: Int, val actorId: Long, val cashSessionId: Long)

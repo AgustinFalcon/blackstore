@@ -337,7 +337,7 @@ class JdbcAccountingMutationCommands(private val source: DataSource) : Accountin
 
     private fun paymentLedger(c: Connection, sale: StoredSale): OperationLedger = OperationLedger.Known(query(c, "SELECT * FROM payments WHERE sale_id=? ORDER BY id", sale.projectionId) {
         PaymentLedgerEntry(sale.saga.quadruple, it.getLong("id"), PaymentMethod.fromWire(it.getString("payment_method")), PaymentStatus.fromWire(it.getString("status")),
-            it.getBigDecimal("amount"), it.getBigDecimal("fee_amount"), (it.getObject("original_payment_id") as? Number)?.toLong())
+            it.getBigDecimal("amount"), it.getBigDecimal("fee_amount"), (it.getObject("original_payment_id") as? Number)?.toLong(),it.getTimestamp("created_at").toInstant())
     })
 
     private fun updateSale(c: Connection, sale: StoredSale, status: SaleStatus, at: Instant) {

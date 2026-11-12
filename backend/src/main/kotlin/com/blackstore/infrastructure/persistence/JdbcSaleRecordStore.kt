@@ -236,7 +236,7 @@ class JdbcSaleRecordStore(
         }
     }
     internal fun ledger(c: java.sql.Connection,saga: SaleSaga): OperationLedger = c.prepareStatement("SELECT * FROM payments WHERE sale_id=? ORDER BY id").use { s ->
-        s.setLong(1,findProjection(c,saga));s.executeQuery().use { r ->OperationLedger.Known(buildList { while(r.next()) add(PaymentLedgerEntry(saga.quadruple,r.getLong("id"),PaymentMethod.fromWire(r.getString("payment_method")),PaymentStatus.fromWire(r.getString("status")),r.getBigDecimal("amount"),r.getBigDecimal("fee_amount"),(r.getObject("original_payment_id") as? Number)?.toLong())) }) }
+        s.setLong(1,findProjection(c,saga));s.executeQuery().use { r ->OperationLedger.Known(buildList { while(r.next()) add(PaymentLedgerEntry(saga.quadruple,r.getLong("id"),PaymentMethod.fromWire(r.getString("payment_method")),PaymentStatus.fromWire(r.getString("status")),r.getBigDecimal("amount"),r.getBigDecimal("fee_amount"),(r.getObject("original_payment_id") as? Number)?.toLong(),r.getTimestamp("created_at").toInstant())) }) }
     }
 
     private fun findProjection(connection: java.sql.Connection, saga: SaleSaga): Long =

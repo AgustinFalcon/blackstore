@@ -24,11 +24,12 @@ const identity = { clientInstanceId: '11111111-1111-1111-1111-111111111111', dev
 const envelope = (data: unknown) => ({ code: 200, errorCode: null, traceId: 'trace', message: null, retryable: null, data });
 const detail = (status = DurableSaleState.Reserved, coverage = PaymentCoverage.Partial, overrides = {}) => ({ ...identity,
   cashSessionId: 1, cashierId: 7, createdBy: 9, status: status.wire, totalAmount: '18.00',
+  saleCreatedAt: '2026-11-12T14:30:00Z', saleUpdatedAt: '2026-11-12T15:45:00Z',
   pendingAmount: coverage === PaymentCoverage.Paid ? '0' : coverage === PaymentCoverage.Unpaid ? '18' : '8',
   paymentCoverage: coverage.wire, hasPaymentHistory: coverage !== PaymentCoverage.Unpaid,
   evidenceValid: true, receipt: 'receipt', reservationRef: 'reservation', blocked: false, retired: false,
   lines: [{variantId:'variant-1',sku: 'SKU', productName: 'Producto persistido', quantity: 1,originalUnitPrice:'18',priceVersion:'P1',totalAmount: '18' }],
-  payments: coverage === PaymentCoverage.Unpaid ? [] : [{ paymentId: 41, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount: coverage === PaymentCoverage.Paid ? '18' : '10', feeAmount: '0' }],
+  payments: coverage === PaymentCoverage.Unpaid ? [] : [{ paymentId: 41, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount: coverage === PaymentCoverage.Paid ? '18' : '10', feeAmount: '0', createdAt: '2026-11-12T15:00:00Z' }],
   pendingCommand: null, allowedActions: AllowedAction.values.map(action => action.wire), ...overrides });
 
 describe('DurableSale closed types and DTO boundary', () => {
@@ -43,6 +44,20 @@ describe('DurableSale closed types and DTO boundary', () => {
       expect(invalid.valid).toBeFalse();
       for (const action of AllowedAction.values) expect(invalid.status.permits(action, invalid)).toBeFalse();
     }
+  });
+  it('translates sale and payment timestamps without making them commercial authority', () => {
+    const sale = PosWireMapper.durableDetail(envelope(detail()), identity.operationId)!;
+    expect(sale.createdAt.known).toBeTrue();
+    expect(sale.updatedAt.known).toBeTrue();
+    expect(sale.payments[0].createdAt.known).toBeTrue();
+    const unknown = PosWireMapper.durableDetail(envelope(detail(DurableSaleState.Reserved, PaymentCoverage.Partial, {
+      saleCreatedAt: 'invalid', saleUpdatedAt: null,
+      payments: [{ paymentId: 41, status: PaymentStatus.Captured.wire, originalPaymentId:null, method: PaymentMethod.Cash.wire, amount:'10', feeAmount:'0', createdAt:'invalid' }],
+    })), identity.operationId)!;
+    expect(unknown.createdAt.known).toBeFalse();
+    expect(unknown.updatedAt.known).toBeFalse();
+    expect(unknown.payments[0].createdAt.known).toBeFalse();
+    expect(unknown.valid).toBeTrue();
   });
   it('round-trips every closed state/action and neutralizes unknown wire', () => {
     for (const state of DurableSaleState.values) expect(DurableSaleState.fromWire(state.wire)).toBe(state);

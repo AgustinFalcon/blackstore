@@ -8,4 +8,4 @@
 - [x] DCC-006 Componer únicamente el perfil loopback; default fixture intacto.
 - [x] DCC-007 Traducir/rotular `STORECORE_CACHE` en frontend y cubrir Unknown.
 - [x] DCC-008 Ejecutar gates backend/frontend y aceptación de reinicio.
-- [ ] DCC-009 Revisar SHA exacto y entregar por PR sin activar live.
+- [x] DCC-009 Revisar SHA exacto y entregar por PR #66 sin activar live.

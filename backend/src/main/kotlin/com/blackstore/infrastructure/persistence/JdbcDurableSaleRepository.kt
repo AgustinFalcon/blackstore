@@ -39,7 +39,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
  }
  internal fun lock(c: Connection, operationId: String): StoredSale = read(c, aggregateLocks.lockSale(c, operationId).projectionId)
  internal fun lock(c: Connection,identity: OperationQuadruple): StoredSale = read(c, aggregateLocks.lockSale(c, identity).projectionId)
- internal fun read(c: Connection,id: Long): StoredSale = c.prepareStatement("SELECT p.*,i.cash_session_id,i.created_by FROM sale_state_projection p JOIN sale_intents i ON i.id=p.sale_intent_id WHERE p.id=?").use { s ->
+ internal fun read(c: Connection,id: Long): StoredSale = c.prepareStatement("SELECT p.*,i.cash_session_id,i.created_by,i.created_at AS sale_created_at,p.updated_at AS sale_updated_at FROM sale_state_projection p JOIN sale_intents i ON i.id=p.sale_intent_id WHERE p.id=?").use { s ->
   s.setLong(1,id); s.executeQuery().use { r ->
    check(r.next()); val identity=OperationQuadruple(r.getString("client_instance_id"),r.getString("device_id"),r.getString("sale_id"),r.getString("operation_id"))
    val commands=mutableListOf<OutboxCommand>(); var legacy=false
@@ -64,7 +64,8 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
    StoredSale(SaleSaga(identity,r.getLong("cash_session_id"),status,evidence,r.getString("reconciliation_reason"),commands,
     grossSales=lines.fold(java.math.BigDecimal.ZERO) { a,l -> a+l.originalUnitPrice.multiply(l.quantity.toBigDecimal()) },
     discounts=lines.fold(java.math.BigDecimal.ZERO) { a,l -> a+l.discountAmount.multiply(l.quantity.toBigDecimal()) },lines=lines,createdBy=r.getLong("created_by"),
-    recoverWithGet=commands.isNotEmpty() && status in setOf(SaleStatus.COMMIT_PENDING,SaleStatus.RELEASE_PENDING),blockSameOperationRepost=state in setOf(DurableSaleState.LEGACY_INCOMPLETE,DurableSaleState.UNKNOWN)),r.getLong("version"),state,id)
+    recoverWithGet=commands.isNotEmpty() && status in setOf(SaleStatus.COMMIT_PENDING,SaleStatus.RELEASE_PENDING),blockSameOperationRepost=state in setOf(DurableSaleState.LEGACY_INCOMPLETE,DurableSaleState.UNKNOWN)),r.getLong("version"),state,id,
+    SaleTemporalEvidence.fromPersistence(r.getTimestamp("sale_created_at").toInstant(),r.getTimestamp("sale_updated_at").toInstant()))
   }
  }
  override fun claimNext(lease: Duration): ClaimedSaleCommand? = claim(null,null,lease)

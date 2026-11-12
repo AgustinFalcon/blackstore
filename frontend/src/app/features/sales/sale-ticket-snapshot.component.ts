@@ -31,7 +31,7 @@ import { SurfaceDataEvidenceComponent } from '../../shared/surface-data-evidence
             <div><p class="eyebrow">Venta {{ sale.identity.saleId }}</p><h3>{{ sale.status.label }}</h3></div>
             <span class="badge" [class.ok]="sale.valid" [class.info]="!sale.valid">{{ sale.valid ? 'Evidencia comprobada' : 'Sólo consulta' }}</span>
           </div>
-          <dl class="metrics"><div class="metric"><dt>Total</dt><dd>{{ amount(sale.total) }}</dd></div><div class="metric"><dt>Saldo pendiente</dt><dd>{{ amount(sale.pending) }}</dd></div><div class="metric"><dt>Fecha</dt><dd>No disponible</dd></div></dl>
+          <dl class="metrics"><div class="metric"><dt>Total</dt><dd>{{ amount(sale.total) }}</dd></div><div class="metric"><dt>Saldo pendiente</dt><dd>{{ amount(sale.pending) }}</dd></div><div class="metric"><dt>Creada</dt><dd>{{ instant(sale.createdAt) }}</dd></div><div class="metric"><dt>Última actualización</dt><dd>{{ instant(sale.updatedAt) }}</dd></div></dl>
           <p>{{ sale.coverage.label }}</p>
           <p><strong>Registro BlackStore:</strong> <span class="badge" [attr.data-source]="transactionSource().wire">{{ transactionSource().label }}</span></p>
           <p><strong>Origen histórico del producto:</strong> <span class="badge warn" [attr.data-source]="historicalSource.wire">{{ historicalSource.label }}</span>. Esta información no fue registrada.</p>
@@ -41,7 +41,7 @@ import { SurfaceDataEvidenceComponent } from '../../shared/surface-data-evidence
           } @empty { <p>No hay artículos disponibles en esta lectura.</p> }
           <h4>Pagos</h4>
           @for (payment of sale.payments; track payment.paymentId) {
-            <p><strong>{{ payment.method.label }} · {{ amount(payment.amount) }}</strong> · {{ payment.status.label }}</p>
+            <p><strong>{{ payment.method.label }} · {{ amount(payment.amount) }}</strong> · {{ payment.status.label }} · Registrado {{ instant(payment.createdAt) }}</p>
           } @empty { <p>No hay pagos registrados.</p> }
           <details><summary>Evidencia técnica de la operación</summary><dl class="identity-grid">
             <div><dt>Cliente técnico</dt><dd class="sku">{{ sale.identity.clientInstanceId }}</dd></div>
@@ -72,6 +72,7 @@ import { SurfaceDataEvidenceComponent } from '../../shared/surface-data-evidence
 export class SaleTicketSnapshotComponent {
   readonly historicalSource = SurfaceDataSource.Unknown;
   readonly amount = SalePresentation.amount.bind(SalePresentation);
+  readonly instant = SalePresentation.instant.bind(SalePresentation);
   readonly store = inject(SaleSnapshotStore);
   readonly states = SaleSnapshotState;
   private readonly route = inject(ActivatedRoute);
