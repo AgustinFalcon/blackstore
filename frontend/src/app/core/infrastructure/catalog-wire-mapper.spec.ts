@@ -27,6 +27,14 @@ describe('CatalogWireMapper', () => {
     expect(catalogAllowsSelection(futureFreshness, CatalogAcceptanceState.NotRequired)).toBeFalse();
   });
 
+  it('maps a durable StoreCore cache without requiring fixture acceptance', () => {
+    const snapshot = CatalogWireMapper.snapshot(valid('STORECORE_CACHE'))!;
+    expect(snapshot.source).toBe(CatalogSource.StoreCoreCache);
+    expect(snapshot.source.label).toBe('Último catálogo sincronizado');
+    expect(CatalogAcceptanceState.initial(snapshot)).toBe(CatalogAcceptanceState.NotRequired);
+    expect(catalogAllowsSelection(snapshot, CatalogAcceptanceState.NotRequired)).toBeTrue();
+  });
+
   it('rejects malformed items instead of leaking raw wire', () => {
     expect(CatalogWireMapper.snapshot({...valid(), items:[{sku:'',name:'Producto',variantId:'1',unitPrice:10}]})).toBeNull();
     expect(CatalogWireMapper.snapshot({...valid(), items:[{sku:'1',name:'Producto',variantId:'1',unitPrice:-1}]})).toBeNull();

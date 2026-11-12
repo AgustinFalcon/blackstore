@@ -2,10 +2,11 @@ import { SurfaceDataSource } from './data-provenance';
 
 export class CatalogSource {
   static readonly StoreCoreLive = new CatalogSource('STORECORE_LIVE', 'StoreCore conectado', true, false, SurfaceDataSource.Real);
+  static readonly StoreCoreCache = new CatalogSource('STORECORE_CACHE', 'Último catálogo sincronizado', true, false, SurfaceDataSource.Mixed);
   static readonly LocalFixture = new CatalogSource('LOCAL_FIXTURE', 'Simulador local', true, true, SurfaceDataSource.Fixture);
   static readonly Unavailable = new CatalogSource('UNAVAILABLE', 'Fuente no disponible', false, false, SurfaceDataSource.Unavailable);
   static readonly Unknown = new CatalogSource('UNKNOWN', 'Fuente desconocida', false, false, SurfaceDataSource.Unknown);
-  private static readonly values = [this.StoreCoreLive, this.LocalFixture, this.Unavailable];
+  private static readonly values = [this.StoreCoreLive, this.StoreCoreCache, this.LocalFixture, this.Unavailable];
 
   private constructor(readonly wire: string, readonly label: string, readonly available: boolean,
     readonly requiresLocalAcceptance: boolean, readonly surfaceSource: SurfaceDataSource) {}

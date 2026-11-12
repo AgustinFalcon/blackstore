@@ -14,9 +14,15 @@ interface StoreCoreCatalogPort {
 
 enum class CatalogSource {
     STORECORE_LIVE,
+    STORECORE_CACHE,
     LOCAL_FIXTURE,
     UNAVAILABLE,
     UNKNOWN,
+    ;
+
+    companion object {
+        fun fromWire(raw: String?): CatalogSource = entries.firstOrNull { it != UNKNOWN && it.name == raw } ?: UNKNOWN
+    }
 }
 
 data class CatalogSnapshot(
@@ -42,3 +48,9 @@ data class CatalogItem(
     val rawVariantId: String = variantId,
     val rawPriceVersion: String? = priceVersion,
 )
+
+interface CatalogSnapshotStore {
+    fun replace(snapshot: CatalogSnapshot)
+
+    fun latest(): CatalogSnapshot?
+}
