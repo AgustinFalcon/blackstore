@@ -32,3 +32,22 @@ Modelo: GPT-6.1 Sol, esfuerzo medium.
 Ambas revisiones fueron estáticas y no modificaron archivos. El commit
 documental que incorpora este registro requiere verificación de identidad antes
 del PR; no hereda aprobación funcional por sí solo.
+
+## Ronda 3 — `ad6236c90fb523e2304466d1505949723e819f5f` — APPROVE
+
+Bug/Producto y Seguridad/Arquitectura verificaron que desde `9374ba9` sólo se
+agregó evidencia SDD. Ambas aprobaron sin P0–P3 y sin modificar archivos.
+
+## Ronda 4 — PR #66 + corrección DCT — NO APPROVE
+
+Modelo: GPT-6.1 Sol, esfuerzo medium. Revisiones independientes.
+
+- P2 Seguridad: el loopback colapsaba rechazo/JSON inválido/caída en `null`,
+  por lo que una autoridad remota inválida podía habilitar fallback a cache.
+- P2 Bug/Producto: V14 limitaba nombres a 240 aunque el contrato admite 250;
+  una escritura rechazada podía dejar cache vacío o anterior.
+
+Se remediaron con un resultado cerrado en el borde de transporte, fallback sólo
+para `Unavailable`, pruebas HTTP 401/403/malformed/envelope inválido y columnas
+de 250 con prueba PostgreSQL de frontera. Estas revisiones quedan rechazadas;
+se requiere una ronda nueva sobre el commit exacto.

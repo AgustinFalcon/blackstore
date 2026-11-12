@@ -12,6 +12,21 @@ interface StoreCoreCatalogPort {
     fun currentSnapshot(): CatalogSnapshot?
 }
 
+/** Closed evidence returned by an authoritative catalog transport boundary. */
+sealed interface CatalogFetchResult {
+    data class Available(val snapshot: CatalogSnapshot) : CatalogFetchResult
+
+    data object Unavailable : CatalogFetchResult
+
+    data object Rejected : CatalogFetchResult
+
+    data object Invalid : CatalogFetchResult
+}
+
+fun interface StoreCoreCatalogEvidencePort {
+    fun currentEvidence(): CatalogFetchResult
+}
+
 enum class CatalogSource {
     STORECORE_LIVE,
     STORECORE_CACHE,

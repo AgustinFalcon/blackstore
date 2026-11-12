@@ -37,3 +37,21 @@ El head corregido `9374ba93653637aa8c364e58196161b4997be1fc` pasó la
 matriz backend completa (329 tests, 7 min 09 s). Bug/Producto y
 Seguridad/Arquitectura GPT-6.1 Sol aprobaron independientemente ese SHA sin
 hallazgos P0–P3. Frontend conserva manifiesto 10/10, 429/429 tests y build PASS.
+
+## Gate alojado PR #66
+
+El primer Verify alojado (`43292040305`) dejó verdes backend, frontend y
+frontend-browser. DCT detectó una expectativa histórica de Flyway V13 después
+de incorporar V14; la corrección usa `EXPECTED_SCHEMA_VERSION = 14` y pasó los
+primeros seis escenarios locales reales antes de delegar la matriz completa a
+CI para no mantener contenedores repetidos innecesariamente.
+
+La nueva ronda estricta rechazó además dos bordes P2 antes de actualizar el PR:
+
+- el transporte loopback ahora expone un resultado cerrado `Available`,
+  `Unavailable`, `Rejected` o `Invalid`; sólo `Unavailable` habilita cache;
+- V14 conserva nombres válidos de hasta 250 caracteres, igual que el contrato.
+
+Tests enfocados de adapter, HTTP concreto y PostgreSQL/Testcontainers: PASS.
+Typecheck DCT: PASS. La revisión final y el nuevo Verify quedan pendientes del
+commit exacto de estas remediaciones.

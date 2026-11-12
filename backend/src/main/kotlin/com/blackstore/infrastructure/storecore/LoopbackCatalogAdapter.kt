@@ -5,8 +5,10 @@ import com.blackstore.domain.exception.BlockedStoreCoreIntegrationException
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.port.out.storecore.CatalogItem
+import com.blackstore.domain.port.out.storecore.CatalogFetchResult
 import com.blackstore.domain.port.out.storecore.CatalogSnapshot
 import com.blackstore.domain.port.out.storecore.CatalogSource
+import com.blackstore.domain.port.out.storecore.StoreCoreCatalogEvidencePort
 import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -15,7 +17,7 @@ import java.util.UUID
 
 /**
  * Reads StoreCore `/catalog` over the guarded loopback transport.
- * A non-200 or a transport block becomes an unavailable snapshot.
+ * The boundary keeps transport outages distinct from rejected or invalid evidence.
  */
 class LoopbackCatalogAdapter(
     private val transport: StoreCoreHttpTransport,
@@ -23,9 +25,12 @@ class LoopbackCatalogAdapter(
     private val contract: StoreCoreContractRef,
     private val mapper: ObjectMapper,
     private val clock: () -> Instant = Instant::now,
-) : StoreCoreCatalogPort {
+) : StoreCoreCatalogPort, StoreCoreCatalogEvidencePort {
 
-    override fun currentSnapshot(): CatalogSnapshot? {
+    override fun currentSnapshot(): CatalogSnapshot? =
+        (currentEvidence() as? CatalogFetchResult.Available)?.snapshot
+
+    override fun currentEvidence(): CatalogFetchResult {
         val response =
             try {
                 transport.getPath(
@@ -38,15 +43,19 @@ class LoopbackCatalogAdapter(
                     ),
                 )
             } catch (_: BlockedStoreCoreIntegrationException) {
-                return null
+                return CatalogFetchResult.Rejected
             } catch (ex: InterruptedException) {
                 Thread.currentThread().interrupt()
-                return null
+                return CatalogFetchResult.Unavailable
             } catch (_: Exception) {
-                return null
+                return CatalogFetchResult.Unavailable
             }
-        if (response.status != 200 || response.body.isBlank()) return null
-        return parse(mapper.readTree(response.body), contract, clock())
+        if (response.status == 401 || response.status == 403) return CatalogFetchResult.Rejected
+        if (response.status == 408 || response.status == 429 || response.status >= 500) return CatalogFetchResult.Unavailable
+        if (response.status != 200 || response.body.isBlank()) return CatalogFetchResult.Invalid
+        val root = runCatching { mapper.readTree(response.body) }.getOrNull() ?: return CatalogFetchResult.Invalid
+        val snapshot = parse(root, contract, clock()) ?: return CatalogFetchResult.Invalid
+        return CatalogFetchResult.Available(snapshot)
     }
 
     companion object {

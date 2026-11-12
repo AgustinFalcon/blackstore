@@ -2,10 +2,11 @@ package com.blackstore.connector
 
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.port.out.storecore.CatalogItem
+import com.blackstore.domain.port.out.storecore.CatalogFetchResult
 import com.blackstore.domain.port.out.storecore.CatalogSnapshot
 import com.blackstore.domain.port.out.storecore.CatalogSnapshotStore
 import com.blackstore.domain.port.out.storecore.CatalogSource
-import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
+import com.blackstore.domain.port.out.storecore.StoreCoreCatalogEvidencePort
 import com.blackstore.infrastructure.storecore.DurableCatalogAdapter
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -51,6 +52,13 @@ class DurableCatalogAdapterTest {
     }
 
     @Test
+    fun rejectedOrInvalidEvidenceNeverFallsBackToACompatibleCache() {
+        val compatible = MemoryStore(snapshot(now.plusSeconds(60)))
+        assertNull(DurableCatalogAdapter(Remote(CatalogFetchResult.Rejected), compatible, contract, clock = { now }).currentSnapshot())
+        assertNull(DurableCatalogAdapter(Remote(CatalogFetchResult.Invalid), compatible, contract, clock = { now }).currentSnapshot())
+    }
+
+    @Test
     fun noRemoteAndNoCacheRemainUnavailable() {
         assertNull(DurableCatalogAdapter(Remote(null), MemoryStore(), contract, clock = { now }).currentSnapshot())
     }
@@ -83,8 +91,12 @@ class DurableCatalogAdapterTest {
         source = CatalogSource.STORECORE_LIVE,
     )
 
-    private class Remote(private val snapshot: CatalogSnapshot?) : StoreCoreCatalogPort {
-        override fun currentSnapshot() = snapshot
+    private class Remote(private val result: CatalogFetchResult) : StoreCoreCatalogEvidencePort {
+        constructor(snapshot: CatalogSnapshot?) : this(
+            snapshot?.let(CatalogFetchResult::Available) ?: CatalogFetchResult.Unavailable,
+        )
+
+        override fun currentEvidence() = result
     }
 
     private class MemoryStore(initial: CatalogSnapshot? = null) : CatalogSnapshotStore {
