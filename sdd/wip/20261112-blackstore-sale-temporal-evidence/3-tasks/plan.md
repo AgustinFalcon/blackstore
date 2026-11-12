@@ -7,5 +7,5 @@
 - [x] STE-005 Crear `RecordedInstant` y traducir el wire una sola vez.
 - [x] STE-006 Mostrar fechas en listado, detalle, ticket y pagos.
 - [x] STE-007 Cubrir tests PostgreSQL, controller, mapper y componentes.
-- [ ] STE-008 Ejecutar gates completos y revisión GPT-6.1 Sol exact-head.
+- [x] STE-008 Ejecutar gates completos y revisión GPT-6.1 Sol exact-head `7c4f1d0`.
 - [ ] STE-009 Entregar por PR, CI, merge y verificación post-merge.

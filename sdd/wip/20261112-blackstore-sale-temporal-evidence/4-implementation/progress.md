@@ -31,3 +31,11 @@ La regresión PostgreSQL fija y compara los tres instantes, recrea repositories,
 invierte el reloj y continúa el flujo durable. También se afirma el JSON ISO.
 Tests remediados controller+PostgreSQL: 23 PASS. Backend completo posterior:
 335/335 PASS en 6m30s, sin fallos, errores ni omitidos.
+
+## Reviews exact-head
+
+GPT-6.1 Sol medium Bug/Producto y Seguridad/Arquitectura aprobaron de forma
+independiente base `1f16522` y head `7c4f1d0`, sin P0–P3. Verificaron el tipo
+cerrado `Known|Unknown`, preservación exacta, JSON ISO, traductor frontend único
+y continuidad comercial ante reloj invertido. PR, CI y post-merge siguen como
+gates; estas reviews no acreditan integraciones externas ni homologación.
