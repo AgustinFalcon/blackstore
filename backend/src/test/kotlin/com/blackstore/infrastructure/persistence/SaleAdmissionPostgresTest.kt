@@ -329,7 +329,7 @@ class SaleAdmissionPostgresTest {
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate()
         assertEquals(before,scalar(source,"SELECT row_to_json(i)::text FROM sale_intents i"))
         assertEquals("0",scalar(source,"SELECT count(*) FROM sale_command_admission_receipts"))
-        assertEquals("13",scalar(source,"SELECT max(version::integer) FROM flyway_schema_history WHERE success AND version IS NOT NULL"))
+        assertEquals("14",scalar(source,"SELECT max(version::integer) FROM flyway_schema_history WHERE success AND version IS NOT NULL"))
     }
     @Test fun unprovisionedCleanDatabaseAndUpgradeNeverInventContext()=database(10) { source ->
         val draft=command()
@@ -366,7 +366,7 @@ class SaleAdmissionPostgresTest {
     @Test fun authorizedReplaySurvivesUnavailableCurrentContextClosedCashAndPausedRuntime()=database { source ->
         sql(source,"UPDATE accounting_runtime SET state='ACTIVE',accounting_activation_at=clock_timestamp()")
         val draft=command();val saved=accepted(adapter(source).execute(cashier,draft))
-        sql(source,"UPDATE accounting_runtime SET state='PAUSED'; UPDATE terminals SET active=false; UPDATE cash_session_projection SET status='CLOSED',closed_at=clock_timestamp(),closing_cash_declared=0")
+        sql(source,"UPDATE accounting_runtime SET state='PAUSED'; UPDATE terminals SET active=false; UPDATE cash_session_projection SET status='CLOSED',closed_at=GREATEST(clock_timestamp(),opened_at),closing_cash_declared=0")
         val unavailable=adapter(source,terminal=999,connector="")
         assertEquals(saved,accepted(unavailable.execute(cashier,draft)))
         assertEquals(SaleCommandFailure.PayloadMismatch,failure(unavailable.execute(cashier,draft.copy(reason="different"))))

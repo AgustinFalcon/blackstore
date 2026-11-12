@@ -8,6 +8,8 @@ import { randomUUID } from 'node:crypto';
 import { DctDatabase } from './dct-database';
 import { AccountingLifecycleState } from '../../../src/app/core/domain/accounting-lifecycle';
 
+export const EXPECTED_SCHEMA_VERSION = 14;
+
 async function requireFreePort(port: number) {
   const server = createServer();
   try {
@@ -69,7 +71,7 @@ export class DctRuntime {
     await this.backend.stop();
     this.terminalId = await this.database.terminal();
     await this.database.provisionAccountingRuntime(this.accountingState, this.terminalId, this.clientInstanceId);
-    expect((await this.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(13);
+    expect((await this.database.query('SELECT max(version::int) AS version FROM flyway_schema_history WHERE success'))[0].version).toBe(EXPECTED_SCHEMA_VERSION);
     expect(await this.database.query('SELECT terminal_id,client_instance_id,device_id FROM pos_terminal_context')).toEqual([
       { terminal_id: String(this.terminalId), client_instance_id: this.clientInstanceId, device_id: 'dct-browser-device' },
     ]);

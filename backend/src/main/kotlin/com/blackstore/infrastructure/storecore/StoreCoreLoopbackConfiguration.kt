@@ -6,11 +6,15 @@ import com.blackstore.application.storecore.StoreCoreIntegrationProperties
 import com.blackstore.application.storecore.StoreCoreTransportSettings
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.port.out.storecore.OperationRetirementPort
+import com.blackstore.domain.port.out.storecore.CatalogSnapshotStore
+import com.blackstore.domain.port.out.storecore.StoreCoreCatalogPort
 import com.blackstore.infrastructure.concurrency.DispatcherProvider
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Value
 import java.util.Collections
 
 @Configuration
@@ -60,18 +64,24 @@ class StoreCoreLoopbackConfiguration {
         transport: StoreCoreHttpTransport,
         mapper: ObjectMapper,
         properties: StoreCoreIntegrationProperties,
-    ): LoopbackCatalogAdapter =
-        LoopbackCatalogAdapter(
+        stores: ObjectProvider<CatalogSnapshotStore>,
+        @Value("\${blackstore.catalog-cache.enabled:false}") cacheEnabled: Boolean,
+    ): StoreCoreCatalogPort {
+        val contract = StoreCoreContractRef(
+            properties.contract.canonicalPath,
+            properties.contract.version,
+            properties.contract.sha256,
+        )
+        val remote = LoopbackCatalogAdapter(
             transport = transport,
             clientInstanceId = properties.transport.clientInstanceId,
-            contract =
-                StoreCoreContractRef(
-                    properties.contract.canonicalPath,
-                    properties.contract.version,
-                    properties.contract.sha256,
-                ),
+            contract = contract,
             mapper = mapper,
         )
+        if (!cacheEnabled) return remote
+        val store = stores.ifAvailable ?: error("catalog cache enabled without durable store")
+        return DurableCatalogAdapter(remote, store, contract)
+    }
 
     @Bean
     fun loopbackRetirementPort(): OperationRetirementPort = InMemoryOperationRetirement()

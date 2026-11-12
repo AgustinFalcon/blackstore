@@ -12,11 +12,32 @@ interface StoreCoreCatalogPort {
     fun currentSnapshot(): CatalogSnapshot?
 }
 
+/** Closed evidence returned by an authoritative catalog transport boundary. */
+sealed interface CatalogFetchResult {
+    data class Available(val snapshot: CatalogSnapshot) : CatalogFetchResult
+
+    data object Unavailable : CatalogFetchResult
+
+    data object Rejected : CatalogFetchResult
+
+    data object Invalid : CatalogFetchResult
+}
+
+fun interface StoreCoreCatalogEvidencePort {
+    fun currentEvidence(): CatalogFetchResult
+}
+
 enum class CatalogSource {
     STORECORE_LIVE,
+    STORECORE_CACHE,
     LOCAL_FIXTURE,
     UNAVAILABLE,
     UNKNOWN,
+    ;
+
+    companion object {
+        fun fromWire(raw: String?): CatalogSource = entries.firstOrNull { it != UNKNOWN && it.name == raw } ?: UNKNOWN
+    }
 }
 
 data class CatalogSnapshot(
@@ -42,3 +63,9 @@ data class CatalogItem(
     val rawVariantId: String = variantId,
     val rawPriceVersion: String? = priceVersion,
 )
+
+interface CatalogSnapshotStore {
+    fun replace(snapshot: CatalogSnapshot)
+
+    fun latest(): CatalogSnapshot?
+}

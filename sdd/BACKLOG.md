@@ -28,4 +28,4 @@
 ## Diferidos
 
 - TODO-010 [medium] Devolución post-factura + NC ARCA presencial (titular/contador; no REVERSAL StoreCore).
-- TODO-011 [low] Catálogo local cacheado desde StoreCore (hoy `variant_id` se carga a mano / lookup mínimo).
+- TODO-011 [low] [implemented_local_review_pending] Catálogo local cacheado desde StoreCore: V14, procedencia cerrada `STORECORE_CACHE`, persistencia PostgreSQL y fallback vencible implementados en `sdd/wip/20261112-blackstore-durable-catalog-cache/`. Default fixture/cache apagado; activación live, PR y review exact-head continúan pendientes.

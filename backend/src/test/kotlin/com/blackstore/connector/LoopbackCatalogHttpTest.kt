@@ -8,7 +8,12 @@ import com.blackstore.domain.exception.ForbiddenOperationException
 import com.blackstore.domain.model.StoreCoreCanonicalContract
 import com.blackstore.domain.model.StoreCoreContractRef
 import com.blackstore.domain.port.out.storecore.ReserveLineCommand
+import com.blackstore.domain.port.out.storecore.CatalogItem
+import com.blackstore.domain.port.out.storecore.CatalogSnapshot
+import com.blackstore.domain.port.out.storecore.CatalogSnapshotStore
+import com.blackstore.domain.port.out.storecore.CatalogSource
 import com.blackstore.domain.sales.TicketLine
+import com.blackstore.infrastructure.storecore.DurableCatalogAdapter
 import com.blackstore.infrastructure.storecore.LoopbackCatalogAdapter
 import com.blackstore.infrastructure.storecore.StoreCoreHttpTransport
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -78,6 +83,45 @@ class LoopbackCatalogHttpTest {
         assertNull(closed.currentSnapshot())
         assertThrows<ForbiddenOperationException> {
             CatalogSalePolicy().assertSaleAllowed(closed.currentSnapshot(), now)
+        }
+    }
+
+    @Test
+    fun rejectedOrInvalidLoopbackEvidenceNeverFallsBackToPopulatedCache() {
+        val scenarios = listOf(
+            401 to "{}",
+            403 to "{}",
+            200 to "{malformed",
+            200 to """{"code":200,"data":{}}""",
+        )
+        scenarios.forEach { (status, body) ->
+            val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("${StoreCoreCanonicalContract.CANONICAL_PATH}/catalog") { exchange ->
+                val bytes = body.toByteArray()
+                exchange.sendResponseHeaders(status, bytes.size.toLong())
+                exchange.responseBody.use { it.write(bytes) }
+            }
+            server.start()
+            try {
+                val contract = StoreCoreContractRef(StoreCoreCanonicalContract.CANONICAL_PATH, StoreCoreCanonicalContract.VERSION)
+                val cached = CatalogSnapshot(
+                    version = "cached",
+                    importedAt = now.minusSeconds(30),
+                    validUntil = now.plusSeconds(30),
+                    contract = contract,
+                    stale = false,
+                    items = listOf(CatalogItem("SKU-1", "Taladro", "variant-1", "price-1", BigDecimal("10.00"))),
+                    source = CatalogSource.STORECORE_LIVE,
+                )
+                val store = object : CatalogSnapshotStore {
+                    override fun replace(snapshot: CatalogSnapshot) = Unit
+                    override fun latest() = cached
+                }
+                val durable = DurableCatalogAdapter(adapter("http://127.0.0.1:${server.address.port}"), store, contract, clock = { now })
+                assertNull(durable.currentSnapshot(), "status=$status body=$body")
+            } finally {
+                server.stop(0)
+            }
         }
     }
 

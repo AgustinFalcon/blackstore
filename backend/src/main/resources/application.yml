@@ -12,6 +12,8 @@ management:
         include: health,info
 
 blackstore:
+  catalog-cache:
+    enabled: false
   companion:
     expected-installation-ref: 11111111-1111-1111-1111-111111111111
     expected-service-client-ref: blackstore-service-local
