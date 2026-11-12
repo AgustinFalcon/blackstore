@@ -12,7 +12,9 @@ Las consultas deben usar alias explícitos para evitar colisiones de
 
 ## Dominio backend
 
-`StoredSale` incorpora `SaleTemporalEvidence(createdAt, updatedAt)`. Cada
+`StoredSale` incorpora `SaleTemporalEvidence.Known(createdAt, updatedAt)` o
+`Unknown` si el reloj persistido retrocedió. La inconsistencia temporal nunca
+bloquea lectura, recovery ni mutaciones comerciales. Cada
 `PaymentLedgerEntry` incorpora `createdAt`. Los valores son `Instant`; JDBC
 traduce una sola vez desde PostgreSQL. El controller sólo serializa ISO-8601.
 

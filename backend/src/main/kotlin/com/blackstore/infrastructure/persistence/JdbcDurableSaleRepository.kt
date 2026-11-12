@@ -65,7 +65,7 @@ class JdbcDurableSaleRepository(private val dataSource: DataSource) : DurableSal
     grossSales=lines.fold(java.math.BigDecimal.ZERO) { a,l -> a+l.originalUnitPrice.multiply(l.quantity.toBigDecimal()) },
     discounts=lines.fold(java.math.BigDecimal.ZERO) { a,l -> a+l.discountAmount.multiply(l.quantity.toBigDecimal()) },lines=lines,createdBy=r.getLong("created_by"),
     recoverWithGet=commands.isNotEmpty() && status in setOf(SaleStatus.COMMIT_PENDING,SaleStatus.RELEASE_PENDING),blockSameOperationRepost=state in setOf(DurableSaleState.LEGACY_INCOMPLETE,DurableSaleState.UNKNOWN)),r.getLong("version"),state,id,
-    SaleTemporalEvidence(r.getTimestamp("sale_created_at").toInstant(),r.getTimestamp("sale_updated_at").toInstant()))
+    SaleTemporalEvidence.fromPersistence(r.getTimestamp("sale_created_at").toInstant(),r.getTimestamp("sale_updated_at").toInstant()))
   }
  }
  override fun claimNext(lease: Duration): ClaimedSaleCommand? = claim(null,null,lease)

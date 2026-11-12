@@ -53,6 +53,7 @@ class SaleController(
 
     internal fun durableResponse(view: com.blackstore.application.sales.DurableSaleView): DurableSaleDetailResponse {
         val sale = view.sale.saga
+        val temporal = view.sale.temporalEvidence as? com.blackstore.domain.sales.SaleTemporalEvidence.Known
         val kind = when (sale.status) {
             SaleStatus.PENDING_RESERVATION -> com.blackstore.domain.sales.CommandKind.RESERVE
             SaleStatus.COMMIT_PENDING -> com.blackstore.domain.sales.CommandKind.COMMIT
@@ -61,7 +62,7 @@ class SaleController(
         }
         return DurableSaleDetailResponse(sale.quadruple.operationId, sale.quadruple.clientInstanceId, sale.quadruple.deviceId,
             sale.quadruple.saleId, sale.cashSessionId, view.cashierId, view.createdBy, view.sale.state,
-            view.sale.temporalEvidence?.createdAt, view.sale.temporalEvidence?.updatedAt, sale.evidence?.receipt, sale.evidence?.reservationRef,
+            temporal?.createdAt, temporal?.updatedAt, sale.evidence?.receipt, sale.evidence?.reservationRef,
             view.snapshot.evidenceValid, view.snapshot.totalAmount, view.snapshot.pendingAmount,
             PaymentCoverageWire.toWire(view.snapshot.paymentCoverage), view.snapshot.hasPaymentHistory,
             view.createdBy == null || sale.blockSameOperationRepost || view.sale.state in setOf(com.blackstore.domain.sales.DurableSaleState.UNKNOWN,

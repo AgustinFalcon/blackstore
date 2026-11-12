@@ -63,8 +63,7 @@ class SaleAdmissionPostgresTest {
         assertEquals(receipt,accepted(port.execute(context,valid)))
         val restartedStored=requireNotNull(JdbcDurableSaleRepository(source).findDurable(identity.operationId))
         val restarted=restartedStored.saga
-        assertNotNull(restartedStored.temporalEvidence)
-        assertFalse(restartedStored.temporalEvidence!!.updatedAt.isBefore(restartedStored.temporalEvidence!!.createdAt))
+        assertTrue(restartedStored.temporalEvidence is SaleTemporalEvidence.Known)
         assertEquals(listOf("variant-a","variant-b"),restarted.lines.map { it.variantId })
         assertEquals(listOf("price-a","price-b"),restarted.lines.map { it.priceVersion })
         val invalid=valid.copy(commandId=UUID.randomUUID(),identity=identity.copy(operationId=UUID.randomUUID().toString()),lines=valid.lines.mapIndexed { i,it ->
@@ -105,11 +104,16 @@ class SaleAdmissionPostgresTest {
             snapshot.contract.contractVersion,requireNotNull(snapshot.contract.openapiDigestSha256),listOf(value),expires))
         assertEquals(AttemptOutcome.APPLIED,repository.applyClaimEvidence(claim,reserved,"e".repeat(64),StoreCoreOperationState.RESERVED.name,receipt))
         assertTrue(JdbcAccountingMutationCommands(source).execute(cashier,AccountingCommandDraft.PaymentCapture(UUID.randomUUID(),identity,PaymentMethod.CASH,BigDecimal("1.00"))) is com.blackstore.domain.port.out.accounting.AccountingMutationOutcome.Applied)
+        val saleCreated=Instant.parse("2026-01-12T14:30:00Z");val paymentCreated=Instant.parse("2026-01-12T15:00:00Z")
+        sql(source,"UPDATE sale_intents SET created_at='$saleCreated' WHERE operation_id='${identity.operationId}'::uuid")
+        sql(source,"UPDATE payments SET created_at='$paymentCreated' WHERE sale_id=(SELECT id FROM sale_state_projection WHERE operation_id='${identity.operationId}'::uuid)")
+        val saleUpdated=instant(source,"SELECT updated_at FROM sale_state_projection WHERE operation_id='${identity.operationId}'::uuid")
         val payment=(JdbcCounterEntryStore(source).paymentLedger(identity) as OperationLedger.Known).entries.single()
-        assertNotNull(payment.createdAt)
-        val afterPayment=requireNotNull(JdbcDurableSaleRepository(source).findDurable(identity.operationId)).temporalEvidence
-        assertNotNull(afterPayment)
-        assertFalse(afterPayment!!.updatedAt.isBefore(afterPayment.createdAt))
+        assertEquals(paymentCreated,payment.createdAt)
+        val afterPayment=requireNotNull(JdbcDurableSaleRepository(source).findDurable(identity.operationId)).temporalEvidence as SaleTemporalEvidence.Known
+        assertEquals(saleCreated,afterPayment.createdAt);assertEquals(saleUpdated,afterPayment.updatedAt)
+        sql(source,"UPDATE sale_intents SET created_at='${saleUpdated.plusSeconds(3600)}' WHERE operation_id='${identity.operationId}'::uuid")
+        assertEquals(SaleTemporalEvidence.Unknown,requireNotNull(JdbcDurableSaleRepository(source).findDurable(identity.operationId)).temporalEvidence)
         val terminal=com.blackstore.application.dto.sales.SaleV2RequestTranslator.terminal(identity.operationId,
             com.blackstore.application.dto.sales.SaleTerminalV2Request(UUID.randomUUID(),identity.clientInstanceId,identity.deviceId,identity.saleId,identity.operationId),SaleCommandKind.Commit)
         assertTrue(port.execute(AuthenticatedSessionContext(cashier,digest),terminal) is SaleCommandResult.Accepted)
@@ -489,4 +493,5 @@ class SaleAdmissionPostgresTest {
     }
     private fun sql(source: DataSource,sql: String) { source.connection.use { c -> c.createStatement().use { it.execute(sql) } } }
     private fun scalar(source: DataSource,sql: String): String=source.connection.use { c -> c.createStatement().use { it.executeQuery(sql).use { r -> r.next();r.getString(1) } } }
+    private fun instant(source: DataSource,sql: String): Instant=source.connection.use { c -> c.createStatement().use { it.executeQuery(sql).use { r -> r.next();r.getTimestamp(1).toInstant() } } }
 }

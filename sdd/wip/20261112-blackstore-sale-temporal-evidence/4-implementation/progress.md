@@ -21,3 +21,13 @@ migración ni integraciones externas, con tipos cerrados y traductor único.
   reinicio/timestamps; suite backend completa PASS en 6m32s.
 
 Resta congelar SHA, ejecutar dos reviews GPT-6.1 Sol y entregar por PR/CI.
+
+## Remediación de review
+
+La primera ronda exact-head rechazó un P2: exigir orden temporal podía bloquear
+una venta ante retroceso del reloj. `SaleTemporalEvidence` ahora es cerrado
+`Known|Unknown`; una combinación invertida degrada sólo la evidencia de fecha.
+La regresión PostgreSQL fija y compara los tres instantes, recrea repositories,
+invierte el reloj y continúa el flujo durable. También se afirma el JSON ISO.
+Tests remediados controller+PostgreSQL: 23 PASS. Backend completo posterior:
+335/335 PASS en 6m30s, sin fallos, errores ni omitidos.
