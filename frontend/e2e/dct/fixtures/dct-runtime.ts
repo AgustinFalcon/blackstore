@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { DctDatabase } from './dct-database';
 import { AccountingLifecycleState } from '../../../src/app/core/domain/accounting-lifecycle';
 
-const EXPECTED_SCHEMA_VERSION = 14;
+export const EXPECTED_SCHEMA_VERSION = 14;
 
 async function requireFreePort(port: number) {
   const server = createServer();
