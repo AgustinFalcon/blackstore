@@ -1,5 +1,18 @@
 # Estado canónico del SDD — BlackStore
 
+## Master vigente y cache durable fail-closed — 2026-11-12
+
+`master 1f16522e78e7f7f04374ae1b58bcb2b92fa24e94` integra PR #66. El último
+snapshot válido recibido por el modo opt-in `loopback` puede sobrevivir un
+reinicio con procedencia cerrada `STORECORE_CACHE`; rechazo remoto, evidencia
+inválida o cache vencido fallan cerrados. Fixture sigue predeterminado y no se
+activaron StoreCore live, credenciales, canary, fiscal ni homologación.
+
+La ronda final GPT-6.1 Sol Bug/Producto y Seguridad/Arquitectura aprobó sin
+P0–P3; backend, frontend, frontend-browser y DCT alojados quedaron verdes. Este
+bloque prevalece sobre referencias anteriores a PR #66 o que lo indiquen
+pendiente.
+
 ## Master vigente y selección durable de operaciones — 2026-11-11
 
 `master 367121871cc114ad214e236e499b2cb3683ca5b2` integra PR #63 y el

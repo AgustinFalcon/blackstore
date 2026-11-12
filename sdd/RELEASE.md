@@ -1,5 +1,11 @@
 # BlackStore documentation baseline 1.0.0
 
+## Master vigente — 2026-11-12
+
+`master 1f16522` agrega por PR #66 el cache durable de catálogo en modo opt-in,
+sin habilitar StoreCore live. El baseline sigue sin tag, deploy, publicación ni
+homologación y `release/1.0` continúa diferido hasta los gates externos.
+
 ## Master vigente — 2026-11-09
 
 `master 40c2880` contiene PR #61 y la [paridad de datos de superficies productivas](features/20261109-blackstore-productive-surface-data-parity/meta.md), validada por Verify exact-head #109 y DCT real PostgreSQL 16/JAR/Angular 18/18. No existe tag, deploy, publicación ni homologación; `release/1.0` no se crea ni recibe StoreCore live hasta completar los gates externos acordados.

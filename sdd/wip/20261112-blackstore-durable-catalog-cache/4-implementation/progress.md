@@ -61,3 +61,10 @@ whitespace externo aunque su forma normalizada válida mida exactamente 250.
 `raw_name` ahora es `TEXT`, preserva la evidencia wire completa y la prueba de
 frontera usa 250 caracteres normalizados con padding. Resultado enfocado final:
 15 tests, 0 fallos, 0 omitidos; no quedaron contenedores de prueba activos.
+
+## Cierre integrado
+
+La ronda 6 aprobó `5631260` sin P0–P3. El cierre documental y la expectativa
+centralizada de schema quedaron en `24786d9`; PR #66 fue fusionado en
+`master 1f16522`. No se activó StoreCore live: fixture sigue predeterminado y
+el cache continúa opt-in/fail-closed.
