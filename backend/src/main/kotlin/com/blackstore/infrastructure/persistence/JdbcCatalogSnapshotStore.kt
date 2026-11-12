@@ -37,8 +37,8 @@ class JdbcCatalogSnapshotStore(private val source: DataSource) : CatalogSnapshot
                     statement.executeUpdate()
                 }
                 connection.prepareStatement("DELETE FROM catalog_snapshot_items WHERE singleton=TRUE").use { it.executeUpdate() }
-                writeItems(connection, "LEGACY", snapshot.items)
-                writeItems(connection, "V2", snapshot.v2Items)
+                writeItems(connection, CatalogProjectionKind.LEGACY, snapshot.items)
+                writeItems(connection, CatalogProjectionKind.V2, snapshot.v2Items)
                 connection.commit()
             } catch (failure: Exception) {
                 connection.rollback()
@@ -49,6 +49,7 @@ class JdbcCatalogSnapshotStore(private val source: DataSource) : CatalogSnapshot
 
     override fun latest(): CatalogSnapshot? = source.connection.use { connection ->
         connection.autoCommit = false
+            connection.transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ
         connection.isReadOnly = true
         try {
             connection.createStatement().use { it.execute("SET LOCAL ROLE blackstore_app") }
@@ -56,8 +57,8 @@ class JdbcCatalogSnapshotStore(private val source: DataSource) : CatalogSnapshot
             connection.prepareStatement("SELECT * FROM catalog_snapshot_cache WHERE singleton=TRUE").use { header ->
                 header.executeQuery().use { row ->
                     if (row.next()) {
-                        val items = readItems(connection, "LEGACY")
-                        val v2Items = readItems(connection, "V2")
+                        val items = readItems(connection, CatalogProjectionKind.LEGACY)
+                        val v2Items = readItems(connection, CatalogProjectionKind.V2)
                         snapshot = CatalogSnapshot(
                             version = row.getString("catalog_version"),
                             importedAt = row.getTimestamp("imported_at").toInstant(),
@@ -80,13 +81,13 @@ class JdbcCatalogSnapshotStore(private val source: DataSource) : CatalogSnapshot
         }
     }
 
-    private fun writeItems(connection: Connection, projection: String, items: List<CatalogItem>) {
+    private fun writeItems(connection: Connection, projection: CatalogProjectionKind, items: List<CatalogItem>) {
         connection.prepareStatement(
             """INSERT INTO catalog_snapshot_items(singleton,projection_kind,ordinal,sku,product_name,variant_id,price_version,unit_price,
             raw_sku,raw_name,raw_variant_id,raw_price_version) VALUES(TRUE,?,?,?,?,?,?,?,?,?,?,?)""",
         ).use { statement ->
             items.forEachIndexed { index, item ->
-                statement.setString(1, projection)
+                statement.setString(1, projection.wire)
                 statement.setInt(2, index)
                 statement.setString(3, item.sku)
                 statement.setString(4, item.name)
@@ -103,10 +104,10 @@ class JdbcCatalogSnapshotStore(private val source: DataSource) : CatalogSnapshot
         }
     }
 
-    private fun readItems(connection: Connection, projection: String): List<CatalogItem> =
+    private fun readItems(connection: Connection, projection: CatalogProjectionKind): List<CatalogItem> =
         connection.prepareStatement("""SELECT sku,product_name,variant_id,price_version,unit_price,raw_sku,raw_name,raw_variant_id,raw_price_version
             FROM catalog_snapshot_items WHERE singleton=TRUE AND projection_kind=? ORDER BY ordinal""").use { statement ->
-            statement.setString(1, projection)
+            statement.setString(1, projection.wire)
             statement.executeQuery().use { rows ->
                 buildList {
                     while (rows.next()) add(CatalogItem(rows.getString(1), rows.getString(2), rows.getString(3), rows.getString(4), rows.getBigDecimal(5),
@@ -114,4 +115,9 @@ class JdbcCatalogSnapshotStore(private val source: DataSource) : CatalogSnapshot
                 }
             }
         }
+}
+
+private enum class CatalogProjectionKind(val wire: String) {
+    LEGACY("LEGACY"),
+    V2("V2"),
 }

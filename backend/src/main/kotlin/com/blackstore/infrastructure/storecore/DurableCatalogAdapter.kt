@@ -20,17 +20,19 @@ class DurableCatalogAdapter(
 
     override fun currentSnapshot(): CatalogSnapshot? {
         val remoteSnapshot = runCatching { remote.currentSnapshot() }.getOrNull()
-        if (remoteSnapshot != null && remoteSnapshot.contract == expectedContract && validator.isPersistable(remoteSnapshot)) {
+        if (remoteSnapshot != null) {
+            if (remoteSnapshot.contract != expectedContract || !validator.isPersistable(remoteSnapshot)) return null
             runCatching { store.replace(remoteSnapshot) }
                 .onFailure { logger.warn("StoreCore catalog cache write failed; serving validated live snapshot") }
             return remoteSnapshot
         }
         val cached = runCatching { store.latest() }.getOrNull()?.takeIf { it.contract == expectedContract } ?: return null
         val now = clock()
+        val cacheStale = cached.items.isEmpty() || cached.v2Items.isEmpty() || cached.validUntil?.isAfter(now) != true
         return cached.copy(
             source = CatalogSource.STORECORE_CACHE,
-            stale = cached.items.isEmpty() || cached.validUntil?.isAfter(now) == false,
-            v2Stale = cached.v2Items.isEmpty() || cached.validUntil?.isAfter(now) == false,
+            stale = cacheStale,
+            v2Stale = cacheStale,
         )
     }
 }

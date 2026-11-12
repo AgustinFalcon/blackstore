@@ -24,6 +24,7 @@ class CatalogSnapshotValidatorTest {
         assertFalse(validator.isPersistable(valid.copy(items = emptyList())))
         assertFalse(validator.isPersistable(valid.copy(items = listOf(valid.items[0], valid.items[0].copy(name = "Otro")))))
         assertFalse(validator.isPersistable(valid.copy(items = listOf(valid.items[0].copy(unitPrice = BigDecimal("-1"))))))
+        assertFalse(validator.isPersistable(valid.copy(items = listOf(valid.items[0].copy(unitPrice = BigDecimal("1.001"))))))
         assertFalse(validator.isPersistable(valid.copy(validUntil = imported)))
         assertFalse(validator.isPersistable(valid.copy(validUntil = null)))
     }

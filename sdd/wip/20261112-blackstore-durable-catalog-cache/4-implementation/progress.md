@@ -25,3 +25,10 @@
   13→14 y se estabilizó un cierre de caja histórico frente a saltos del reloj de
   Docker usando `GREATEST(clock_timestamp(), opened_at)`; ambos casos exactos
   reejecutaron PASS antes de la matriz final.
+
+## Remediación de review
+
+La ronda exacta sobre `dcaf3c9` rechazó el corte. Se corrigieron consistencia de
+snapshot, precisión monetaria, tipo cerrado de proyección, fallback contractual
+y vencimiento nulo. Los tests enfocados de dominio, adapter, clean/upgrade y
+concurrencia PostgreSQL pasan; se repite la matriz completa sobre el nuevo SHA.

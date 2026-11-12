@@ -12,6 +12,8 @@ import org.postgresql.ds.PGSimpleDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import java.math.BigDecimal
 import java.time.Instant
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class JdbcCatalogSnapshotStorePostgresTest {
     @Test
@@ -43,6 +45,31 @@ class JdbcCatalogSnapshotStorePostgresTest {
         assertNull(store.latest())
         store.replace(snapshot("catalog-after-upgrade", "SKU-U", "variant-u"))
         assertEquals("catalog-after-upgrade", store.latest()?.version)
+    }
+
+    @Test
+    fun concurrentReplacementNeverMixesHeaderLegacyAndV2Projections() = database { source ->
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate()
+        val store = JdbcCatalogSnapshotStore(source)
+        store.replace(snapshot("catalog-0", "SKU-0", "variant-0"))
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val writer = pool.submit {
+                (1..40).forEach { store.replace(snapshot("catalog-$it", "SKU-$it", "variant-$it")) }
+            }
+            val reader = pool.submit {
+                repeat(100) {
+                    val current = requireNotNull(store.latest())
+                    val suffix = current.version.removePrefix("catalog-")
+                    assertEquals("SKU-$suffix", current.items.single().sku)
+                    assertEquals("SKU-$suffix", current.v2Items.single().sku)
+                }
+            }
+            writer.get(30, TimeUnit.SECONDS)
+            reader.get(30, TimeUnit.SECONDS)
+        } finally {
+            pool.shutdownNow()
+        }
     }
 
     private fun snapshot(version: String, sku: String, variant: String) = CatalogSnapshot(

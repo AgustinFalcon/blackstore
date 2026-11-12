@@ -32,14 +32,22 @@ class DurableCatalogAdapterTest {
     }
 
     @Test
-    fun expiredCacheIsVisibleButFailClosedAndInvalidRemoteNeverReplacesIt() {
+    fun expiredCacheIsVisibleButFailClosedWhenRemoteIsUnavailable() {
         val store = MemoryStore(snapshot(now.plusSeconds(10)))
-        val invalid = snapshot(now.plusSeconds(60)).copy(source = CatalogSource.UNKNOWN)
-        val recovered = DurableCatalogAdapter(Remote(invalid), store, contract, clock = { now.plusSeconds(20) }).currentSnapshot()
+        val recovered = DurableCatalogAdapter(Remote(null), store, contract, clock = { now.plusSeconds(20) }).currentSnapshot()
         requireNotNull(recovered)
         assertTrue(recovered.stale)
         assertEquals(CatalogSource.STORECORE_CACHE, recovered.source)
         assertEquals(1, store.replacements)
+    }
+
+    @Test
+    fun invalidOrIncompatibleRemoteNeverFallsBackToACompatibleCache() {
+        val compatible = MemoryStore(snapshot(now.plusSeconds(60)))
+        val invalid = snapshot(now.plusSeconds(60)).copy(source = CatalogSource.UNKNOWN)
+        assertNull(DurableCatalogAdapter(Remote(invalid), compatible, contract, clock = { now }).currentSnapshot())
+        val foreign = snapshot(now.plusSeconds(60)).copy(contract = contract.copy(openapiDigestSha256 = "foreign"))
+        assertNull(DurableCatalogAdapter(Remote(foreign), compatible, contract, clock = { now }).currentSnapshot())
     }
 
     @Test
@@ -51,6 +59,15 @@ class DurableCatalogAdapterTest {
     fun incompatibleRemoteAndCacheContractFailClosed() {
         val foreign = snapshot(now.plusSeconds(60)).copy(contract = contract.copy(openapiDigestSha256 = "foreign"))
         assertNull(DurableCatalogAdapter(Remote(foreign), MemoryStore(foreign), contract, clock = { now }).currentSnapshot())
+    }
+
+    @Test
+    fun cachedSnapshotWithoutExpiryIsAlwaysStale() {
+        val noExpiry = snapshot(now.plusSeconds(60)).copy(validUntil = null)
+        val recovered = DurableCatalogAdapter(Remote(null), MemoryStore(noExpiry), contract, clock = { now }).currentSnapshot()
+        requireNotNull(recovered)
+        assertTrue(recovered.stale)
+        assertTrue(recovered.v2Stale)
     }
 
     @Test

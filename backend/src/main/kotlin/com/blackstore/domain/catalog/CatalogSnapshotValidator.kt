@@ -2,6 +2,7 @@ package com.blackstore.domain.catalog
 
 import com.blackstore.domain.port.out.storecore.CatalogSnapshot
 import com.blackstore.domain.port.out.storecore.CatalogSource
+import com.blackstore.domain.sales.MoneyPolicy
 
 class CatalogSnapshotValidator {
     fun isPersistable(snapshot: CatalogSnapshot): Boolean {
@@ -16,7 +17,7 @@ class CatalogSnapshotValidator {
         return items.all {
             it.sku.isNotBlank() && it.name.isNotBlank() && it.variantId.isNotBlank() &&
                 it.rawSku.isNotEmpty() && it.rawName.isNotEmpty() && it.rawVariantId.isNotEmpty() &&
-                (it.unitPrice == null || it.unitPrice.signum() >= 0)
+                (it.unitPrice == null || (it.unitPrice.signum() >= 0 && MoneyPolicy.valid(it.unitPrice)))
         }
     }
 }
