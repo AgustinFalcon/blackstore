@@ -51,11 +51,12 @@ class JdbcCatalogSnapshotStorePostgresTest {
     fun persistsTheFullSupportedProductNameBoundary() = database { source ->
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate()
         val name = "N".repeat(250)
+        val rawName = " $name "
         val store = JdbcCatalogSnapshotStore(source)
-        store.replace(snapshot("catalog-name-boundary", "SKU-N", "variant-n", name))
+        store.replace(snapshot("catalog-name-boundary", "SKU-N", "variant-n", name, rawName))
         val recovered = requireNotNull(store.latest())
         assertEquals(name, recovered.items.single().name)
-        assertEquals(name, recovered.v2Items.single().rawName)
+        assertEquals(rawName, recovered.v2Items.single().rawName)
     }
 
     @Test
@@ -83,14 +84,20 @@ class JdbcCatalogSnapshotStorePostgresTest {
         }
     }
 
-    private fun snapshot(version: String, sku: String, variant: String, name: String = "Taladro") = CatalogSnapshot(
+    private fun snapshot(
+        version: String,
+        sku: String,
+        variant: String,
+        name: String = "Taladro",
+        rawName: String = name,
+    ) = CatalogSnapshot(
         version = version,
         importedAt = Instant.parse("2026-11-12T12:00:00Z"),
         validUntil = Instant.parse("2026-11-12T13:00:00Z"),
         contract = StoreCoreContractRef("/blackstore-integration/v1", "1.0.0-draft", "digest"),
         stale = false,
         items = listOf(CatalogItem(sku, name, variant, "price-1", BigDecimal("1000.00"))),
-        v2Items = listOf(CatalogItem(sku, name, variant, "price-1", BigDecimal("1000.00"), " raw-v2 ", name, variant, "price-1")),
+        v2Items = listOf(CatalogItem(sku, name, variant, "price-1", BigDecimal("1000.00"), " raw-v2 ", rawName, variant, "price-1")),
         source = CatalogSource.STORECORE_LIVE,
     )
 

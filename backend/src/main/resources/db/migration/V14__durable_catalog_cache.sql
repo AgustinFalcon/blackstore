@@ -20,7 +20,7 @@ CREATE TABLE public.catalog_snapshot_items (
  price_version VARCHAR(160) NULL,
  unit_price NUMERIC(14,2) NULL CHECK (unit_price IS NULL OR unit_price >= 0),
  raw_sku VARCHAR(160) NOT NULL CHECK (raw_sku <> ''),
- raw_name VARCHAR(250) NOT NULL CHECK (raw_name <> ''),
+ raw_name TEXT NOT NULL CHECK (raw_name <> ''),
  raw_variant_id VARCHAR(160) NOT NULL CHECK (raw_variant_id <> ''),
  raw_price_version VARCHAR(160) NULL,
  PRIMARY KEY (singleton, projection_kind, ordinal),

@@ -55,3 +55,9 @@ La nueva ronda estricta rechazó además dos bordes P2 antes de actualizar el PR
 Tests enfocados de adapter, HTTP concreto y PostgreSQL/Testcontainers: PASS.
 Typecheck DCT: PASS. La revisión final y el nuevo Verify quedan pendientes del
 commit exacto de estas remediaciones.
+
+La re-review de `33176f8` encontró que el nombre raw puede exceder 250 por
+whitespace externo aunque su forma normalizada válida mida exactamente 250.
+`raw_name` ahora es `TEXT`, preserva la evidencia wire completa y la prueba de
+frontera usa 250 caracteres normalizados con padding. Resultado enfocado final:
+15 tests, 0 fallos, 0 omitidos; no quedaron contenedores de prueba activos.

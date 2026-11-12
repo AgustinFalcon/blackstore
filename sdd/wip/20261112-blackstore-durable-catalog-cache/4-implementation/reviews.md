@@ -51,3 +51,13 @@ Se remediaron con un resultado cerrado en el borde de transporte, fallback sólo
 para `Unavailable`, pruebas HTTP 401/403/malformed/envelope inválido y columnas
 de 250 con prueba PostgreSQL de frontera. Estas revisiones quedan rechazadas;
 se requiere una ronda nueva sobre el commit exacto.
+
+## Ronda 5 — `33176f84542a391ef1276dd731092b2be7f41a5b` — NO APPROVE
+
+- Seguridad/Arquitectura: `APPROVE`, sin P0–P3.
+- Bug/Producto: P2, `raw_name VARCHAR(250)` no preservaba un nombre raw con
+  padding cuya forma normalizada válida mide 250.
+
+Se cambió únicamente la evidencia raw a `TEXT` y se amplió el test PostgreSQL
+para verificar recuperación exacta del valor padded. La aprobación de Seguridad
+no se hereda al nuevo commit; ambas revisiones deben repetirse.
