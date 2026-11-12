@@ -51,7 +51,7 @@ interface DurableReleaseReview {
           @for (sale of store.items(); track sale.identity.operationId) {
             <article class="sale-row">
               <div class="section-heading"><h3>{{ sale.status.label }}</h3><strong class="money">{{ formatAmount(sale.total) }}</strong></div>
-              <p>Caja {{ sale.cashSessionId }} · Fecha: No disponible</p>
+              <p>Caja {{ sale.cashSessionId }} · Creada: {{ formatInstant(sale.createdAt) }}</p>
               <details><summary>Identidad de la venta</summary><p class="sku">{{ sale.identity.operationId }}</p></details>
               <div class="row-actions">
                 <button type="button" [id]="operationTriggerId(sale.identity.operationId)" (click)="selectOperation(sale.identity.operationId)"
@@ -97,14 +97,14 @@ interface DurableReleaseReview {
           <p class="selection-status" role="status">{{ phases.Ready.label }}</p>
           <div class="section-heading"><h4>{{ sale.status.label }}</h4><span class="badge">{{ sale.coverage.label }}</span></div>
           <p><strong>Lectura de la operación:</strong> <span class="badge" [attr.data-source]="store.detailSource().wire">{{ store.detailSource().label }}</span></p>
-          <dl class="metrics"><div class="metric"><dt>Total</dt><dd>{{ formatAmount(sale.total) }}</dd></div><div class="metric"><dt>Saldo pendiente</dt><dd>{{ formatAmount(sale.pending) }}</dd></div><div class="metric"><dt>Fecha</dt><dd>No disponible</dd></div></dl>
+          <dl class="metrics"><div class="metric"><dt>Total</dt><dd>{{ formatAmount(sale.total) }}</dd></div><div class="metric"><dt>Saldo pendiente</dt><dd>{{ formatAmount(sale.pending) }}</dd></div><div class="metric"><dt>Creada</dt><dd>{{ formatInstant(sale.createdAt) }}</dd></div><div class="metric"><dt>Última actualización</dt><dd>{{ formatInstant(sale.updatedAt) }}</dd></div></dl>
           <h4>Artículos</h4>
           @for (line of sale.lines; track $index) { <p><strong>{{ line.quantity }} × {{ line.productName }}</strong> · {{ formatAmount(line.total) }} <small class="sku">{{ line.sku }}</small></p> }
           @empty { <p>No hay artículos disponibles en esta lectura.</p> }
           <h4>Pagos registrados</h4>
           @if (sale.pendingCommand; as command) { <p>{{ command.label }}. Consultá el estado; el recovery durable lo administra el backend.</p> }
           @for (payment of sale.payments; track payment.paymentId) {
-            <p><strong>{{ payment.method.label }} · {{ formatAmount(payment.amount) }}</strong> · {{ payment.status.label }} · comisión {{ formatAmount(payment.fee) }}</p>
+            <p><strong>{{ payment.method.label }} · {{ formatAmount(payment.amount) }}</strong> · {{ payment.status.label }} · comisión {{ formatAmount(payment.fee) }} · Registrado {{ formatInstant(payment.createdAt) }}</p>
             <p>{{ payment.reversibility.label }}. Tras una devolución, las nuevas reversas requieren evidencia por pago del backend.</p>
             @if (payment.reversibility.permitsReverse && store.can(actions.ReversePayment)) {
               <button type="button" (click)="requestReverse(payment.paymentId)" [disabled]="!validReversalReason()">Reversar pago {{ payment.paymentId }}</button>
@@ -178,6 +178,7 @@ export class DurableSalesComponent implements OnInit {
     {id:'historical-product-provenance', label:'Origen histórico del producto', source:this.historicalSource},
   ] as const; }
   readonly formatAmount = SalePresentation.amount.bind(SalePresentation);
+  readonly formatInstant = SalePresentation.instant.bind(SalePresentation);
   ticketPathSegment(raw: string): string { return SaleRouteId.fromWire(raw)?.pathSegment ?? 'id:'; }
   readonly store = inject(DurableSalesStore);
   readonly actions = AllowedAction;

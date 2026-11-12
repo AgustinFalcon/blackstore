@@ -11,6 +11,7 @@ import {SurfaceDataSource} from '../../core/domain/data-provenance';
 import {OperationId,SaleSelectionPhase} from '../../core/domain/sale-operation-selection';
 import {ActivatedRoute,Router,convertToParamMap} from '@angular/router';
 import {BehaviorSubject} from 'rxjs';
+import {RecordedInstant} from '../../core/domain/recorded-instant';
 
 describe('existing sale refund safety copy',()=>{
   it('does not offer another capture reversal when its reversibility is Unknown',()=>{
@@ -19,8 +20,8 @@ describe('existing sale refund safety copy',()=>{
       listSource:signal(SurfaceDataSource.Unknown),detailSource:signal(SurfaceDataSource.Unknown),
       selectedOperationId:signal(OperationId.fromWire(identity.operationId)),selectionPhase:signal(SaleSelectionPhase.Ready),
       commands:{runtime:{notice:signal('Comprobando evidencia'),refresh:()=>{}},unresolved:signal(null)},sales:{unresolved:signal(null)},
-      detail:signal({identity,status:DurableSaleState.PaymentCaptured,coverage:PaymentCoverage.Partial,total:TicketMoney.fromDecimal('18'),pending:TicketMoney.fromDecimal('8'),cashSessionId:2,cashierId:7,createdBy:7,receipt:'receipt',reservationRef:'reservation',pendingCommand:null,lines:[],valid:true,
-        payments:[{paymentId:42,status:PaymentStatus.Captured,method:PaymentMethod.Card,amount:null,fee:null,originalPaymentId:null,reversibility:PaymentReversibility.Unknown}]}),
+      detail:signal({identity,status:DurableSaleState.PaymentCaptured,coverage:PaymentCoverage.Partial,total:TicketMoney.fromDecimal('18'),pending:TicketMoney.fromDecimal('8'),cashSessionId:2,cashierId:7,createdBy:7,createdAt:RecordedInstant.fromWire('2026-11-12T14:30:00Z'),updatedAt:RecordedInstant.fromWire('2026-11-12T15:45:00Z'),receipt:'receipt',reservationRef:'reservation',pendingCommand:null,lines:[],valid:true,
+        payments:[{paymentId:42,status:PaymentStatus.Captured,method:PaymentMethod.Card,amount:null,fee:null,createdAt:RecordedInstant.fromWire('2026-11-12T15:00:00Z'),originalPaymentId:null,reversibility:PaymentReversibility.Unknown}]}),
       can:()=>true,list:jasmine.createSpy(),execute:jasmine.createSpy(),selectOperation:jasmine.createSpy(),retrySelection:jasmine.createSpy(),refreshSelection:jasmine.createSpy(),
       rejectSelection:jasmine.createSpy(),clearSelection:jasmine.createSpy(),leaveSelection:jasmine.createSpy(),consultReceipt:jasmine.createSpy()};
     TestBed.configureTestingModule({imports:[DurableSalesComponent],providers:[provideRouter([]),{provide:DurableSalesStore,useValue:store}]});
@@ -50,7 +51,7 @@ describe('existing sale route selection',()=>{
   beforeEach(()=>{
     routeParams.next(convertToParamMap({}));
     store={loadingList:signal(false),items:signal([{identity:{clientInstanceId:'client',deviceId:'device',saleId:'sale',operationId},
-      cashSessionId:1,cashierId:7,createdBy:7,status:DurableSaleState.Reserved,total:null}]),nextCursor:signal(null),notice:signal(null),busy:signal(false),
+      cashSessionId:1,cashierId:7,createdBy:7,status:DurableSaleState.Reserved,total:null,createdAt:RecordedInstant.fromWire('2026-11-12T14:30:00Z'),updatedAt:RecordedInstant.fromWire('2026-11-12T15:45:00Z')}]),nextCursor:signal(null),notice:signal(null),busy:signal(false),
       listSource:signal(SurfaceDataSource.Real),detailSource:signal(SurfaceDataSource.Unknown),detail:signal(null),
       selectedOperationId:signal(null),selectionPhase:signal(SaleSelectionPhase.Idle),
       commands:{runtime:{notice:signal(''),refresh:jasmine.createSpy()},unresolved:signal(null),blocked:signal({blocksWrites:false})},sales:{unresolved:signal(null)},
@@ -93,7 +94,7 @@ describe('existing sale route selection',()=>{
     expect(close).toBeDefined();close.click();expect(store.clearSelection).toHaveBeenCalled();
     store.selectionPhase.set(SaleSelectionPhase.Ready);store.detail.set({identity:{clientInstanceId:'client',deviceId:'device',saleId:'sale',operationId},
       status:DurableSaleState.Reserved,coverage:PaymentCoverage.Partial,total:TicketMoney.fromDecimal('18'),pending:TicketMoney.fromDecimal('8'),
-      cashSessionId:1,cashierId:7,createdBy:7,receipt:null,reservationRef:null,pendingCommand:null,lines:[],payments:[],valid:true});
+      cashSessionId:1,cashierId:7,createdBy:7,createdAt:RecordedInstant.fromWire('2026-11-12T14:30:00Z'),updatedAt:RecordedInstant.fromWire('2026-11-12T15:45:00Z'),receipt:null,reservationRef:null,pendingCommand:null,lines:[],payments:[],valid:true});
     fixture.detectChanges();screen=fixture.nativeElement as HTMLElement;
     expect(screen.querySelector('.selection-status[role="status"]')?.textContent).toContain(SaleSelectionPhase.Ready.label);
     const refresh=Array.from(screen.querySelectorAll('button')).find(button=>button.textContent?.includes('Consultar estado')) as HTMLButtonElement;

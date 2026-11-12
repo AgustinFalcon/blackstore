@@ -3,6 +3,7 @@ package com.blackstore.domain.sales
 import com.blackstore.domain.model.OperationQuadruple
 import com.blackstore.domain.model.StoreCoreOperationKind
 import java.math.BigDecimal
+import java.time.Instant
 
 object MoneyPolicy {
     private val maximum = BigDecimal("999999999999.99")
@@ -40,6 +41,7 @@ data class PaymentLedgerEntry(
     val amount: BigDecimal?,
     val feeAmount: BigDecimal?,
     val originalPaymentId: Long? = null,
+    val createdAt: Instant? = null,
 )
 sealed class OperationLedger {
     data class Known(val entries: List<PaymentLedgerEntry>) : OperationLedger()

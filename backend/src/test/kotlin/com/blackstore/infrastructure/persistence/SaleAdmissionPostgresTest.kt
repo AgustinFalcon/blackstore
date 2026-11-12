@@ -61,7 +61,10 @@ class SaleAdmissionPostgresTest {
         assertTrue(port.findReceipt(cashier,receipt.commandId,SaleAdmissionFamily.V3) is SaleCommandResult.Accepted)
         assertEquals(SaleCommandResult.NotFound,port.findReceipt(cashier,receipt.commandId,SaleAdmissionFamily.V2))
         assertEquals(receipt,accepted(port.execute(context,valid)))
-        val restarted=requireNotNull(JdbcDurableSaleRepository(source).findDurable(identity.operationId)).saga
+        val restartedStored=requireNotNull(JdbcDurableSaleRepository(source).findDurable(identity.operationId))
+        val restarted=restartedStored.saga
+        assertNotNull(restartedStored.temporalEvidence)
+        assertFalse(restartedStored.temporalEvidence!!.updatedAt.isBefore(restartedStored.temporalEvidence!!.createdAt))
         assertEquals(listOf("variant-a","variant-b"),restarted.lines.map { it.variantId })
         assertEquals(listOf("price-a","price-b"),restarted.lines.map { it.priceVersion })
         val invalid=valid.copy(commandId=UUID.randomUUID(),identity=identity.copy(operationId=UUID.randomUUID().toString()),lines=valid.lines.mapIndexed { i,it ->
@@ -102,6 +105,11 @@ class SaleAdmissionPostgresTest {
             snapshot.contract.contractVersion,requireNotNull(snapshot.contract.openapiDigestSha256),listOf(value),expires))
         assertEquals(AttemptOutcome.APPLIED,repository.applyClaimEvidence(claim,reserved,"e".repeat(64),StoreCoreOperationState.RESERVED.name,receipt))
         assertTrue(JdbcAccountingMutationCommands(source).execute(cashier,AccountingCommandDraft.PaymentCapture(UUID.randomUUID(),identity,PaymentMethod.CASH,BigDecimal("1.00"))) is com.blackstore.domain.port.out.accounting.AccountingMutationOutcome.Applied)
+        val payment=(JdbcCounterEntryStore(source).paymentLedger(identity) as OperationLedger.Known).entries.single()
+        assertNotNull(payment.createdAt)
+        val afterPayment=requireNotNull(JdbcDurableSaleRepository(source).findDurable(identity.operationId)).temporalEvidence
+        assertNotNull(afterPayment)
+        assertFalse(afterPayment!!.updatedAt.isBefore(afterPayment.createdAt))
         val terminal=com.blackstore.application.dto.sales.SaleV2RequestTranslator.terminal(identity.operationId,
             com.blackstore.application.dto.sales.SaleTerminalV2Request(UUID.randomUUID(),identity.clientInstanceId,identity.deviceId,identity.saleId,identity.operationId),SaleCommandKind.Commit)
         assertTrue(port.execute(AuthenticatedSessionContext(cashier,digest),terminal) is SaleCommandResult.Accepted)

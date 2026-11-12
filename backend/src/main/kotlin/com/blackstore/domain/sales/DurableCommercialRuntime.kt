@@ -27,6 +27,10 @@ sealed interface CanonicalCommandPayload {
   init { require(reservationRef.isNotBlank()) }
  }
 }
-data class StoredSale(val saga: SaleSaga, val version: Long, val state: DurableSaleState, val projectionId: Long)
+data class SaleTemporalEvidence(val createdAt: Instant, val updatedAt: Instant) {
+ init { require(!updatedAt.isBefore(createdAt)) { "sale update cannot precede creation" } }
+}
+data class StoredSale(val saga: SaleSaga, val version: Long, val state: DurableSaleState, val projectionId: Long,
+ val temporalEvidence: SaleTemporalEvidence? = null)
 data class ClaimedSaleCommand(val id: Long, val command: OutboxCommand, val claimToken: UUID, val claimEpoch: Long,
  val uncertain: Boolean, val attempts: Int, val actorId: Long, val cashSessionId: Long)

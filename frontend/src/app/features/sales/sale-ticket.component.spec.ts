@@ -12,6 +12,7 @@ import { DurableLineMetadata, DurableSaleState } from '../../core/domain/durable
 import { PaymentCoverage, PaymentLedgerSemantics, TicketMoney } from '../../core/domain/ticket-transition';
 import { SaleStatus } from '../../core/domain/pos-types';
 import { ReversalReason } from '../../core/domain/reversal-reason';
+import { RecordedInstant } from '../../core/domain/recorded-instant';
 import { SaleAdmissionOutcome, SaleAdmissionResolution, SaleAdmissionRoute, SaleCommand, SaleLineFailureCode } from '../../core/domain/sale-command';
 import { CommandHttp } from '../../core/infrastructure/command-http';
 import { CommandRuntimeStore } from '../../core/services/command-runtime.store';
@@ -172,7 +173,7 @@ describe('SaleTicketComponent explicit cart journey', () => {
   it('never upgrades an invalid durable detail into a capturable lightweight snapshot',()=>{
     const money=TicketMoney.fromDecimal('10.00')!;
     (component as any).openDurable({identity:{clientInstanceId:'c',deviceId:'d',saleId:'s',operationId:'o'},cashSessionId:2,
-      cashierId:7,createdBy:7,status:DurableSaleState.Reserved,total:money,pending:money,coverage:PaymentCoverage.Unpaid,
+      cashierId:7,createdBy:7,status:DurableSaleState.Reserved,total:money,createdAt:RecordedInstant.Unknown,updatedAt:RecordedInstant.Unknown,pending:money,coverage:PaymentCoverage.Unpaid,
       hasPaymentHistory:false,lines:[{metadata:DurableLineMetadata.Complete,variantId:'v',sku:'SKU',productName:'Producto',quantity:1,
         originalUnitPrice:money,priceVersion:'P1',total:money}],payments:[],allowedActions:[],valid:false,receipt:'r',reservationRef:'x',pendingCommand:null});
     expect(component.snapshot()?.evidenceValid).toBeFalse();expect(component.phase()).toBe(CartPhase.Unknown);
@@ -183,7 +184,7 @@ describe('SaleTicketComponent explicit cart journey', () => {
     const fixture=TestBed.createComponent(SaleTicketComponent),tested=fixture.componentInstance,money=TicketMoney.fromDecimal('10.00')!;
     fixture.detectChanges();await fixture.whenStable();
     tested.requestedOperationId.set('o');TestBed.inject(DurableSalesStore).detail.set({identity:{clientInstanceId:'c',deviceId:'d',saleId:'s',operationId:'o'},
-      cashSessionId:2,cashierId:7,createdBy:7,status:DurableSaleState.Reserved,total:money,pending:money,coverage:PaymentCoverage.Unpaid,
+      cashSessionId:2,cashierId:7,createdBy:7,status:DurableSaleState.Reserved,total:money,createdAt:RecordedInstant.Unknown,updatedAt:RecordedInstant.Unknown,pending:money,coverage:PaymentCoverage.Unpaid,
       hasPaymentHistory:false,lines:[{metadata:DurableLineMetadata.Complete,variantId:'v',sku:'SKU',productName:'Producto',quantity:1,
         originalUnitPrice:money,priceVersion:'P1',total:money}],payments:[],allowedActions:[],valid:true,receipt:'r',reservationRef:'x',pendingCommand:null});
     fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
