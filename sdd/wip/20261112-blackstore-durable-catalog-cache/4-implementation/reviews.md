@@ -18,3 +18,17 @@ Hallazgos remediados:
   `valid_until NOT NULL` y el decorador igualmente lo considera stale.
 
 Se requiere nueva ronda sobre el SHA corregido; estas revisiones no se heredan.
+
+## Ronda 2 — `9374ba93653637aa8c364e58196161b4997be1fc` — APPROVE
+
+Modelo: GPT-6.1 Sol, esfuerzo medium.
+
+- Bug/Producto: `APPROVE`, sin P0–P3. Verificó las cuatro correcciones de su
+  ronda anterior, persistencia LEGACY/V2, clean/upgrade, concurrencia y SDD.
+- Seguridad/Arquitectura: `APPROVE`, sin P0–P3. Verificó `REPEATABLE_READ`,
+  atomicidad, precisión monetaria, contrato, vencimiento, permisos, raw y
+  activación opt-in apagada por defecto.
+
+Ambas revisiones fueron estáticas y no modificaron archivos. El commit
+documental que incorpora este registro requiere verificación de identidad antes
+del PR; no hereda aprobación funcional por sí solo.

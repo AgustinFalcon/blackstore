@@ -1,6 +1,6 @@
 # BlackStore durable catalog cache
 
-Estado: `implemented_local_gates_passed_review_pending`.
+Estado: `implemented_local_gates_and_reviews_passed_pr_pending`.
 
 Base: `10a7862e7a38d8b8bb4b305ae0a847afee4f57cc` (`origin/master`).
 

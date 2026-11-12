@@ -32,3 +32,8 @@ La ronda exacta sobre `dcaf3c9` rechazó el corte. Se corrigieron consistencia d
 snapshot, precisión monetaria, tipo cerrado de proyección, fallback contractual
 y vencimiento nulo. Los tests enfocados de dominio, adapter, clean/upgrade y
 concurrencia PostgreSQL pasan; se repite la matriz completa sobre el nuevo SHA.
+
+El head corregido `9374ba93653637aa8c364e58196161b4997be1fc` pasó la
+matriz backend completa (329 tests, 7 min 09 s). Bug/Producto y
+Seguridad/Arquitectura GPT-6.1 Sol aprobaron independientemente ese SHA sin
+hallazgos P0–P3. Frontend conserva manifiesto 10/10, 429/429 tests y build PASS.
