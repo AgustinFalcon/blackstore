@@ -61,3 +61,16 @@ se requiere una ronda nueva sobre el commit exacto.
 Se cambió únicamente la evidencia raw a `TEXT` y se amplió el test PostgreSQL
 para verificar recuperación exacta del valor padded. La aprobación de Seguridad
 no se hereda al nuevo commit; ambas revisiones deben repetirse.
+
+## Ronda 6 — `5631260e3639fb4bcd989b6f42fc2769a14a3f86` — APPROVE
+
+Modelo: GPT-6.1 Sol, esfuerzo medium.
+
+- Bug/Producto: `APPROVE`, sin P0–P3. Verificó todas las remediaciones, los 15
+  tests enfocados y la expectativa DCT V14.
+- Seguridad/Arquitectura: `APPROVE`, sin P0–P3. Verificó fallback sólo ante
+  `Unavailable`, rechazo de evidencia inválida, SQL parametrizado, atomicidad y
+  recuperación exacta del nombre raw padded.
+
+Ambas revisiones fueron read-only. El siguiente commit sólo incorpora este
+registro; requiere una verificación documental de identidad antes del merge.
