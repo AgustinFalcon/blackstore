@@ -8,4 +8,4 @@
 - [x] STE-006 Mostrar fechas en listado, detalle, ticket y pagos.
 - [x] STE-007 Cubrir tests PostgreSQL, controller, mapper y componentes.
 - [x] STE-008 Ejecutar gates completos y revisión GPT-6.1 Sol exact-head `7c4f1d0`.
-- [ ] STE-009 Entregar por PR, CI, merge y verificación post-merge.
+- [x] STE-009 Entregar por PR #67, Verify #124, merge `3c68c02` y Verify post-merge #125.

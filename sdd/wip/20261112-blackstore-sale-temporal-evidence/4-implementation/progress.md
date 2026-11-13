@@ -37,5 +37,18 @@ Tests remediados controller+PostgreSQL: 23 PASS. Backend completo posterior:
 GPT-6.1 Sol medium Bug/Producto y Seguridad/Arquitectura aprobaron de forma
 independiente base `1f16522` y head `7c4f1d0`, sin P0–P3. Verificaron el tipo
 cerrado `Known|Unknown`, preservación exacta, JSON ISO, traductor frontend único
-y continuidad comercial ante reloj invertido. PR, CI y post-merge siguen como
-gates; estas reviews no acreditan integraciones externas ni homologación.
+y continuidad comercial ante reloj invertido. Estas reviews no acreditan
+integraciones externas ni homologación.
+
+## Entrega e integración
+
+- PR #67 creado sobre `master 1f16522` con head exacto `db2851f`.
+- Verify #124 del PR #67 (`43331861053`): `backend`, `frontend`, `frontend-browser` y
+  `dct-browser` PASS.
+- Merge commit `3c68c022de0e871eec1a2a99d2b455a6c53d58fd` en `master`.
+- Verify post-merge #125 (`43333400250`): cuatro jobs PASS; DCT ejecutó
+  PostgreSQL 16 y JAR real.
+- Árbol local limpio y sin contenedores Docker activos al cierre.
+
+STE-001..009 quedan completos. No se habilitaron StoreCore live, fiscal/ARCA,
+proveedores de pago, deploy, `release/1.0` ni homologación.
