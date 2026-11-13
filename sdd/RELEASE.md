@@ -2,9 +2,11 @@
 
 ## Master vigente — 2026-11-12
 
-`master 1f16522` agrega por PR #66 el cache durable de catálogo en modo opt-in,
-sin habilitar StoreCore live. El baseline sigue sin tag, deploy, publicación ni
-homologación y `release/1.0` continúa diferido hasta los gates externos.
+`master 3c68c02` agrega por PR #67 evidencia temporal durable de ventas y pagos
+sobre el cache durable de catálogo incorporado por PR #66. Verify post-merge
+#125 (`43333400250`) quedó verde en sus cuatro jobs. El baseline sigue sin tag,
+deploy, publicación ni homologación y `release/1.0` continúa diferido hasta los
+gates externos.
 
 ## Master vigente — 2026-11-09
 

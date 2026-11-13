@@ -1,6 +1,23 @@
 # Estado canónico del SDD — BlackStore
 
-## Master vigente y cache durable fail-closed — 2026-11-12
+## Master vigente y evidencia temporal durable — 2026-11-12
+
+`master 3c68c022de0e871eec1a2a99d2b455a6c53d58fd` integra PR #67. Ventas y
+pagos exponen sus instantes persistidos desde PostgreSQL en `/ventas`, detalle
+operativo y comprobante. El borde Angular traduce una sola vez mediante el tipo
+cerrado `RecordedInstant`; evidencia ausente o inconsistente se presenta
+`Unknown`/`No disponible` y no bloquea lectura, recovery ni mutaciones.
+
+Dos reviews independientes GPT-6.1 Sol aprobaron el head exacto `db2851f` sin
+P0–P3. Verify #124 del PR #67 (`43331861053`) y Verify post-merge #125
+(`43333400250`) dejaron verdes `backend`, `frontend`, `frontend-browser` y
+`dct-browser`. Este bloque prevalece sobre referencias que indiquen pendiente el
+cierre de evidencia temporal.
+
+StoreCore live, fiscal/ARCA, proveedores de pago, deploy, `release/1.0` y
+homologación permanecen fuera de alcance y no se acreditan por este merge.
+
+## Histórico — cache durable fail-closed — 2026-11-12
 
 `master 1f16522e78e7f7f04374ae1b58bcb2b92fa24e94` integra PR #66. El último
 snapshot válido recibido por el modo opt-in `loopback` puede sobrevivir un

@@ -14,6 +14,7 @@
 
 - TODO-004 [integrado] Rutas operativas `/caja/cierre` y `/ticket/:saleId` incorporadas por PR #57 sobre master y posteriormente cubiertas por los cierres frontend PR #58/#59.
 - TODO-007 [resolved] Caja/reportes BlackStore-owned con PostgreSQL, ledger, arqueo/diferencia, períodos SHIFT/DAY, timezone y filtros revalidados por DCT 18/18 en PR #61.
+- STE [resolved] Evidencia temporal durable de ventas y pagos integrada por PR #67 en `master 3c68c02`; Verify #124 del PR #67 y post-merge #125 verdes. Los valores ausentes o inconsistentes degradan a `Unknown` sin bloquear el flujo comercial.
 
 ## Cortes integrados y aceptación residual
 
