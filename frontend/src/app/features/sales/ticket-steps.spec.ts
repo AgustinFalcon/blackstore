@@ -3,9 +3,9 @@ import { PaymentMethod, PaymentStatus, SaleAction, SaleStatus } from '../../core
 import { PaymentCoverage, TicketMoney } from '../../core/domain/ticket-transition';
 import { CartDraft, CartLine } from '../../core/domain/cart';
 import { SaleAdmissionOutcome, SaleCommand } from '../../core/domain/sale-command';
-import { AwaitReservationStep, AwaitTerminalSaleStep, CapturePaymentStep, CommitSaleStep, PrepareReservationStep,
-  RefreshCoverageStep, RefreshTicketStep, ReserveTicketStep, TicketAttemptContext, TicketFlowPort, TicketPaymentJourney,
-  ValidateCartStep } from './ticket-steps';
+import { AwaitPaymentCoverageStep, AwaitReservationStep, AwaitTerminalSaleStep, CapturePaymentStep, CommitSaleStep,
+  PaymentProjectionState, PrepareReservationStep, RefreshCoverageStep, RefreshTicketStep, ReserveTicketStep,
+  TicketAttemptContext, TicketFlowPort, TicketPaymentJourney, ValidateCartStep } from './ticket-steps';
 
 describe('TicketPaymentJourney (T02/T05)', () => {
   const identity = {
@@ -189,9 +189,31 @@ describe('TicketPaymentJourney (T02/T05)', () => {
     port.capturePayment=()=>of({paymentId:41,status:PaymentStatus.Captured,amount:money('10'),fee:money('0')});
     port.refresh.and.returnValue(of(snapshot('18',PaymentCoverage.Unpaid)));
     const authoritative=await firstValueFrom(new RefreshTicketStep(port).execute(identity));
-    const step=new RefreshCoverageStep(new CapturePaymentStep(port),new RefreshTicketStep(port),captured);
+    const refresh=new RefreshTicketStep(port);
+    const step=new RefreshCoverageStep(new CapturePaymentStep(port),refresh,captured,new AwaitPaymentCoverageStep(refresh,1,0));
     await expectAsync(firstValueFrom(step.execute(authoritative,attempt))).toBeRejected();
     expect(captured).toHaveBeenCalled();
+  });
+
+  it('classifies payment projection reads as a closed state',()=>{
+    expect(PaymentProjectionState.fromBalances(1800n,800n,800n)).toBe(PaymentProjectionState.Expected);
+    expect(PaymentProjectionState.fromBalances(1800n,800n,1800n)).toBe(PaymentProjectionState.Stale);
+    expect(PaymentProjectionState.fromBalances(1800n,800n,700n)).toBe(PaymentProjectionState.Conflict);
+  });
+
+  it('waits through an exactly stale payment projection and accepts only the expected balance',async()=>{
+    const refresh=new RefreshTicketStep(port);
+    port.refresh.and.returnValues(of(snapshot('18',PaymentCoverage.Unpaid)),of(snapshot('8',PaymentCoverage.Partial)));
+    const result=await firstValueFrom(new AwaitPaymentCoverageStep(refresh,2,0).execute(identity,1800n,800n));
+    expect(result.pending?.decimal).toBe('8.00');
+    expect(port.refresh.calls.count()).toBe(2);
+  });
+
+  it('fails closed immediately when a payment projection reports a different delta',async()=>{
+    const refresh=new RefreshTicketStep(port);
+    port.refresh.and.returnValue(of(snapshot('7',PaymentCoverage.Partial)));
+    await expectAsync(firstValueFrom(new AwaitPaymentCoverageStep(refresh,3,0).execute(identity,1800n,800n))).toBeRejected();
+    expect(port.refresh.calls.count()).toBe(1);
   });
 
   it('commit step revalidates policy, submits once and waits for the terminal read',async()=>{
