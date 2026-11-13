@@ -12,6 +12,7 @@
 - Evidencia POSC-T: [tipos, codecs, journal y mapper 2026-11-05](4-implementation/posc-t-evidence.md).
 - Evidencia POSC-U: [carrito, cobro explícito y gates locales 2026-11-05](4-implementation/posc-u-evidence.md).
 - Evidencia POSC-E: [browser real, seguridad, upgrade y artefactos 2026-11-05](4-implementation/posc-e-evidence.md).
+- Evidencia de resiliencia posterior al cobro: [lectura stale acotada y gates finales 2026-11-13](4-implementation/posc-payment-projection-stale-read-20261113.md).
 - StoreCore sigue dueño de catálogo/precios/costos/stock. Fixture explícita para pruebas locales; ninguna cantidad, precio ni integración live inventados. ML, fiscal y publicación excluidos.
 
 Este documento propone contratos locales BlackStore. No modifica el OpenAPI StoreCore ni concede GO de implementación; el coordinador registra la revisión del SHA documental antes de B.

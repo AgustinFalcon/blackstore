@@ -124,18 +124,49 @@ export class RefreshTicketStep {
   }
 }
 
+/** Closed classification for an authoritative balance read after one capture. */
+export class PaymentProjectionState {
+  static readonly Expected = new PaymentProjectionState('Expected');
+  static readonly Stale = new PaymentProjectionState('Stale');
+  static readonly Conflict = new PaymentProjectionState('Conflict');
+  private constructor(readonly wire: string) {}
+  static fromBalances(previous: bigint, expected: bigint, observed: bigint): PaymentProjectionState {
+    if (observed === expected) return this.Expected;
+    if (observed === previous) return this.Stale;
+    return this.Conflict;
+  }
+}
+
+/** Waits only while the projection is exactly stale; any other delta fails closed. */
+export class AwaitPaymentCoverageStep {
+  constructor(private readonly refresh: RefreshTicketStep, private readonly maxReads = 20, private readonly delayMs = 100) {}
+  execute(identity: TicketIdentity, previous: bigint, expected: bigint): Observable<TicketSnapshot> {
+    return this.read(identity, previous, expected, this.maxReads);
+  }
+  private read(identity: TicketIdentity, previous: bigint, expected: bigint, remaining: number): Observable<TicketSnapshot> {
+    return this.refresh.execute(identity).pipe(concatMap(next => {
+      if (!next.pending) return throwError(() => new Error('El saldo consultado no es válido.'));
+      const state = PaymentProjectionState.fromBalances(previous, expected, next.pending.cents);
+      if (state === PaymentProjectionState.Expected) return of(next);
+      if (state === PaymentProjectionState.Conflict) return throwError(() => new Error('El saldo consultado contradice el pago.'));
+      if (remaining <= 1) return throwError(() => new Error('El saldo consultado todavía no confirma el pago.'));
+      return timer(this.delayMs).pipe(concatMap(() => this.read(identity, previous, expected, remaining - 1)));
+    }));
+  }
+}
+
 /** Captures one explicit payment and advances only after a correlated balance read confirms its delta. */
 export class RefreshCoverageStep {
   constructor(private readonly capture:CapturePaymentStep,private readonly refresh:RefreshTicketStep,
-    private readonly onCaptured:(payment:CapturedPayment,attempt:PaymentAttempt)=>void=()=>undefined){}
+    private readonly onCaptured:(payment:CapturedPayment,attempt:PaymentAttempt)=>void=()=>undefined,
+    private readonly awaitCoverage=new AwaitPaymentCoverageStep(refresh)){}
   execute(snapshot:TicketSnapshot,attempt:PaymentAttempt):Observable<{readonly payment:CapturedPayment;readonly next:TicketSnapshot}>{
     return this.capture.execute(snapshot,attempt).pipe(concatMap(payment=>{
       this.onCaptured(payment,attempt);
-      return this.refresh.execute(attempt.identity).pipe(map(next=>{
-        if(!snapshot.pending||!next.pending||next.pending.cents!==snapshot.pending.cents-payment.amount.cents)
-          throw new Error('El saldo consultado no confirma el pago.');
-        return Object.freeze({payment,next});
-      }));
+      if(!snapshot.pending)return throwError(()=>new Error('El saldo anterior no es válido.'));
+      const expected=snapshot.pending.cents-payment.amount.cents;
+      return this.awaitCoverage.execute(attempt.identity,snapshot.pending.cents,expected)
+        .pipe(map(next=>Object.freeze({payment,next})));
     }));
   }
 }
