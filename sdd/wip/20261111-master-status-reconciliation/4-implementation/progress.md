@@ -13,3 +13,5 @@
 - El archivo SDD no se simula: `sdd.finish` exige validadores/prerrequisitos no
   instalados para este cierre documental, por lo que el paquete permanece en
   `sdd/wip/` hasta disponer de ese toolchain.
+- Reconciliación 2026-11-14: PR #65 fue integrado y quedó supersedido por
+  PR #66–#69; se conserva esta evidencia como antecedente, no como gate actual.

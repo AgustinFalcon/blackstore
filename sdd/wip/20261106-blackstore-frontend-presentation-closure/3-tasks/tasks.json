@@ -9,6 +9,6 @@
     {"id":"BFPC-E","status":"done","title":"Ejecutar gates locales y visuales exact-head"},
     {"id":"BFPC-CI","status":"done","title":"Hospedar gates demo y ODR"},
     {"id":"BFPC-R","status":"done","title":"Reviews exact-head Astra y Sol"},
-    {"id":"BFPC-M","status":"pending","title":"PR, CI, merge y post-merge"}
+    {"id":"BFPC-M","status":"done","title":"PR, CI, merge y post-merge"}
   ]
 }

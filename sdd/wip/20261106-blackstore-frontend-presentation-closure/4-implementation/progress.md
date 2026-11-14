@@ -42,3 +42,14 @@ Gate completo local sobre `666f4c2`: `typecheck`, `typecheck:demo`, `typecheck:d
 Review coordinada final sobre `b673064a4013d712340b468f28b42c4a0a339916`: bugs APPROVE, seguridad/arquitectura APPROVE y UX/producto APPROVE, sin P0-P3. UX midió en Chromium que el toolbar POS bajó de 266 px a 68 px; búsqueda/categoría vuelven a compartir fila y el checkbox recupera su tamaño. Nueve pantallas demo y siete operativas renderizaron a 1440/768/390/320 px sin overflow horizontal. PR, CI y post-merge siguen siendo el único gate pendiente.
 
 El primer CI del PR #59 ejecutó 51/52 casos demo: la prueba de teclado intentaba enfocar `Confirmar cobro` mientras el botón todavía estaba deshabilitado durante la propagación de `ngModel`; el log mostró luego el mismo botón habilitado pero, correctamente, sin foco retroactivo. No fue una falla de navegación ni se modificó el shell. La prueba espera ahora explícitamente la precondición habilitada antes de enfocar y conserva todas las aserciones de foco/teclado. La regresión aislada completó 20/20 corridas concurrentes; resta repetir CI completo sobre el nuevo SHA.
+
+## Reconciliación retrospectiva — 2026-11-14
+
+- PR #58 integró el primer corte con merge `4086fe0`; Verify `42165660969`
+  terminó verde en cuatro jobs.
+- PR #59 integró la estabilización con merge `bbba59d`; Verify
+  `42431625541` terminó verde en cuatro jobs.
+- PR #61/merge `40c2880` absorbió la aceptación acumulada dentro de la paridad
+  productiva; Verify `42581477663` terminó verde en cuatro jobs.
+- BFPC-M era un pendiente documental residual. Los mocks de demo siguen siendo
+  mocks y no acreditan StoreCore live, fiscal, pagos, envíos ni homologación.
