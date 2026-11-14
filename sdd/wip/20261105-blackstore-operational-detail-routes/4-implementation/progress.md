@@ -32,3 +32,14 @@ No reutilizar como evidencia del port actual los PASS históricos del snapshot `
 - Correcciones aplicadas: delimitadores codificados conservados como datos opacos, correlación fail-closed de la cuádruple y suite Playwright ODR dedicada.
 - Segunda ronda sobre `9e57931`: arquitectura y seguridad aprobaron; producto detectó el caso residual `.`/`..` normalizado por el navegador.
 - Corrección residual: codec reversible `id:<opaco>` en el borde de navegación, con prueba unitaria y Chromium específico. Tercera ronda pendiente sobre nuevo head exacto.
+
+## Reconciliación retrospectiva — 2026-11-14
+
+- PR #57 integró el corte con merge `7382616`.
+- Verify alojado `42123918634` terminó verde en sus tres checks.
+- PR #61 y merge `40c2880` absorbieron la aceptación acumulada de ODR dentro
+  de la paridad productiva; Verify `42581477663` terminó verde en cuatro jobs.
+- Reviews acumuladas de bugs, seguridad y UX/producto aprobaron el corte sin
+  P0–P3. Los pendientes ODR-R1/ODR-CI eran estado documental residual.
+- No se atribuyen a este cierre StoreCore live, fiscal, pagos reales,
+  transportistas, deploy ni homologación.

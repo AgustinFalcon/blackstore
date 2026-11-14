@@ -7,7 +7,7 @@
     {"id":"ODR-T2","status":"done","title":"Resolver ticket read-only por saleId autorizado"},
     {"id":"ODR-U1","status":"done","title":"Separar presentación dedicada de cierre"},
     {"id":"ODR-E1","status":"done","title":"Ejecutar gates locales y browser"},
-    {"id":"ODR-R1","status":"pending","title":"Reviews bugs, seguridad y SDD sobre head exacto"},
-    {"id":"ODR-CI","status":"pending","title":"PR, CI hospedado y post-merge"}
+    {"id":"ODR-R1","status":"done","title":"Reviews bugs, seguridad y SDD sobre head exacto"},
+    {"id":"ODR-CI","status":"done","title":"PR, CI hospedado y post-merge"}
   ]
 }

@@ -1,5 +1,19 @@
 # BlackStore documentation baseline 1.0.0
 
+## Master vigente — 2026-11-14
+
+`master 4da1775` integra PR #69 y la espera fail-closed de la proyección
+autoritativa posterior al cobro. Verify del PR `43376580181` y post-merge
+`43377869294` quedaron verdes en sus cuatro jobs. Los cortes ODR, presentación
+y paridad productiva ya están integrados; no existe un faltante local P0/P1 de
+Fase 1 identificado por la auditoría coordinada.
+
+Este baseline continúa sin tag, deploy, publicación ni homologación. Crear
+`release/1.0` y conectar StoreCore live exige primero contratos/credenciales y
+evidencia aprobada de ARCA, Correo Argentino y los proveedores que se activen.
+La integración se hará por cortes revisables, no incorporando una rama completa
+sin sus gates.
+
 ## Master vigente — 2026-11-12
 
 `master 3c68c02` agrega por PR #67 evidencia temporal durable de ventas y pagos

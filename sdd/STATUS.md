@@ -1,5 +1,27 @@
 # Estado canónico del SDD — BlackStore
 
+## Master vigente y proyección autoritativa de pagos — 2026-11-14
+
+`master 4da1775dcc707a20bae074937d471e3d3b4d7915` integra PR #69. El POS
+espera una proyección autoritativa y acotada después de confirmar un cobro:
+acepta sólo el saldo esperado, reconsulta únicamente la lectura exactamente
+stale y falla cerrado ante cualquier otro delta. Angular y dependencias de
+build quedaron además actualizados por el mismo corte.
+
+Verify del PR #69 (`43376580181`) y Verify post-merge (`43377869294`)
+terminaron verdes en `backend`, `frontend`, `frontend-browser` y
+`dct-browser`. La evidencia local registrada en el SDD conserva 435/435 tests
+Karma, 52/52 demo, 10/10 ODR y 18/18 DCT sobre PostgreSQL 16, JAR y Angular.
+
+La auditoría coordinada de pendientes no encontró un faltante local P0/P1 de
+Fase 1. ODR y el cierre de presentación ya fueron absorbidos por PR #57–#61;
+los WIP históricos se reconcilian como integrados/supersedidos y no como
+trabajo runtime pendiente.
+
+StoreCore live, proveedor de pago real, fiscal/ARCA, Correo Argentino, deploy,
+homologación y `release/1.0` siguen fuera de este corte. Fixture continúa como
+adapter predeterminado y ningún secreto se incorpora al repositorio.
+
 ## Master vigente y evidencia temporal durable — 2026-11-12
 
 `master 3c68c022de0e871eec1a2a99d2b455a6c53d58fd` integra PR #67. Ventas y

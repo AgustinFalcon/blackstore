@@ -45,3 +45,13 @@ La evidencia acredita el runtime local BlackStore-owned y la corrección POSC.
 No acredita StoreCore live, facturación, proveedor de pagos real, transportista,
 deploy, homologación ni publicación. El cambio todavía requiere revisión, CI
 remoto, PR y merge; no hereda aprobaciones de commits anteriores.
+
+## Cierre remoto reconciliado — 2026-11-14
+
+- Head funcional: `7d44bb474d2aa913fa8f38a9261c84fe81f16817`.
+- PR #69 fusionado en `master` como
+  `4da1775dcc707a20bae074937d471e3d3b4d7915`.
+- Verify PR `43376580181`: cuatro jobs verdes.
+- Verify post-merge `43377869294`: cuatro jobs verdes.
+- La evidencia no amplía los límites anteriores: proveedor real, StoreCore
+  live, fiscal, transportista, deploy y homologación siguen sin acreditarse.
