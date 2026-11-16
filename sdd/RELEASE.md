@@ -1,5 +1,16 @@
 # BlackStore documentation baseline 1.0.0
 
+## Master vigente — reconciliación integrada 2026-11-16
+
+`master ad411c2` integra el PR documental #70 (head `782d6b6`). Verify del PR
+`43556963006` y Verify post-merge `43559052445` quedaron verdes en sus cuatro
+jobs. Los estados antiguos de fixtures, identidad, runtime, DCT, CLR y POSC se
+conservan como antecedentes, no como cola runtime vigente.
+
+El baseline continúa sin tag, deploy, publicación ni homologación. Fixture
+sigue predeterminado y la activación StoreCore live permanece bloqueada hasta
+los contratos, credenciales, evidencias y GO de `release/1.0` ya definidos.
+
 ## Master vigente — 2026-11-14
 
 `master 4da1775` integra PR #69 y la espera fail-closed de la proyección

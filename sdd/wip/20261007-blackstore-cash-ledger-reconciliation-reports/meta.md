@@ -1,5 +1,13 @@
 # Libro de caja, arqueo y reportes por período
 
+## Estado reconciliado — 2026-11-16
+
+Estado: `integrated_superseded_acceptance`. PR #51 cerró los residuales CLR y
+PR #61 integró la aceptación acumulada productiva. Los candidatos, fallos y
+gates pendientes conservados abajo son antecedentes del recorrido; no son la
+cola runtime vigente. StoreCore live, fiscal, proveedores, deploy y
+homologación permanecen fuera de alcance.
+
 ## Candidato local CLR-T09 — 2026-11-05
 
 Base `master c7ce4bd`, rama `codex/blackstore-clr-acceptance`. Los residuales

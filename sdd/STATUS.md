@@ -1,5 +1,23 @@
 # Estado canónico del SDD — BlackStore
 
+## Master vigente y reconciliación documental integrada — 2026-11-16
+
+`master ad411c2e36fa5702e0ea2a855858b45141f159ba` integra el PR #70,
+head documental `782d6b6a3b8ef445a3bcecc447078cbf0631abd5`. Su Verify exact-head
+`43556963006` dejó verdes `backend`, `frontend`, `frontend-browser` y
+`dct-browser`; el Verify post-merge de `master` `43559052445` también terminó
+verde.
+
+Este cierre reconcilia los WIP históricos absorbidos por PRs posteriores. No
+agrega ni revalida runtime sobre el merge #70 y no habilita StoreCore live,
+proveedores de pago, ARCA, Correo Argentino, deploy, homologación ni
+`release/1.0`. El adapter predeterminado continúa siendo fixture/fail-closed.
+
+Las secciones siguientes conservan la cronología de cada corte. Cuando una de
+ellas describa CLR, DCT, POSC, identidad, runtime o fixtures como pendientes,
+prevalecen este bloque, el cierre productivo de PR #61 y las correcciones
+posteriores #66–#70.
+
 ## Master vigente y proyección autoritativa de pagos — 2026-11-14
 
 `master 4da1775dcc707a20bae074937d471e3d3b4d7915` integra PR #69. El POS
