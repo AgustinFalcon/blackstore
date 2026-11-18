@@ -1,6 +1,6 @@
 # BlackStore — frontend comercial demostrable
 
-Estado: FRONTEND_DEMO_APPROVED_LOCAL. Fecha: 2026-10-08; cierre local revalidado 2026-11-05. Código exacto aprobado: `15655610745d100f7692e3b65199618b0c0004c4`. Los gates POSC/live, integraciones, deploy y homologación permanecen separados y no se consideran acreditados.
+Estado: `INTEGRATED_DEMO_LOCAL`. Fecha: 2026-10-08; cierre local revalidado 2026-11-05. Código exacto aprobado: `15655610745d100f7692e3b65199618b0c0004c4`. La evolución de presentación fue integrada por PR #58/#59 y absorbida por la paridad productiva de PR #61. Los gates POSC/live, integraciones, deploy y homologación permanecen separados y no se consideran acreditados.
 
 Incremento de cierre 2026-11-05: el addendum
 `2-technical/final-frontend-closure-addendum.md` y el plan
@@ -17,6 +17,10 @@ El usuario pide priorizar todas las pantallas y acciones del frontend para prese
 Este WIP complementa [UX v1](../20260923-blackstore-frontend-ux-system-v1/1-functional/spec.md), [PROJECT](../../PROJECT.md) y [PATTERNS](../../PATTERNS.md). La instrucción explícita del usuario autoriza una excepción a la antigua prohibición visual de DEMO únicamente bajo `/demo`: identificación discreta y permanente de datos simulados. No cambia las restricciones de las rutas operativas ni activa StoreCore, facturación o proveedores.
 
 Compatibilidad de base: [POSC-D](../20261008-blackstore-pos-cart-explicit-payment/meta.md) conserva su diseño aprobado y B/T/U/E pendientes; [CLR](../20261007-blackstore-cash-ledger-reconciliation-reports/meta.md) conserva lifecycle, journal, contratos contables y sus gates propios. Ningún resultado demo satisface aceptación POSC/CLR ni hereda evidencia del snapshot combinado externo.
+
+Reconciliación 2026-11-16: la frase B/T/U/E pendientes describe la base
+histórica de este WIP. POSC quedó integrado después por PR #56 y la aceptación
+acumulada por PR #61; la demo continúa siendo simulación, no proveedor live.
 
 La base operativa tiene siete rutas funcionales, pero su ticket individual y pago predeterminado no constituyen un POS comercial terminado. Este corte agrega dashboard, carrito multilínea, cobro explícito, comprobante, caja, ventas, productos, inventario, clientes y reportes con navegación y estados completos. El WIP backend-first de carrito continúa independiente; sus contratos no se reescriben para acomodar fixtures.
 
