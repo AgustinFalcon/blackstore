@@ -55,7 +55,7 @@ describe('demo monetary read model', () => {
     expect(()=>repo.resolvePayment('pending-overflow',DemoPaymentStatus.Approved)).toThrowError(/rango entero seguro/);
     expect(repo.snapshot()).toBe(before);expect(publications).toBe(1);expect(before.payment?.status).toBe(DemoPaymentStatus.Pending);
     repo.moveCash(DemoMovementKind.Expense,1,'Dejar lugar');repo.resolvePayment('pending-overflow',DemoPaymentStatus.Approved);
-    expect(repo.snapshot().sales[0].id).toBe('V-103');expect(repo.expectedCash()).toBe(Number.MAX_SAFE_INTEGER);
+    expect(repo.snapshot().sales[0].id).toBe('V-201');expect(repo.expectedCash()).toBe(Number.MAX_SAFE_INTEGER);
   });
   it('reports categories and product identity from receipts after catalogue changes', () => {
     const repo=new LocalDemoRepository();const first=repo.snapshot().products[0],second=repo.snapshot().products[1];
@@ -75,15 +75,15 @@ describe('demo monetary read model', () => {
     expect(new DemoQueries(repo.snapshot()).categories(filtered)).toEqual(['Categoría histórica','Otra histórica']);
   });
   it('rejects the exact seeded reversal overflow without publishing or consuming event IDs', () => {
-    const repo=new LocalDemoRepository();repo.adjust('p1',Number.MAX_SAFE_INTEGER-2,'maximum');const before=repo.snapshot();let publications=0;repo.subscribe(()=>publications++);
+    const repo=new LocalDemoRepository();const initial=repo.snapshot().products[0].stock;repo.adjust('p1',Number.MAX_SAFE_INTEGER-initial,'maximum');const before=repo.snapshot();let publications=0;repo.subscribe(()=>publications++);
     expect(()=>repo.reverse('V-90','overflow')).toThrowError(/rango entero seguro/);expect(repo.snapshot()).toBe(before);expect(publications).toBe(1);
-    repo.adjust('p1',-1,'make room');expect(repo.snapshot().stockMovements[0].id).toBe('102');repo.reverse('V-90','valid');expect(repo.snapshot().products[0].stock).toBe(Number.MAX_SAFE_INTEGER);expect(repo.snapshot().sales.find(s=>s.id==='V-90')?.status).toBe(DemoSaleStatus.Reversed);
+    repo.adjust('p1',-2,'make room');expect(repo.snapshot().stockMovements[0].id).toBe('102');repo.reverse('V-90','valid');expect(repo.snapshot().products[0].stock).toBe(Number.MAX_SAFE_INTEGER);expect(repo.snapshot().sales.find(s=>s.id==='V-90')?.status).toBe(DemoSaleStatus.Reversed);
   });
   it('prevalidates all lines so a later overflow preserves earlier stock, cash, sale and ID sequence', () => {
-    const repo=new LocalDemoRepository();repo.cart('p1',1);repo.cart('p2',1);const sale=completePayment(repo,'multiline',DemoPaymentMethod.Cash,repo.total(),'');
+    const repo=new LocalDemoRepository();const firstStock=repo.snapshot().products[0].stock;repo.cart('p1',1);repo.cart('p2',1);const sale=completePayment(repo,'multiline',DemoPaymentMethod.Cash,repo.total(),'');
     repo.adjust('p2',Number.MAX_SAFE_INTEGER-repo.snapshot().products[1].stock,'maximum');const before=repo.snapshot();const cash=repo.expectedCash();let publications=0;repo.subscribe(()=>publications++);
     expect(()=>repo.reverse(sale.id,'second line overflow')).toThrowError(/rango entero seguro/);expect(repo.snapshot()).toBe(before);expect(repo.expectedCash()).toBe(cash);expect(publications).toBe(1);expect(repo.snapshot().sales[0].status).toBe(DemoSaleStatus.Completed);
-    repo.adjust('p2',-1,'make room');expect(repo.snapshot().stockMovements[0].id).toBe('106');repo.reverse(sale.id,'valid');expect(repo.snapshot().products[0].stock).toBe(2);expect(repo.snapshot().products[1].stock).toBe(Number.MAX_SAFE_INTEGER);expect(repo.expectedCash()).toBe(cash-sale.total);
+    repo.adjust('p2',-1,'make room');expect(repo.snapshot().stockMovements[0].id).toBe('105');repo.reverse(sale.id,'valid');expect(repo.snapshot().products[0].stock).toBe(firstStock);expect(repo.snapshot().products[1].stock).toBe(Number.MAX_SAFE_INTEGER);expect(repo.expectedCash()).toBe(cash-sale.total);
   });
   it('seeds chronological cash shifts and excludes older sales from the current expected cash', () => {
     const repo=new LocalDemoRepository(()=>new Date('2026-10-21T02:59:00Z'));const queries=new DemoQueries(repo.snapshot());
@@ -91,7 +91,7 @@ describe('demo monetary read model', () => {
     for(let i=1;i<movements.length;i++)expect(movements[i].date>=movements[i-1].date).toBeTrue();
     const current=queries.currentCashMovements();expect(current[0].kind).toBe(DemoMovementKind.Opening);
     expect(current.filter(m=>m.kind===DemoMovementKind.Sale).map(m=>m.reason)).toEqual(['Venta V-90']);
-    expect(current.every(m=>m.date>=current[0].date)).toBeTrue();expect(repo.expectedCash()).toBe(5000000+repo.snapshot().sales[0].total);
+    expect(current.every(m=>m.date>=current[0].date)).toBeTrue();expect(repo.expectedCash()).toBe(DemoMoney.balance(current));
     repo.closeCash(repo.expectedCash(),'');expect(repo.snapshot().cashCount?.declared).toBe(repo.snapshot().cashCount?.expected);
   });
   it('can remove a deactivated cart line while additions and checkout stay strict', () => {
@@ -123,7 +123,7 @@ describe('demo monetary read model', () => {
     completePayment(repo,'maximum',DemoPaymentMethod.Card,0,'');repo.saveProduct({...repo.snapshot().products[0],price:1});repo.cart(p.id,1);
     const before=repo.snapshot();let publications=0;repo.subscribe(()=>publications++);
     expect(()=>repo.beginPayment('too-much',DemoPaymentMethod.Card,0,'')).toThrowError(/rango entero seguro/);expect(repo.snapshot()).toBe(before);expect(publications).toBe(1);
-    repo.reverse(repo.snapshot().sales[0].id,'Make room');completePayment(repo,'too-much',DemoPaymentMethod.Card,0,'');expect(repo.snapshot().sales[0].id).toBe('V-104');
+    repo.reverse(repo.snapshot().sales[0].id,'Make room');completePayment(repo,'too-much',DemoPaymentMethod.Card,0,'');expect(repo.snapshot().sales[0].id).toBe('V-202');
   });
   it('fails closed for unsafe totals, method and category aggregates, expenses and shift balances', () => {
     const snapshot=new LocalDemoRepository().snapshot();const original=snapshot.sales[0];
@@ -144,7 +144,7 @@ describe('demo monetary read model', () => {
     expect(queries.average(sales)).toBe(3002399751580330);
   });
   it('rejects cumulative expense overflow before publishing even after replenishing cash', () => {
-    const repo=new LocalDemoRepository();repo.moveCash(DemoMovementKind.Income,Number.MAX_SAFE_INTEGER-repo.expectedCash(),'maximum');repo.moveCash(DemoMovementKind.Expense,Number.MAX_SAFE_INTEGER,'expense');repo.moveCash(DemoMovementKind.Income,1,'replenish');
+    const repo=new LocalDemoRepository();const seededExpenses=new DemoQueries(repo.snapshot()).expenses(DemoDateRange.All);repo.moveCash(DemoMovementKind.Income,Number.MAX_SAFE_INTEGER-repo.expectedCash(),'maximum');repo.moveCash(DemoMovementKind.Expense,Number.MAX_SAFE_INTEGER-seededExpenses,'expense');repo.moveCash(DemoMovementKind.Income,1,'replenish');
     const before=repo.snapshot();expect(()=>repo.moveCash(DemoMovementKind.Expense,1,'overflow')).toThrowError(/rango entero seguro/);expect(repo.snapshot()).toBe(before);
   });
 });

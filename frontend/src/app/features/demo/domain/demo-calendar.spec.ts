@@ -25,9 +25,9 @@ describe('Buenos Aires business calendar', () => {
     let now=new Date('2026-10-21T02:59:00Z');const repo=new LocalDemoRepository(()=>now);
     repo.cart('p1',1);const first=completePayment(repo,'before-midnight',DemoPaymentMethod.Card,0,'');repo.moveCash(DemoMovementKind.Expense,10000,'Antes');
     now=new Date('2026-10-21T03:01:00Z');repo.cart('p2',1);const second=completePayment(repo,'after-midnight',DemoPaymentMethod.Card,0,'');repo.moveCash(DemoMovementKind.Expense,20000,'Después');
-    const queries=new DemoQueries(repo.snapshot());const firstDay=DemoWireMapper.period('2026-10-20','2026-10-20');const secondDay=DemoWireMapper.period('2026-10-21','2026-10-21');
-    const filter={search:'V-10',method:null,status:null};
+    const firstDay=DemoWireMapper.period('2026-10-20','2026-10-20');const secondDay=DemoWireMapper.period('2026-10-21','2026-10-21');const baseline=new DemoQueries(new LocalDemoRepository(()=>new Date('2026-10-21T02:59:00Z')).snapshot()).expenses(firstDay);const queries=new DemoQueries(repo.snapshot());
+    const filter={search:'V-20',method:null,status:null};
     expect(queries.sales({...filter,period:firstDay})).toEqual([first]);expect(queries.sales({...filter,period:secondDay})).toEqual([second]);
-    expect(queries.expenses(firstDay)).toBe(10000);expect(queries.expenses(secondDay)).toBe(20000);
+    expect(queries.expenses(firstDay)).toBe(baseline+10000);expect(queries.expenses(secondDay)).toBe(20000);
   });
 });

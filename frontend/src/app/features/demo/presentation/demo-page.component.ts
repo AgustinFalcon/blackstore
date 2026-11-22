@@ -87,8 +87,9 @@ export class DemoPageComponent implements OnDestroy {
  resolvePayment(status:DemoPaymentStatus):void{this.run(()=>{const attempt=this.repo.resolvePayment(this.state().payment!.id,status);if(attempt.saleId)void this.router.navigate(['/demo/ventas',attempt.saleId]);else this.focusPayment('demo-payment-retry');},status.retryable?'':status.label);}
  private focusPayment(id:string):void{afterNextRender(()=>document.getElementById(id)?.focus(),{injector:this.injector});}
  cancelPayment():void{if(this.state().payment?.status.pending)this.resolvePayment(DemoPaymentStatus.Cancelled);void this.router.navigate(['/demo/pos']);}
- productArt(p:Product):string{return p.art.asset;}
- productTint(p:Product):string{return `hue-rotate(${this.state().products.indexOf(p)*23}deg)`;}
+ productArt(p:Product):string{return p.imageUrl??p.art.asset;}
+ fallbackProductArt(event:Event,p:Product):void{const image=event.currentTarget;if(!(image instanceof HTMLImageElement)||image.src.endsWith(p.art.asset))return;image.src=p.art.asset;image.style.filter=`hue-rotate(${this.state().products.indexOf(p)*23}deg)`;}
+ productTint(p:Product):string{return p.imageUrl?'none':`hue-rotate(${this.state().products.indexOf(p)*23}deg)`;}
  editProduct(product?:Product):void{this.fieldErrors.set({});this.selectedProduct=null;this.productDraft=product?{...product}:{id:'',name:'',sku:'',category:this.categories()[0],art:DemoProductArt.Unknown,price:0,stock:0,status:DemoProductStatus.Active,version:1,icon:'◈'};}
  saveProduct():void{if(!this.validate([['product-name',!!this.productDraft?.name.trim(),'Ingresá un nombre.'],['product-sku',!!this.productDraft?.sku.trim(),'Ingresá un SKU.'],['product-price',!!this.productDraft&&Number.isSafeInteger(this.productDraft.price)&&this.productDraft.price>0,'Ingresá un precio mayor a cero.']]))return;this.run(()=>{this.repo.saveProduct(this.productDraft!);this.productDraft=null;},'Producto guardado en el catálogo demo.');}
  editCustomer(customer?:Customer):void{this.fieldErrors.set({});this.selectedCustomer=null;this.customerDraft=customer?{...customer}:{id:'',name:'',email:'',phone:''};}
@@ -109,7 +110,7 @@ export class DemoPageComponent implements OnDestroy {
  applyDiscount(value:number):void{this.run(()=>this.repo.discount(Number(value)),'Descuento aplicado.');}
  emptyCart():void{this.confirm('¿Vaciar el carrito?',()=>this.repo.clearCart());}
  reverseSale(s:Sale):void{this.confirm('¿Registrar devolución y restituir el stock de esta venta?',()=>this.repo.reverse(s.id,this.reason));}
- openCash():void{if(!this.validate([['cash-opening',Number.isFinite(this.cashAmount)&&this.cashAmount>=0,'Ingresá un fondo inicial válido.']]))return;this.run(()=>this.repo.openCash(Math.round(this.cashAmount*100)),'Caja abierta.');}
+ openCash():void{if(!this.validate([['cash-opening',Number.isFinite(this.cashAmount)&&this.cashAmount>=0,'Ingresá un fondo inicial válido.']]))return;this.run(()=>{this.repo.openCash(Math.round(this.cashAmount*100));this.declared=this.repo.expectedCash()/100;},'Caja abierta.');}
  moveCash():void{if(!this.validate([['cash-amount',Number.isFinite(this.cashAmount)&&this.cashAmount>0,'Ingresá un importe mayor a cero.'],['cash-reason',!!this.reason.trim(),'Ingresá un motivo.']]))return;this.run(()=>this.repo.moveCash(this.movementKind,Math.round(this.cashAmount*100),this.reason),'Movimiento registrado.');}
  closeCash():void{if(!this.validate([['cash-declared',Number.isFinite(this.declared)&&this.declared>=0,'Ingresá un importe declarado válido.'],['cash-difference',Math.round(this.declared*100)===this.repo.expectedCash()||!!this.reference.trim(),'Explicá la diferencia de caja.']]))return;this.confirm('¿Cerrar el turno con este arqueo?',()=>this.repo.closeCash(Math.round(this.declared*100),this.reference));}
  changeRole(role:DemoRole):void{this.run(()=>this.repo.setRole(role),'Perfil ficticio actualizado.');}

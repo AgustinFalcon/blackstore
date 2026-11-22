@@ -1,0 +1,10 @@
+{
+  "feature": "20261122-blackstore-ferreteria-showcase",
+  "tasks": [
+    {"id":"BFS-01","status":"complete","description":"Modelar catálogo ferretero amplio e imágenes"},
+    {"id":"BFS-02","status":"complete","description":"Poblar clientes, ventas, caja y stock históricos"},
+    {"id":"BFS-03","status":"complete","description":"Adaptar UI y pruebas de flujos completos"},
+    {"id":"BFS-04","status":"in_progress","description":"Ejecutar gates, reviews y evidencia exact-head"}
+  ]
+}
+
