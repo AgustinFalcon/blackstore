@@ -26,7 +26,7 @@ describe('demo action authorization', () => {
     for (const command of commands) { expect(command).toThrowError(DemoPermissionError); expect(repo.snapshot()).toBe(before); }
     expect(publications).toBe(1);
     repo.setRole(DemoRole.Manager); repo.cart(p.id, 1);
-    expect(completePayment(repo,'denied', DemoPaymentMethod.Card, 0, '').id).toBe('V-101');
+    expect(completePayment(repo,'denied', DemoPaymentMethod.Card, 0, '').id).toBe('V-201');
   });
   it('revalidates manager permissions immediately before executing open forms', () => {
     const repo = new LocalDemoRepository(); const product = repo.snapshot().products[0]; const sale = repo.snapshot().sales[0];

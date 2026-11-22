@@ -21,16 +21,19 @@ export class DemoPaymentStatus {
 }
 export class DemoProductArt {
   private constructor(readonly key: string, readonly asset: string) {}
-  static readonly Apparel = new DemoProductArt('shirt', '/assets/demo/shirt.svg');
-  static readonly Pants = new DemoProductArt('pants', '/assets/demo/pants.svg');
-  static readonly Shorts = new DemoProductArt('shorts', '/assets/demo/shorts.svg');
-  static readonly Shoes = new DemoProductArt('shoe', '/assets/demo/shoe.svg');
-  static readonly Accessories = new DemoProductArt('bag', '/assets/demo/bag.svg');
-  static readonly Cap = new DemoProductArt('cap', '/assets/demo/cap.svg');
-  static readonly Belt = new DemoProductArt('belt', '/assets/demo/belt.svg');
-  static readonly Basics = new DemoProductArt('socks', '/assets/demo/socks.svg');
+  static readonly PowerTool = new DemoProductArt('power-tool', '/assets/demo/product.svg');
+  static readonly HandTool = new DemoProductArt('hand-tool', '/assets/demo/product.svg');
+  static readonly Consumable = new DemoProductArt('consumable', '/assets/demo/product.svg');
+  static readonly Fastener = new DemoProductArt('fastener', '/assets/demo/product.svg');
+  static readonly Measurement = new DemoProductArt('measurement', '/assets/demo/product.svg');
+  static readonly Safety = new DemoProductArt('safety', '/assets/demo/product.svg');
+  static readonly Paint = new DemoProductArt('paint', '/assets/demo/product.svg');
+  static readonly Garden = new DemoProductArt('garden', '/assets/demo/product.svg');
+  static readonly Electrical = new DemoProductArt('electrical', '/assets/demo/product.svg');
+  static readonly Storage = new DemoProductArt('storage', '/assets/demo/product.svg');
   static readonly Unknown = new DemoProductArt('unknown', '/assets/demo/product.svg');
-  static fromWire(value: unknown): DemoProductArt { return [this.Apparel,this.Pants,this.Shorts,this.Shoes,this.Accessories,this.Cap,this.Belt,this.Basics].find(item=>item.key===value)??this.Unknown; }
+  static readonly values = Object.freeze([this.PowerTool,this.HandTool,this.Consumable,this.Fastener,this.Measurement,this.Safety,this.Paint,this.Garden,this.Electrical,this.Storage]);
+  static fromWire(value: unknown): DemoProductArt { return this.values.find(item=>item.key===value)??this.Unknown; }
 }
 export class DemoStockFilter {
   private constructor(readonly key:string,readonly matches:(product:{readonly status:DemoProductStatus;readonly stock:number})=>boolean){}
@@ -108,7 +111,7 @@ export const money = (cents: number): string => {
   const pesos=new Intl.NumberFormat('es-AR',{maximumFractionDigits:0}).format(absolute/100n);
   return `${negative?'-':''}$ ${pesos},${String(absolute%100n).padStart(2,'0')}`;
 };
-export interface Product { readonly id: string; readonly name: string; readonly sku: string; readonly category: string; readonly art: DemoProductArt; readonly price: number; readonly cost?: number; readonly stock: number; readonly status: DemoProductStatus; readonly version: number; readonly icon: string; }
+export interface Product { readonly id: string; readonly name: string; readonly sku: string; readonly category: string; readonly art: DemoProductArt; readonly imageUrl?: string; readonly price: number; readonly cost?: number; readonly stock: number; readonly status: DemoProductStatus; readonly version: number; readonly icon: string; }
 export interface Customer { readonly id: string; readonly name: string; readonly email: string; readonly phone: string; }
 export interface CartLine { readonly productId: string; readonly quantity: number; readonly version: number; readonly price: number; }
 export interface SaleLine { readonly productId: string; readonly name: string; readonly sku: string; readonly category: string; readonly quantity: number; readonly price: number; readonly cost?: number; }

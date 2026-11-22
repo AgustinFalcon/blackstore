@@ -6,6 +6,7 @@ import { StockRestorationPlan } from '../domain/stock-restoration';
 import { DemoCalendar, DemoDateRange } from '../domain/demo-calendar';
 import { DemoQueries } from '../domain/demo-queries';
 import { DemoMoney } from '../domain/demo-money';
+import { FERRETERIA_DEMO_PRODUCTS } from './ferreteria-demo-catalog';
 
 /** In-memory adapter. Never reads session, recovery storage or HTTP. */
 export class LocalDemoRepository extends DemoRepository {
@@ -17,6 +18,7 @@ export class LocalDemoRepository extends DemoRepository {
   private editable(): void { if(this.state.payment?.status.pending) throw new Error('Confirmá o cancelá el pago pendiente antes de modificar la venta.'); }
   private cartFingerprint(): string { return JSON.stringify([this.state.cart,this.state.customerId,this.state.discount]); }
   private sequence = 100;
+  private saleSequence = 200;
   private failed = false;
   constructor(private readonly clock: () => Date = () => new Date(), initialRole: DemoRole = DemoRole.Manager) { super(); this.seed(DemoScenario.Normal,initialRole); }
   snapshot(): DemoSnapshot { return this.state; }
@@ -24,6 +26,7 @@ export class LocalDemoRepository extends DemoRepository {
   private freeze<T>(value:T):T { if(value&&typeof value==='object'){Object.values(value).forEach(child=>this.freeze(child));if(!Object.isFrozen(value))Object.freeze(value);}return value; }
   private publish(patch: Partial<DemoSnapshot>): void { this.state = this.freeze({...this.state, ...patch}); this.listeners.forEach(listener => listener(this.state)); }
   private id(): string { return String(++this.sequence); }
+  private saleId(): string { return `V-${++this.saleSequence}`; }
   private now(): string { return this.clock().toISOString(); }
   private cents(value: number): void { DemoMoney.integer(value); }
   private cashAfter(kind: DemoMovementKind, amount: number): number {
@@ -37,19 +40,32 @@ export class LocalDemoRepository extends DemoRepository {
   }
   private seed(scenario: DemoScenario, role: DemoRole): void {
     if (scenario === DemoScenario.Unknown) throw new Error('Elegí un escenario disponible.');
-    this.sequence = 100; this.failed = false; this.receipts.clear(); this.attempts.clear(); this.fingerprints.clear();
-    const names = ['Remera esencial', 'Camisa Oxford', 'Buzo urbano', 'Jean recto', 'Pantalón cargo', 'Short deportivo', 'Zapatillas blancas', 'Botas cuero', 'Sandalias verano', 'Mochila urbana', 'Cartera mini', 'Riñonera', 'Gorra clásica', 'Cinturón cuero', 'Medias pack', 'Remera rayada', 'Jean azul', 'Buzo oversize'];
-    const categories = ['Indumentaria', 'Calzado', 'Accesorios', 'Básicos'];
-    const categoryIndex=[0,0,0,0,0,0,1,1,1,2,2,2,2,2,3,3,0,0];
-    const products: Product[] = names.map((name, i) => ({id: `p${i+1}`, name, sku: `BS-${String(i+1).padStart(3,'0')}`, category: categories[categoryIndex[i]], art: [DemoProductArt.Apparel,DemoProductArt.Apparel,DemoProductArt.Apparel,DemoProductArt.Pants,DemoProductArt.Pants,DemoProductArt.Shorts,DemoProductArt.Shoes,DemoProductArt.Shoes,DemoProductArt.Shoes,DemoProductArt.Accessories,DemoProductArt.Accessories,DemoProductArt.Accessories,DemoProductArt.Cap,DemoProductArt.Belt,DemoProductArt.Basics,DemoProductArt.Apparel,DemoProductArt.Pants,DemoProductArt.Apparel][i], price: (12500+i*2300)*100, cost: (6200+i*1000)*100, stock: scenario.low ? i%4 : i === 4 ? 0 : i%5===0 ? 2 : 12+i, status: i !== 17 ? DemoProductStatus.Active : DemoProductStatus.Inactive, version: 1, icon: ['◈','✦','▧','◎'][categoryIndex[i]]}));
-    const customers: Customer[] = ['Cliente ocasional','Ana Demo','Bruno Demo','Carla Demo','Diego Demo','Elena Demo','Franco Demo'].map((name,i)=>({id:`c${i}`,name,email:i ? `demo${i}@example.invalid`:'',phone:i ? `000-000${i}`:''}));
+    // Historical sales occupy V-90..V-113. Runtime IDs use a disjoint range.
+    this.sequence = 100; this.saleSequence = 200; this.failed = false; this.receipts.clear(); this.attempts.clear(); this.fingerprints.clear();
+    const products: Product[] = FERRETERIA_DEMO_PRODUCTS.map((seed, i) => ({
+      id: `p${i+1}`, name: seed.name, sku: seed.sku, category: seed.category,
+      art: seed.art, imageUrl: seed.imageUrl, price: seed.price,
+      cost: Math.round(seed.price*.58), stock: scenario.low ? i%4 : seed.stock,
+      status: i%29===28 ? DemoProductStatus.Inactive : DemoProductStatus.Active,
+      version: 1, icon: ['⚙','🔩','🛠','📐','🦺','🎨','🌿','⚡'][i%8]
+    }));
+    const customers: Customer[] = ['Cliente ocasional','Ana Torres','Bruno Ferreyra','Carla Méndez','Diego Obra SRL','Elena Ríos','Franco Taller','Gabriela Construcciones','Hernán Electricidad','Inés Pinturería','Jorge Mantenimiento','Karina Jardines','Luis Carpintería','Marta Consorcio','Nicolás Herrería'].map((name,i)=>({id:`c${i}`,name,email:i ? `cliente${i}@example.invalid`:'',phone:i ? `000-22${String(i).padStart(2,'0')}`:''}));
     const date = this.now();
-    const sales: Sale[] = scenario.empty ? [] : Array.from({length:8},(_,i)=>{const product=products[i]; return {id:`V-${90+i}`,date:new Date(this.clock().getTime()-i*86400000).toISOString(),customerId:customers[1+i%6].id,customerName:customers[1+i%6].name,lines:[{productId:product.id,name:product.name,sku:product.sku,category:product.category,price:product.price,cost:product.cost,quantity:1}], total:product.price,discount:0,method:DemoPaymentMethod.values[i%3],cashAmount:i%3===0?product.price:0,received:product.price,reference:'Demostración',status:i===7?DemoSaleStatus.Reversed:DemoSaleStatus.Completed,cashier:'Marina Demo',...(i===7?{reversalReason:'Cambio de talle demo'}:{})};});
+    const sales: Sale[] = scenario.empty ? [] : Array.from({length:24},(_,i)=>{
+      const primary=products[i]; const secondary=products[(i+17)%products.length];
+      const lines=[{productId:primary.id,name:primary.name,sku:primary.sku,category:primary.category,price:primary.price,cost:primary.cost,quantity:i%6===0?2:1},
+        ...(i%4===0?[{productId:secondary.id,name:secondary.name,sku:secondary.sku,category:secondary.category,price:secondary.price,cost:secondary.cost,quantity:1}]:[])];
+      const discount=i%5===0?10:i%7===0?5:0; const gross=lines.reduce((sum,line)=>sum+line.price*line.quantity,0); const total=Math.round(gross*(100-discount)/100);
+      const method=DemoPaymentMethod.values[i%DemoPaymentMethod.values.length]; const reversed=i===11||i===23;
+      return {id:`V-${90+i}`,date:new Date(this.clock().getTime()-i*86400000).toISOString(),customerId:customers[1+i%(customers.length-1)].id,customerName:customers[1+i%(customers.length-1)].name,lines,total,discount,method,cashAmount:method.isCash?total:0,received:total,reference:`OPERACIÓN-DEMO-${90+i}`,status:reversed?DemoSaleStatus.Reversed:DemoSaleStatus.Completed,cashier:i%3?'Marina Demo':'Tomás Demo',...(reversed?{reversalReason:'Producto devuelto en demostración'}:{})};
+    });
     const cashSales=sales.filter(s=>s.method.isCash&&s.status.canReverse).sort((a,b)=>a.date.localeCompare(b.date));
     const opening=(id:string,instant:string,reason:string)=>({id,date:new Date(new Date(instant).getTime()-60000).toISOString(),kind:DemoMovementKind.Opening,amount:5000000,reason});
     const saleMovement=(s:Sale)=>({id:`m${s.id}`,date:s.date,kind:DemoMovementKind.Sale,amount:s.total,reason:`Venta ${s.id}`});
     const current=(s:Sale)=>DemoCalendar.BuenosAires.sameDay(s.date,date);
-    const movements=[...cashSales.filter(s=>!current(s)).flatMap(s=>[opening(`opening-${s.id}`,s.date,'Fondo inicial histórico demo'),saleMovement(s)]),opening('m0',date,'Fondo inicial demo'),...cashSales.filter(current).map(saleMovement)];
+    const movements=[...cashSales.filter(s=>!current(s)).flatMap(s=>[opening(`opening-${s.id}`,s.date,'Fondo inicial histórico demo'),saleMovement(s)]),opening('m0',date,'Fondo inicial demo'),...cashSales.filter(current).map(saleMovement),
+      {id:'m-income-demo',date,kind:DemoMovementKind.Income,amount:125000,reason:'Cobro menor de cuenta corriente demo'},
+      {id:'m-expense-demo',date,kind:DemoMovementKind.Expense,amount:350000,reason:'Insumos y embalaje del turno demo'}];
     const cashClosures: DemoCashClosure[]=cashSales.filter(s=>!current(s)).map(s=>{
       const ledger=[opening(`opening-${s.id}`,s.date,'Fondo inicial histórico demo'),saleMovement(s)];
       const expected=DemoMoney.sum([5000000,s.total]);
@@ -58,7 +74,8 @@ export class LocalDemoRepository extends DemoRepository {
     const currentLedger=movements.slice(movements.map(m=>m.kind).lastIndexOf(DemoMovementKind.Opening));
     const currentExpected=DemoMoney.balance(currentLedger);
     if(scenario.closed)cashClosures.push({id:currentLedger[0].id,openedAt:currentLedger[0].date,opening:currentLedger[0].amount,closedAt:date,movements:currentLedger,expected:currentExpected,declared:currentExpected,reason:'Cierre demo',status:DemoCashStatus.Closed});
-    this.state = Object.freeze({products:Object.freeze(products),customers:Object.freeze(customers),cart:[],customerId:'c0',discount:0,sales:Object.freeze(sales),movements:Object.freeze(movements),cashClosures,stockMovements:[],cashStatus:scenario.closed?DemoCashStatus.Closed:DemoCashStatus.Open,role,scenario,...(scenario.closed?{cashCount:{declared:currentExpected,expected:currentExpected,reason:'Cierre demo'}}:{})});
+    const stockMovements=products.slice(0,40).map((product,i)=>({id:`seed-stock-${i+1}`,productId:product.id,date:new Date(this.clock().getTime()-(i+1)*3600000).toISOString(),quantity:i%6===0?-2:10+(i%4)*5,reason:i%6===0?'Ajuste por rotura de embalaje demo':'Reposición de proveedor demo'}));
+    this.state = Object.freeze({products:Object.freeze(products),customers:Object.freeze(customers),cart:[],customerId:'c0',discount:0,sales:Object.freeze(sales),movements:Object.freeze(movements),cashClosures,stockMovements:Object.freeze(stockMovements),cashStatus:scenario.closed?DemoCashStatus.Closed:DemoCashStatus.Open,role,scenario,...(scenario.closed?{cashCount:{declared:currentExpected,expected:currentExpected,reason:'Cierre demo'}}:{})});
     this.state=this.freeze({...this.state});this.listeners.forEach(listener=>listener(this.state));
   }
   setRole(role: DemoRole): void {
@@ -134,7 +151,7 @@ export class LocalDemoRepository extends DemoRepository {
     const lines=new CheckoutFlow().validate({snapshot:this.state,method,received,total});
     this.cashAfter(DemoMovementKind.Sale,cashAmount);
     const customer=this.state.customers.find(c=>c.id===this.state.customerId)!;
-    const sale:Sale=Object.freeze({id:`V-${this.id()}`,date:this.now(),customerId:customer.id,customerName:customer.name,lines:Object.freeze(lines),total,discount:this.state.discount,method,cashAmount,received:cashAmount?received:total,reference,status:DemoSaleStatus.Completed,cashier:this.state.role.label+' Demo'});
+    const sale:Sale=Object.freeze({id:this.saleId(),date:this.now(),customerId:customer.id,customerName:customer.name,lines:Object.freeze(lines),total,discount:this.state.discount,method,cashAmount,received:cashAmount?received:total,reference,status:DemoSaleStatus.Completed,cashier:this.state.role.label+' Demo'});
     const products=this.state.products.map(p=>({...p,stock:p.stock-(lines.find(l=>l.productId===p.id)?.quantity??0)}));
     const stockMovements=[...this.state.stockMovements,...lines.map(l=>({id:this.id(),productId:l.productId,date:sale.date,quantity:-l.quantity,reason:`Venta ${sale.id}`}))];
     const movements=cashAmount?[...this.state.movements,{id:this.id(),date:sale.date,kind:DemoMovementKind.Sale,amount:cashAmount,reason:`Venta ${sale.id}`}]:this.state.movements;
