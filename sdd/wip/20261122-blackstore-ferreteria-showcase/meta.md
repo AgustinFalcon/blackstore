@@ -1,6 +1,6 @@
 # BlackStore ferretería showcase
 
-Estado: ready_to_ship
+Estado: complete
 Fecha: 2026-11-22
 Base: master ff22c12
 
@@ -44,4 +44,6 @@ coherente con StoreCore, sin habilitar StoreCore live ni proveedores externos.
   colisiones (`V-201+` frente a `V-90..V-113`).
 - Arqueo de un turno reabierto reinicia el declarado al nuevo fondo esperado.
 - Evidencia local: [showcase-evidence.md](4-implementation/showcase-evidence.md).
+- Implementación exacta: `67fc4e12ae4d08bd679fab1721544d48c30535e3`.
+- PR hospedado: `#72`; Verify `45000055529`, cuatro jobs PASS.
 

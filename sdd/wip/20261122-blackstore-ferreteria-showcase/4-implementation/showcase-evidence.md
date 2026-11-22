@@ -49,5 +49,15 @@ remotas no activaban el fallback. Se incorporó un handler con guard contra
 bucles en tarjetas y modal, más un E2E que aborta Unsplash. La segunda pasada de
 los tres reviewers resultó **APPROVE**, sin P0–P3 pendientes.
 
-El SHA exacto de commit/PR y los checks hospedados se anexan al cerrar BFS-04;
-hasta entonces el estado es `ready_to_ship`.
+## Evidencia hospedada exacta
+
+- Commit de implementación: `67fc4e12ae4d08bd679fab1721544d48c30535e3`.
+- Pull request: `#72` (`feat/blackstore-ferreteria-showcase-20261122`).
+- GitHub Verify: ejecución `45000055529`.
+- `frontend`: PASS en 27 s.
+- `backend`: PASS en 3 min 48 s.
+- `frontend-browser`: PASS en 2 min; contratos demo y rutas operativas.
+- `dct-browser`: PASS en 8 min 20 s; PostgreSQL 16 y reinicio del JAR real.
+
+BFS-04 queda cerrado. El commit documental que incorpora esta sección no cambia
+código ejecutable; su CI hospedado debe volver a pasar antes del merge.
